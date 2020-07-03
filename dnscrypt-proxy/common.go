@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"container/ring"
 	"encoding/binary"
 	"errors"
 	"io/ioutil"
@@ -10,7 +11,11 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	
+	"github.com/miekg/dns"
 )
+//only if raw msg dumping
+const program_dbg_full = false
 
 type CryptoConstruction uint16
 
@@ -32,11 +37,50 @@ var (
 	CertMagic               = [4]byte{0x44, 0x4e, 0x53, 0x43}
 	ServerMagic             = [8]byte{0x72, 0x36, 0x66, 0x6e, 0x76, 0x57, 0x6a, 0x38}
 	MinDNSPacketSize        = 12 + 5
-	MaxDNSPacketSize        = 4096
-	MaxDNSUDPPacketSize     = 4096
+	MaxDNSPacketSize        = dns.DefaultMsgSize
+	MaxDNSUDPPacketSize     = dns.DefaultMsgSize
 	MaxDNSUDPSafePacketSize = 1252
-	InitialMinQuestionSize  = 512
+	InitialMinQuestionSize  = dns.MinMsgSize
 )
+
+type Endpoint struct {
+	*net.IPAddr
+	Port					  int
+}
+
+type EPRing struct {
+	*ring.Ring
+	*Endpoint
+	order 					  int `aka name`
+}
+
+func (e *EPRing) Order() string {
+	return strconv.Itoa(e.order)
+}
+
+func (e *EPRing) Next() *EPRing {
+	return e.Ring.Next().Value.(*EPRing)
+}
+
+func LinkEPRing(endpoints ...*Endpoint) *EPRing {
+	var cur *EPRing = nil
+	for i , endpoint := range endpoints {
+		tmp := &EPRing{}
+		tmp.Ring = ring.New(1)
+		tmp.Value = tmp
+		tmp.order = i + 1
+		tmp.Endpoint = endpoint
+		if cur != nil {
+			cur.Link(tmp.Ring)
+		}
+		cur = tmp
+	}
+	return cur
+}
+
+func (e *Endpoint) String() string {
+	return net.JoinHostPort(e.IPAddr.String(), strconv.Itoa(e.Port))
+} 
 
 var (
 	FileDescriptors   = make([]*os.File, 0)
@@ -48,34 +92,10 @@ func PrefixWithSize(packet []byte) ([]byte, error) {
 	if packetLen > 0xffff {
 		return packet, errors.New("Packet too large")
 	}
-	packet = append(append(packet, 0), 0)
+	packet = append(packet, 0, 0)
 	copy(packet[2:], packet[:len(packet)-2])
 	binary.BigEndian.PutUint16(packet[0:2], uint16(len(packet)-2))
 	return packet, nil
-}
-
-func ReadPrefixed(conn *net.Conn) ([]byte, error) {
-	buf := make([]byte, 2+MaxDNSPacketSize)
-	packetLength, pos := -1, 0
-	for {
-		readnb, err := (*conn).Read(buf[pos:])
-		if err != nil {
-			return buf, err
-		}
-		pos += readnb
-		if pos >= 2 && packetLength < 0 {
-			packetLength = int(binary.BigEndian.Uint16(buf[0:2]))
-			if packetLength > MaxDNSPacketSize-1 {
-				return buf, errors.New("Packet too large")
-			}
-			if packetLength < MinDNSPacketSize {
-				return buf, errors.New("Packet too short")
-			}
-		}
-		if packetLength >= 0 && pos >= 2+packetLength {
-			return buf[2 : 2+packetLength], nil
-		}
-	}
 }
 
 func Min(a, b int) int {
@@ -83,6 +103,13 @@ func Min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func Min64(x, y int64) int64 {
+ if x < y {
+   return x
+ }
+ return y
 }
 
 func Max(a, b int) int {
@@ -155,14 +182,37 @@ func TrimAndStripInlineComments(str string) string {
 	return strings.TrimFunc(str, unicode.IsSpace)
 }
 
-func ExtractHostAndPort(str string, defaultPort int) (host string, port int) {
-	host, port = str, defaultPort
-	if idx := strings.LastIndex(str, ":"); idx >= 0 && idx < len(str)-1 {
-		if portX, err := strconv.Atoi(str[idx+1:]); err == nil {
-			host, port = host[:idx], portX
+func ResolveEndpoint(hostport string) (*Endpoint, error) {
+	host, port, err := ExtractHostAndPort(hostport, 0)
+	if err != nil {
+		return nil, err
+	}
+	ipaddr, err := net.ResolveIPAddr("ip", host)
+	if err != nil {
+		return nil, err
+	}
+	return &Endpoint{IPAddr:ipaddr, Port:port}, nil
+}
+
+
+func ExtractHostAndPort(hostport string, defaultPort int) (string, int, error) {
+	host, portStr, err := net.SplitHostPort(hostport)
+	if err != nil {
+		if strings.HasSuffix(err.Error(), "missing port in address") {
+			return strings.TrimSpace(hostport), defaultPort, nil
+		} else {
+			return "", 0, err
+		}
+		
+	}
+	port := defaultPort
+	if portStr != "" {
+		port, err = net.LookupPort("ip", portStr)
+		if err != nil {
+			return "", 0, err
 		}
 	}
-	return
+	return host, port, err
 }
 
 func ReadTextFile(filename string) (string, error) {

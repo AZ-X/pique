@@ -88,7 +88,7 @@ func (patternMatcher *PatternMatcher) Add(pattern string, val interface{}, posit
 		pattern = strings.TrimPrefix(pattern, ".")
 	}
 	if len(pattern) == 0 {
-		dlog.Errorf("Syntax error in block rule at line %d", position)
+		dlog.Errorf("syntax error in block rule at line %d", position)
 	}
 
 	pattern = strings.ToLower(pattern)
@@ -110,7 +110,7 @@ func (patternMatcher *PatternMatcher) Add(pattern string, val interface{}, posit
 	case PatternTypeExact:
 		patternMatcher.blockedExact[pattern] = val
 	default:
-		dlog.Fatal("Unexpected block type")
+		dlog.Fatal("unexpected block type")
 	}
 	return nil
 }

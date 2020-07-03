@@ -36,7 +36,7 @@ func (plugin *PluginCloak) Description() string {
 }
 
 func (plugin *PluginCloak) Init(proxy *Proxy) error {
-	dlog.Noticef("Loading the set of cloaking rules from [%s]", proxy.cloakFile)
+	dlog.Noticef("loading the set of cloaking rules from [%s]", proxy.cloakFile)
 	bin, err := ReadTextFile(proxy.cloakFile)
 	if err != nil {
 		return err
@@ -55,11 +55,11 @@ func (plugin *PluginCloak) Init(proxy *Proxy) error {
 			line = strings.TrimFunc(parts[0], unicode.IsSpace)
 			target = strings.TrimFunc(parts[1], unicode.IsSpace)
 		} else if len(parts) > 2 {
-			dlog.Errorf("Syntax error in cloaking rules at line %d -- Unexpected space character", 1+lineNo)
+			dlog.Errorf("syntax error in cloaking rules at line %d -- Unexpected space character", 1+lineNo)
 			continue
 		}
 		if len(line) == 0 || len(target) == 0 {
-			dlog.Errorf("Syntax error in cloaking rules at line %d -- Missing name or target", 1+lineNo)
+			dlog.Errorf("syntax error in cloaking rules at line %d -- Missing name or target", 1+lineNo)
 			continue
 		}
 		line = strings.ToLower(line)
@@ -73,7 +73,7 @@ func (plugin *PluginCloak) Init(proxy *Proxy) error {
 			} else if ipv6 := ip.To16(); ipv6 != nil {
 				cloakedName.ipv6 = append((*cloakedName).ipv6, ipv6)
 			} else {
-				dlog.Errorf("Invalid IP address in cloaking rule at line %d", 1+lineNo)
+				dlog.Errorf("invalid IP address in cloaking rule at line %d", 1+lineNo)
 				continue
 			}
 			cloakedName.isIP = true
@@ -175,7 +175,7 @@ func (plugin *PluginCloak) Eval(pluginsState *PluginsState, msg *dns.Msg) error 
 		synth.Answer = []dns.RR{rr}
 	}
 	pluginsState.synthResponse = synth
-	pluginsState.action = PluginsActionSynth
+	pluginsState.state = PluginsStateSynth
 	pluginsState.returnCode = PluginsReturnCodeCloak
 	return nil
 }

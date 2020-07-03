@@ -1,7 +1,0 @@
-*               text=auto
-*.go            text        diff=golang
-*.bat           text        eol=crlf
-go.mod          text        eol=lf
-
-# Ensure test fixtures don't get mangled
-**/testdata/**  -text

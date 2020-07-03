@@ -3,79 +3,56 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha512"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
-
 	"github.com/jedisct1/dlog"
-	stamps "github.com/jedisct1/go-dnsstamps"
-	"github.com/miekg/dns"
-	"golang.org/x/net/http2"
-	netproxy "golang.org/x/net/proxy"
+	stamps "stammel"
 )
 
 const (
-	DefaultFallbackResolver = "9.9.9.9:53"
-	DefaultKeepAlive        = 5 * time.Second
-	DefaultTimeout          = 30 * time.Second
-	SystemResolverIPTTL     = 24 * time.Hour
-	MinResolverIPTTL        = 12 * time.Hour
-	ExpiredCachedIPGraceTTL = 15 * time.Minute
+	DOHMediaType					= "application/dns-message"
+	DefaultKeepAlive        		= 0 * time.Second
+	DefaultTimeout          		= 30 * time.Second
 )
 
-type CachedIPItem struct {
-	ip         net.IP
-	expiration *time.Time
-}
-
-type CachedIPs struct {
-	sync.RWMutex
-	cache map[string]*CachedIPItem
+type TransportHolding struct {
+	*http.Transport
+	*EPRing
+	Name							string //redundant key: name of stamp for now
+	DomainName						string
+	SNIShadow     					string
+	SNIBlotUp     					stamps.SNIBlotUpType
 }
 
 type XTransport struct {
-	transport                *http.Transport
-	keepAlive                time.Duration
-	timeout                  time.Duration
-	cachedIPs                CachedIPs
-	fallbackResolvers        []string
-	mainProto                string
-	ignoreSystemDNS          bool
-	useIPv4                  bool
-	useIPv6                  bool
-	tlsDisableSessionTickets bool
-	tlsCipherSuite           []uint16
-	proxyDialer              *netproxy.Dialer
-	httpProxyFunction        func(*http.Request) (*url.URL, error)
+	transports              		map[string]*TransportHolding //key: name of stamp for now
+	proxyDialer             		*net.Dialer
+	keepAlive               		time.Duration
+	timeout                 		time.Duration
+	tlsDisableSessionTickets		bool
+	tlsCipherSuite          		[]uint16
+	httpProxyFunction       		func(*http.Request) (*url.URL, error)
+}
+
+type HTTPSContext struct {
+	context.Context
 }
 
 func NewXTransport() *XTransport {
-	if err := isIPAndPort(DefaultFallbackResolver); err != nil {
-		panic("DefaultFallbackResolver does not parse")
-	}
 	xTransport := XTransport{
-		cachedIPs:                CachedIPs{cache: make(map[string]*CachedIPItem)},
-		keepAlive:                DefaultKeepAlive,
-		timeout:                  DefaultTimeout,
-		fallbackResolvers:        []string{DefaultFallbackResolver},
-		mainProto:                "",
-		ignoreSystemDNS:          true,
-		useIPv4:                  true,
-		useIPv6:                  false,
-		tlsDisableSessionTickets: false,
-		tlsCipherSuite:           nil,
+		keepAlive:                	DefaultKeepAlive,
+		timeout:                  	DefaultTimeout,
+		tlsDisableSessionTickets: 	false,
+		tlsCipherSuite:           	nil,
 	}
 	return &xTransport
 }
@@ -84,280 +61,220 @@ func ParseIP(ipStr string) net.IP {
 	return net.ParseIP(strings.TrimRight(strings.TrimLeft(ipStr, "["), "]"))
 }
 
-// If ttl < 0, never expire
-// Otherwise, ttl is set to max(ttl, MinResolverIPTTL)
-func (xTransport *XTransport) saveCachedIP(host string, ip net.IP, ttl time.Duration) {
-	item := &CachedIPItem{ip: ip, expiration: nil}
-	if ttl >= 0 {
-		if ttl < MinResolverIPTTL {
-			ttl = MinResolverIPTTL
-		}
-		expiration := time.Now().Add(ttl)
-		item.expiration = &expiration
-	}
-	xTransport.cachedIPs.Lock()
-	xTransport.cachedIPs.cache[host] = item
-	xTransport.cachedIPs.Unlock()
+func (xTransport *XTransport) closeIdleConnections() {
+
 }
 
-func (xTransport *XTransport) loadCachedIP(host string) (ip net.IP, expired bool) {
-	ip, expired = nil, false
-	xTransport.cachedIPs.RLock()
-	item, ok := xTransport.cachedIPs.cache[host]
-	xTransport.cachedIPs.RUnlock()
-	if !ok {
-		return
-	}
-	ip = item.ip
-	expiration := item.expiration
-	if expiration != nil && time.Until(*expiration) < 0 {
-		expired = true
-	}
-	return
-}
-
-func (xTransport *XTransport) rebuildTransport() {
-	dlog.Debug("Rebuilding transport")
-	if xTransport.transport != nil {
-		(*xTransport.transport).CloseIdleConnections()
-	}
+//general template for all TLS conn;
+func (xTransport *XTransport) buildTransport(server RegisteredServer) error {
+	dlog.Debugf("building transport for [%s]", server.name)
 	timeout := xTransport.timeout
+	stamp := server.stamp
+	domain, port, err := ExtractHostAndPort(stamp.ProviderName, stamps.DefaultPort)
+	if err != nil {
+		return err
+	}
+	endpoint, err := ResolveEndpoint(stamp.ServerAddrStr)
+	if err != nil {
+		return err
+	}
+	if endpoint.Port != 0 && endpoint.Port != stamps.DefaultPort {
+		port = endpoint.Port
+	}
+	endpoint.Port = port
+	epring := LinkEPRing(endpoint)
 	transport := &http.Transport{
-		DisableKeepAlives:      false,
-		DisableCompression:     true,
-		MaxIdleConns:           1,
-		IdleConnTimeout:        xTransport.keepAlive,
-		ResponseHeaderTimeout:  timeout,
-		ExpectContinueTimeout:  timeout,
-		MaxResponseHeaderBytes: 4096,
-		DialContext: func(ctx context.Context, network, addrStr string) (net.Conn, error) {
-			host, port := ExtractHostAndPort(addrStr, stamps.DefaultPort)
-			ipOnly := host
-			// resolveAndUpdateCache() is always called in `Fetch()` before the `Dial()`
-			// method is used, so that a cached entry must be present at this point.
-			cachedIP, _ := xTransport.loadCachedIP(host)
-			if cachedIP != nil {
-				if ipv4 := cachedIP.To4(); ipv4 != nil {
-					ipOnly = ipv4.String()
-				} else {
-					ipOnly = "[" + cachedIP.String() + "]"
-				}
-			} else {
-				dlog.Debugf("[%s] IP address was not cached", host)
-			}
-			addrStr = ipOnly + ":" + strconv.Itoa(port)
-			if xTransport.proxyDialer == nil {
-				dialer := &net.Dialer{Timeout: timeout, KeepAlive: timeout, DualStack: true}
-				return dialer.DialContext(ctx, network, addrStr)
-			}
-			return (*xTransport.proxyDialer).Dial(network, addrStr)
-		},
+	ForceAttemptHTTP2:      true,//formal servers (DOH, DOT, https-gits, etc.) should provide H>1.1 infrastructure with tls>1.2
+	DisableKeepAlives:      xTransport.keepAlive <= 0,
+	DisableCompression:     true,
+	MaxIdleConns:           5,
+	MaxConnsPerHost:        0,
+	TLSHandshakeTimeout:    1500 * time.Millisecond,
+	IdleConnTimeout:        xTransport.keepAlive,
+	ResponseHeaderTimeout:  timeout,
+	ExpectContinueTimeout:  timeout,
+	MaxResponseHeaderBytes: 4096,
 	}
 	if xTransport.httpProxyFunction != nil {
 		transport.Proxy = xTransport.httpProxyFunction
 	}
-	if xTransport.tlsDisableSessionTickets || xTransport.tlsCipherSuite != nil {
-		tlsClientConfig := tls.Config{
-			SessionTicketsDisabled: xTransport.tlsDisableSessionTickets,
-		}
-		if !xTransport.tlsDisableSessionTickets {
-			tlsClientConfig.ClientSessionCache = tls.NewLRUClientSessionCache(10)
-		}
-		if xTransport.tlsCipherSuite != nil {
-			tlsClientConfig.PreferServerCipherSuites = false
-			tlsClientConfig.CipherSuites = xTransport.tlsCipherSuite
-		}
-		transport.TLSClientConfig = &tlsClientConfig
+	tlsClientConfig := tls.Config{
+		SessionTicketsDisabled: xTransport.tlsDisableSessionTickets,
+		MinVersion: tls.VersionTLS13,
+		CurvePreferences: []tls.CurveID{tls.X25519},
+		DynamicRecordSizingDisabled: true,
+		InsecureSkipVerify: stamp.SNIBlotUp != stamps.SNIBlotUpTypeDefault,
 	}
-	http2.ConfigureTransport(transport)
-	xTransport.transport = transport
-}
-
-func (xTransport *XTransport) resolveUsingSystem(host string) (ip net.IP, ttl time.Duration, err error) {
-	ttl = SystemResolverIPTTL
-	var foundIPs []string
-	foundIPs, err = net.LookupHost(host)
-	if err != nil {
-		return
+	if !xTransport.tlsDisableSessionTickets {
+		tlsClientConfig.ClientSessionCache = tls.NewLRUClientSessionCache(10)
 	}
-	ips := make([]net.IP, 0)
-	for _, ip := range foundIPs {
-		if foundIP := net.ParseIP(ip); foundIP != nil {
-			if xTransport.useIPv4 {
-				if ipv4 := foundIP.To4(); ipv4 != nil {
-					ips = append(ips, foundIP)
-				}
-			}
-			if xTransport.useIPv6 {
-				if ipv6 := foundIP.To16(); ipv6 != nil {
-					ips = append(ips, foundIP)
-				}
-			}
-		}
+	if xTransport.tlsCipherSuite != nil {
+		tlsClientConfig.PreferServerCipherSuites = false
+		tlsClientConfig.CipherSuites = xTransport.tlsCipherSuite
 	}
-	if len(ips) > 0 {
-		ip = ips[rand.Intn(len(ips))]
+	transport.TLSClientConfig = &tlsClientConfig
+	
+	th := &TransportHolding{
+		Name:		server.name,
+		DomainName: domain,
+		SNIShadow:  stamp.SNIShadow,
+		SNIBlotUp:  stamp.SNIBlotUp,
 	}
-	return
-}
-
-func (xTransport *XTransport) resolveUsingResolver(proto, host string, resolver string) (ip net.IP, ttl time.Duration, err error) {
-	dnsClient := dns.Client{Net: proto}
-	if xTransport.useIPv4 {
-		msg := dns.Msg{}
-		msg.SetQuestion(dns.Fqdn(host), dns.TypeA)
-		msg.SetEdns0(uint16(MaxDNSPacketSize), true)
-		var in *dns.Msg
-		if in, _, err = dnsClient.Exchange(&msg, resolver); err == nil {
-			answers := make([]dns.RR, 0)
-			for _, answer := range in.Answer {
-				if answer.Header().Rrtype == dns.TypeA {
-					answers = append(answers, answer)
-				}
-			}
-			if len(answers) > 0 {
-				answer := answers[rand.Intn(len(answers))]
-				ip = answer.(*dns.A).A
-				ttl = time.Duration(answer.Header().Ttl) * time.Second
-				return
-			}
-		}
+	th.Transport = transport
+	th.EPRing = epring
+	if err := th.buildTransport(xTransport); err != nil {
+		return err
 	}
-	if xTransport.useIPv6 {
-		msg := dns.Msg{}
-		msg.SetQuestion(dns.Fqdn(host), dns.TypeAAAA)
-		msg.SetEdns0(uint16(MaxDNSPacketSize), true)
-		var in *dns.Msg
-		if in, _, err = dnsClient.Exchange(&msg, resolver); err == nil {
-			answers := make([]dns.RR, 0)
-			for _, answer := range in.Answer {
-				if answer.Header().Rrtype == dns.TypeAAAA {
-					answers = append(answers, answer)
-				}
-			}
-			if len(answers) > 0 {
-				answer := answers[rand.Intn(len(answers))]
-				ip = answer.(*dns.AAAA).AAAA
-				ttl = time.Duration(answer.Header().Ttl) * time.Second
-				return
-			}
-		}
-	}
-	return
-}
-
-func (xTransport *XTransport) resolveUsingResolvers(proto, host string, resolvers []string) (ip net.IP, ttl time.Duration, err error) {
-	for i, resolver := range resolvers {
-		ip, ttl, err = xTransport.resolveUsingResolver(proto, host, resolver)
-		if err == nil {
-			if i > 0 {
-				dlog.Infof("Resolution succeeded with fallback resolver %s[%s]", proto, resolver)
-				resolvers[0], resolvers[i] = resolvers[i], resolvers[0]
-			}
-			break
-		}
-		dlog.Infof("Unable to resolve [%s] using fallback resolver %s[%s]: %v", host, proto, resolver, err)
-	}
-	return
-}
-
-// If a name is not present in the cache, resolve the name and update the cache
-func (xTransport *XTransport) resolveAndUpdateCache(host string) error {
-	if xTransport.proxyDialer != nil || xTransport.httpProxyFunction != nil {
-		return nil
-	}
-	if ParseIP(host) != nil {
-		return nil
-	}
-	cachedIP, expired := xTransport.loadCachedIP(host)
-	if cachedIP != nil && !expired {
-		return nil
-	}
-	var foundIP net.IP
-	var ttl time.Duration
-	var err error
-	if !xTransport.ignoreSystemDNS {
-		foundIP, ttl, err = xTransport.resolveUsingSystem(host)
-	}
-	if xTransport.ignoreSystemDNS || err != nil {
-		protos := []string{"udp", "tcp"}
-		if xTransport.mainProto == "tcp" {
-			protos = []string{"tcp", "udp"}
-		}
-		for _, proto := range protos {
-			if err != nil {
-				dlog.Noticef("System DNS configuration not usable yet, exceptionally resolving [%s] using fallback resolvers over %s", host, proto)
-			} else {
-				dlog.Debugf("Resolving [%s] using fallback resolvers over %s", host, proto)
-			}
-			foundIP, ttl, err = xTransport.resolveUsingResolvers(proto, host, xTransport.fallbackResolvers)
-			if err == nil {
-				break
-			}
-		}
-	}
-	if err != nil && xTransport.ignoreSystemDNS {
-		dlog.Noticef("Fallback resolvers didn't respond - Trying with the system resolver as a last resort")
-		foundIP, ttl, err = xTransport.resolveUsingSystem(host)
-	}
-	if ttl < MinResolverIPTTL {
-		ttl = MinResolverIPTTL
-	}
-	if err != nil {
-		if cachedIP != nil {
-			dlog.Noticef("Using stale [%v] cached address for a grace period", host)
-			foundIP = cachedIP
-			ttl = ExpiredCachedIPGraceTTL
-		} else {
-			return err
-		}
-	}
-	xTransport.saveCachedIP(host, foundIP, ttl)
-	dlog.Debugf("[%s] IP address [%s] added to the cache, valid for %v", host, foundIP, ttl)
+	xTransport.transports[server.name] = th
 	return nil
 }
 
-func (xTransport *XTransport) Fetch(method string, url *url.URL, accept string, contentType string, body *[]byte, timeout time.Duration) ([]byte, *tls.ConnectionState, time.Duration, error) {
+func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
+	alive := xTransport.keepAlive
+	transport := th.Transport
+	cfg := transport.TLSClientConfig
+	cfg.ServerName = th.DomainName
+	if cfg.InsecureSkipVerify {
+		dlog.Debugf("SNI setup for [%s]", th.Name)
+		switch th.SNIBlotUp {
+			case stamps.SNIBlotUpTypeOmit: 	  cfg.ServerName = ""
+			case stamps.SNIBlotUpTypeIPAddr:  cfg.ServerName = th.EPRing.IP.String()
+			case stamps.SNIBlotUpTypeMoniker: cfg.ServerName = th.SNIShadow
+		}
+		cfg.VerifyPeerCertificate = func(certificates [][]byte, _ [][]*x509.Certificate) error {
+			certs := make([]*x509.Certificate, len(certificates))
+			for i, asn1Data := range certificates {
+				cert, err := x509.ParseCertificate(asn1Data)
+				if err != nil {
+					return errors.New("tls: failed to parse certificate from server: " + err.Error())
+				}
+				certs[i] = cert
+			}
+			opts := x509.VerifyOptions{
+				Roots:         cfg.RootCAs,
+				DNSName:       th.SNIShadow, //SNIShadow must be a known trusted alias of the host
+				Intermediates: x509.NewCertPool(),
+			}
+			for _, cert := range certs {
+				opts.Intermediates.AddCert(cert)
+			}
+			for _, cert := range certs {
+				_, err := cert.Verify(opts)
+				if err == nil {
+					return nil
+				} else {
+					dlog.Debugf("[%v]", err)
+				}
+			}
+			return errors.New("VerifyPeerCertificate failed")
+		}
+	}
+	getDialContext := func(t *TransportHolding, ctx context.Context, netw, addr string, isTLS bool) (net.Conn, error) {
+		if strings.HasSuffix(addr, t.DomainName) {
+			dlog.Criticalf("mismatch addr for TransportHolding(%s): [%s]", t.Name, addr)
+			return nil, errors.New("mismatch TransportHolding")
+		}
+		addr = t.EPRing.String()
+		t.EPRing = t.EPRing.Next()
+		if xTransport.proxyDialer == nil {
+			dialer := &net.Dialer{Timeout: 2000 * time.Millisecond, KeepAlive: alive, FallbackDelay: -1}
+			if isTLS {
+				return tls.DialWithDialer(dialer, netw, addr, cfg)
+			} else {
+				return dialer.DialContext(ctx, netw, addr)
+			}
+		}
+		if isTLS {
+			return tls.DialWithDialer(xTransport.proxyDialer, netw, addr, cfg)
+
+		} else {
+			return (*xTransport.proxyDialer).Dial(netw, addr)
+		}
+	}
+	transport.DialContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
+			return getDialContext(th, ctx, netw, addr, false)
+	}
+	transport.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
+		c, err := getDialContext(th, ctx, netw, addr, true)
+		if err != nil {
+			if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
+				dlog.Debugf("DialTLSContext encountered: [%v]", err)
+			}
+			return nil, err
+		}
+		return c, c.(*tls.Conn).Handshake()
+	}
+	return nil
+}
+
+func (xTransport *XTransport) FetchHTTPS(name string, path string, method string, doh bool, ctx *HTTPSContext, body *[]byte, timeout time.Duration, cbs ...interface{}) ([]byte, error) {
+	th, found := xTransport.transports[name]
+	if !found {
+		dlog.Fatalf("name [%s] not found for transports", name)
+		return nil, errors.New("name not found for transports")
+	}
+	return xTransport.fetchHTTPS(th, path, method, doh, ctx, body, timeout, cbs...)
+}
+
+func (xTransport *XTransport) fetchHTTPS(th *TransportHolding, path string, method string, doh bool, ctx *HTTPSContext, body *[]byte, timeout time.Duration, cbs ...interface{}) ([]byte, error) {
+	var err error
+	goto Go
+Error:
+	return nil, err
+Go:
 	if timeout <= 0 {
 		timeout = xTransport.timeout
 	}
-	client := http.Client{Transport: xTransport.transport, Timeout: timeout}
-	header := map[string][]string{"User-Agent": {"dnscrypt-proxy"}}
-	if len(accept) > 0 {
-		header["Accept"] = []string{accept}
+	client := http.Client{Transport: th.Transport, Timeout: timeout}
+	// User-Agent. If set to nil or empty string, then omit it. Otherwise if not mentioned, include the default.
+	header := map[string][]string{"User-Agent": {""}}
+	url := &url.URL{
+		Scheme: "https",
+		Host:   th.DomainName,
+		Path:   path,
 	}
-	if len(contentType) > 0 {
-		header["Content-Type"] = []string{contentType}
+	if doh {
+		header["accept"] = []string{DOHMediaType}
+		
+		if method == "POST" {
+			header["content-type"] = []string{DOHMediaType}
+		} else if method == "GET" {
+			qs := url.Query()
+			//rfc8484 single variable "dns" is defined as the content of the DNS request
+			encBody := base64.RawURLEncoding.EncodeToString(*body)
+			qs.Add("dns", encBody)
+			url.RawQuery = qs.Encode()
+		}
 	}
-	if body != nil {
-		h := sha512.Sum512(*body)
-		qs := url.Query()
-		qs.Add("body_hash", hex.EncodeToString(h[:32]))
-		url2 := *url
-		url2.RawQuery = qs.Encode()
-		url = &url2
-	}
-	host, _ := ExtractHostAndPort(url.Host, 0)
-	if xTransport.proxyDialer == nil && strings.HasSuffix(host, ".onion") {
-		return nil, nil, 0, errors.New("Onion service is not reachable without Tor")
-	}
-	if err := xTransport.resolveAndUpdateCache(host); err != nil {
-		dlog.Errorf("Unable to resolve [%v] - Make sure that the system resolver works, or that `fallback_resolver` has been set to a resolver that can be reached", host)
-		return nil, nil, 0, err
+
+	//rfc8484
+	//The URI Template defined in this document is processed without any variables when the HTTP method is POST
+	//if body != nil {
+	//	h := sha512.Sum512(*body)
+	//	qs := url.Query()
+	//	qs.Add("body_hash", hex.EncodeToString(h[:32]))
+	//	url2 := *url
+	//	url2.RawQuery = qs.Encode()
+	//	url = &url2
+	//}
+	if xTransport.proxyDialer == nil && strings.HasSuffix(url.Host, ".onion") {
+		err = errors.New("Onion service is not reachable without Tor")
+		goto Error
 	}
 	req := &http.Request{
 		Method: method,
 		URL:    url,
 		Header: header,
-		Close:  false,
+		Close:  xTransport.keepAlive <= 0,
 	}
-	if body != nil {
+	if ctx != nil {
+		req.WithContext(ctx)
+	}
+	if method == "POST" && body != nil {
 		req.ContentLength = int64(len(*body))
 		req.Body = ioutil.NopCloser(bytes.NewReader(*body))
 	}
-	start := time.Now()
 	resp, err := client.Do(req)
-	rtt := time.Since(start)
 	if err == nil {
 		if resp == nil {
 			err = errors.New("Webserver returned an error")
@@ -365,44 +282,43 @@ func (xTransport *XTransport) Fetch(method string, url *url.URL, accept string, 
 			err = errors.New(resp.Status)
 		}
 	} else {
-		(*xTransport.transport).CloseIdleConnections()
+		th.Transport.CloseIdleConnections()
 	}
 	if err != nil {
-		dlog.Debugf("[%s]: [%s]", req.URL, err)
+		dlog.Debugf("request error-[%s]", err)
 		if xTransport.tlsCipherSuite != nil && strings.Contains(err.Error(), "handshake failure") {
-			dlog.Warnf("TLS handshake failure - Try changing or deleting the tls_cipher_suite value in the configuration file")
-			xTransport.tlsCipherSuite = nil
-			xTransport.rebuildTransport()
+			dlog.Error("TLS handshake failure - Try changing or deleting the tls_cipher_suite value in the configuration file")
 		}
-		return nil, nil, 0, err
+		goto Error
 	}
-	tls := resp.TLS
-	bin, err := ioutil.ReadAll(io.LimitReader(resp.Body, MaxHTTPBodyLength))
+	for _, cb := range cbs {
+		switch cb := cb.(type) {
+			case func(*tls.ConnectionState) error:
+				if err = cb(resp.TLS); err != nil {
+					goto Error
+				}
+			default:
+				dlog.Errorf("unhandled callback(T=%T) calling FetchHTTPS", cb)
+		}
+	}
+	var size int64
+	size = MaxHTTPBodyLength
+	if resp.ContentLength > 0 {
+		size = Min64(resp.ContentLength, size)
+	}
+	bin, err := ioutil.ReadAll(io.LimitReader(resp.Body, size))
 	if err != nil {
-		return nil, tls, 0, err
+		goto Error
 	}
 	resp.Body.Close()
-	return bin, tls, rtt, err
+	return bin, nil
 }
 
-func (xTransport *XTransport) Get(url *url.URL, accept string, timeout time.Duration) ([]byte, *tls.ConnectionState, time.Duration, error) {
-	return xTransport.Fetch("GET", url, accept, "", nil, timeout)
+func (xTransport *XTransport) Get(name string, path string, ctx *HTTPSContext, timeout time.Duration) ([]byte, error) {
+	return xTransport.FetchHTTPS(name, path, "GET", false, ctx, nil, timeout)
 }
 
-func (xTransport *XTransport) Post(url *url.URL, accept string, contentType string, body *[]byte, timeout time.Duration) ([]byte, *tls.ConnectionState, time.Duration, error) {
-	return xTransport.Fetch("POST", url, accept, contentType, body, timeout)
+func (xTransport *XTransport) Post(name string, path string, ctx *HTTPSContext, body *[]byte, timeout time.Duration) ([]byte, error) {
+	return xTransport.FetchHTTPS(name, path, "POST", false, ctx, body, timeout)
 }
 
-func (xTransport *XTransport) DoHQuery(useGet bool, url *url.URL, body []byte, timeout time.Duration) ([]byte, *tls.ConnectionState, time.Duration, error) {
-	dataType := "application/dns-message"
-	if useGet {
-		qs := url.Query()
-		qs.Add("ct", "")
-		encBody := base64.RawURLEncoding.EncodeToString(body)
-		qs.Add("dns", encBody)
-		url2 := *url
-		url2.RawQuery = qs.Encode()
-		return xTransport.Get(&url2, dataType, timeout)
-	}
-	return xTransport.Post(url, dataType, dataType, &body, timeout)
-}

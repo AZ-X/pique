@@ -29,7 +29,7 @@ func (plugin *PluginBlockIP) Description() string {
 }
 
 func (plugin *PluginBlockIP) Init(proxy *Proxy) error {
-	dlog.Noticef("Loading the set of IP blocking rules from [%s]", proxy.blockIPFile)
+	dlog.Noticef("loading the set of IP blocking rules from [%s]", proxy.blockIPFile)
 	bin, err := ReadTextFile(proxy.blockIPFile)
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func (plugin *PluginBlockIP) Init(proxy *Proxy) error {
 		ip := net.ParseIP(line)
 		trailingStar := strings.HasSuffix(line, "*")
 		if len(line) < 2 || (ip != nil && trailingStar) {
-			dlog.Errorf("Suspicious IP blocking rule [%s] at line %d", line, lineNo)
+			dlog.Errorf("suspicious IP blocking rule [%s] at line %d", line, lineNo)
 			continue
 		}
 		if trailingStar {
@@ -54,11 +54,11 @@ func (plugin *PluginBlockIP) Init(proxy *Proxy) error {
 			line = line[:len(line)-1]
 		}
 		if len(line) == 0 {
-			dlog.Errorf("Empty IP blocking rule at line %d", lineNo)
+			dlog.Errorf("empty IP blocking rule at line %d", lineNo)
 			continue
 		}
 		if strings.Contains(line, "*") {
-			dlog.Errorf("Invalid rule: [%s] - wildcards can only be used as a suffix at line %d", line, lineNo)
+			dlog.Errorf("invalid rule: [%s] - wildcards can only be used as a suffix at line %d", line, lineNo)
 			continue
 		}
 		line = strings.ToLower(line)
@@ -118,7 +118,7 @@ func (plugin *PluginBlockIP) Eval(pluginsState *PluginsState, msg *dns.Msg) erro
 		}
 	}
 	if reject {
-		pluginsState.action = PluginsActionReject
+		pluginsState.state = PluginsStateReject
 		pluginsState.returnCode = PluginsReturnCodeReject
 		if plugin.logger != nil {
 			qName := pluginsState.qName
@@ -138,7 +138,7 @@ func (plugin *PluginBlockIP) Eval(pluginsState *PluginsState, msg *dns.Msg) erro
 			} else if plugin.format == "ltsv" {
 				line = fmt.Sprintf("time:%d\thost:%s\tqname:%s\tip:%s\tmessage:%s\n", time.Now().Unix(), clientIPStr, StringQuote(qName), StringQuote(ipStr), StringQuote(reason))
 			} else {
-				dlog.Fatalf("Unexpected log format: [%s]", plugin.format)
+				dlog.Fatalf("unexpected log format: [%s]", plugin.format)
 			}
 			if plugin.logger == nil {
 				return errors.New("Log file not initialized")

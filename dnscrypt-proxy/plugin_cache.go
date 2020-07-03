@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/sha512"
 	"encoding/binary"
-	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -16,7 +15,6 @@ type CachedResponse struct {
 }
 
 type CachedResponses struct {
-	sync.RWMutex
 	cache *lru.ARCCache
 }
 
@@ -32,8 +30,7 @@ func computeCacheKey(pluginsState *PluginsState, msg *dns.Msg) [32]byte {
 		tmp[4] = 1
 	}
 	h.Write(tmp[:])
-	normalizedRawQName := []byte(question.Name)
-	NormalizeRawQName(&normalizedRawQName)
+	normalizedRawQName := []byte(dns.CanonicalName(question.Name))
 	h.Write(normalizedRawQName)
 	var sum [32]byte
 	h.Sum(sum[:0])
@@ -68,8 +65,6 @@ func (plugin *PluginCache) Reload() error {
 
 func (plugin *PluginCache) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
 	cacheKey := computeCacheKey(pluginsState, msg)
-	cachedResponses.RLock()
-	defer cachedResponses.RUnlock()
 	if cachedResponses.cache == nil {
 		return nil
 	}
@@ -93,7 +88,7 @@ func (plugin *PluginCache) Eval(pluginsState *PluginsState, msg *dns.Msg) error 
 	updateTTL(&cached.msg, cached.expiration)
 
 	pluginsState.synthResponse = &synth
-	pluginsState.action = PluginsActionSynth
+	pluginsState.state = PluginsStateSynth
 	pluginsState.cacheHit = true
 	return nil
 }
@@ -112,6 +107,13 @@ func (plugin *PluginCacheResponse) Description() string {
 }
 
 func (plugin *PluginCacheResponse) Init(proxy *Proxy) error {
+	if cachedResponses.cache == nil {
+		var err error
+		cachedResponses.cache, err = lru.NewARC(proxy.cacheSize)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -136,17 +138,8 @@ func (plugin *PluginCacheResponse) Eval(pluginsState *PluginsState, msg *dns.Msg
 		expiration: time.Now().Add(ttl),
 		msg:        *msg,
 	}
-	cachedResponses.Lock()
-	if cachedResponses.cache == nil {
-		var err error
-		cachedResponses.cache, err = lru.NewARC(pluginsState.cacheSize)
-		if err != nil {
-			cachedResponses.Unlock()
-			return err
-		}
-	}
+
 	cachedResponses.cache.Add(cacheKey, cachedResponse)
-	cachedResponses.Unlock()
 	updateTTL(msg, cachedResponse.expiration)
 
 	return nil

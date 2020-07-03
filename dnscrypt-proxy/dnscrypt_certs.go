@@ -21,9 +21,9 @@ type CertInfo struct {
 	ForwardSecurity    bool
 }
 
-func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk ed25519.PublicKey, serverAddress string, providerName string, isNew bool, relayUDPAddr *net.UDPAddr, relayTCPAddr *net.TCPAddr) (CertInfo, int, error) {
+func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk ed25519.PublicKey, serverAddress string, providerName string, isNew bool, relays []*Endpoint) ([]*Endpoint, CertInfo, int, error) {
 	if len(pk) != ed25519.PublicKeySize {
-		return CertInfo{}, 0, errors.New("Invalid public key length")
+		return nil, CertInfo{}, 0, errors.New("Invalid public key length")
 	}
 	if !strings.HasSuffix(providerName, ".") {
 		providerName = providerName + "."
@@ -35,12 +35,35 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 	query.SetQuestion(providerName, dns.TypeTXT)
 	if !strings.HasPrefix(providerName, "2.dnscrypt-cert.") {
 		dlog.Warnf("[%v] uses a non-standard provider name ('%v' doesn't start with '2.dnscrypt-cert.')", *serverName, providerName)
-		relayUDPAddr, relayTCPAddr = nil, nil
 	}
-	in, rtt, err := dnsExchange(proxy, proto, &query, serverAddress, relayUDPAddr, relayTCPAddr, serverName)
+	var in *dns.Msg
+	var rtt time.Duration
+	var err error
+	var workingSet []*Endpoint
+	var relay_f bool
+	if len(relays) > 0 {
+		for i , relayAddr := range relays {
+			in, rtt, err, relay_f = dnsExchange(proxy, proto, &query, serverAddress, relayAddr, serverName)
+			if err != nil {
+				dlog.Debug(err)
+				continue
+			}
+			if !relay_f {
+				workingSet = append(workingSet, relayAddr)
+			} else {
+				dlog.Noticef("relay [%d] failed for [%s]", i + 1, *serverName)
+			}
+		}
+		if len(workingSet) < 1 {
+			dlog.Noticef("all relays failed for [%s]", *serverName)
+			return nil, CertInfo{}, 0, errors.New("all relays failed")
+		}
+	} else {
+		in, rtt, err, _ = dnsExchange(proxy, proto, &query, serverAddress, nil, serverName)
+	}
 	if err != nil {
-		dlog.Noticef("[%s] TIMEOUT", *serverName)
-		return CertInfo{}, 0, err
+		dlog.Debug(err)
+		return nil, CertInfo{}, 0, err
 	}
 	now := uint32(time.Now().Unix())
 	certInfo := CertInfo{CryptoConstruction: UndefinedConstruction}
@@ -49,28 +72,29 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 	for _, answerRr := range in.Answer {
 		var txt string
 		if t, ok := answerRr.(*dns.TXT); !ok {
-			dlog.Noticef("[%v] Extra record of type [%v] found in certificate", *serverName, answerRr.Header().Rrtype)
+			dlog.Noticef("[%v] extra record of type [%v] found in certificate", *serverName, answerRr.Header().Rrtype)
 			continue
 		} else {
 			txt = strings.Join(t.Txt, "")
 		}
 		binCert := packTxtString(txt)
 		if len(binCert) < 124 {
-			dlog.Warnf("[%v] Certificate too short", *serverName)
+			dlog.Warnf("certificate of [%v] is too short", *serverName)
 			continue
 		}
 		if !bytes.Equal(binCert[:4], CertMagic[:4]) {
-			dlog.Warnf("[%v] Invalid cert magic", *serverName)
+			dlog.Warnf("[%v] has invalid cert magic", *serverName)
 			continue
 		}
 		cryptoConstruction := CryptoConstruction(0)
-		switch esVersion := binary.BigEndian.Uint16(binCert[4:6]); esVersion {
+		esVersion := binary.BigEndian.Uint16(binCert[4:6])
+		switch esVersion {
 		case 0x0001:
 			cryptoConstruction = XSalsa20Poly1305
 		case 0x0002:
 			cryptoConstruction = XChacha20Poly1305
 		default:
-			dlog.Noticef("[%v] Unsupported crypto construction", *serverName)
+			dlog.Noticef("[%v] has unsupported crypto construction", *serverName)
 			continue
 		}
 		signature := binCert[8:72]
@@ -103,24 +127,24 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 		}
 		if !proxy.certIgnoreTimestamp {
 			if now > tsEnd || now < tsBegin {
-				dlog.Debugf("[%v] Certificate not valid at the current date (now: %v is not in [%v..%v])", *serverName, now, tsBegin, tsEnd)
+				dlog.Debugf("certificate of [%v] is invalid at the current date (now: %v is not in [%v..%v])", *serverName, now, tsBegin, tsEnd)
 				continue
 			}
 		}
 		if serial < highestSerial {
-			dlog.Debugf("[%v] Superseded by a previous certificate", *serverName)
+			dlog.Debugf("[%v] superseded by a previous certificate", *serverName)
 			continue
 		}
 		if serial == highestSerial {
 			if cryptoConstruction < certInfo.CryptoConstruction {
-				dlog.Debugf("[%v] Keeping the previous, preferred crypto construction", *serverName)
+				dlog.Debugf("[%v] keeping the previous, preferred crypto construction", *serverName)
 				continue
 			} else {
-				dlog.Debugf("[%v] Upgrading the construction from %v to %v", *serverName, certInfo.CryptoConstruction, cryptoConstruction)
+				dlog.Debugf("[%v] upgrading the construction from %v to %v", *serverName, certInfo.CryptoConstruction, cryptoConstruction)
 			}
 		}
 		if cryptoConstruction != XChacha20Poly1305 && cryptoConstruction != XSalsa20Poly1305 {
-			dlog.Noticef("[%v] Cryptographic construction %v not supported", *serverName, cryptoConstruction)
+			dlog.Noticef("[%v] Crypto construction %v not supported", *serverName, cryptoConstruction)
 			continue
 		}
 		var serverPk [32]byte
@@ -132,16 +156,16 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 		copy(certInfo.ServerPk[:], serverPk[:])
 		copy(certInfo.MagicQuery[:], binCert[104:112])
 		if isNew {
-			dlog.Noticef("[%s] OK (DNSCrypt) - rtt: %dms%s", *serverName, rtt.Nanoseconds()/1000000, certCountStr)
+			dlog.Noticef("[%s] OK (DNSCrypt V%d) - rtt: %dms%s", *serverName, esVersion, rtt.Nanoseconds()/1000000, certCountStr)
 		} else {
-			dlog.Infof("[%s] OK (DNSCrypt) - rtt: %dms%s", *serverName, rtt.Nanoseconds()/1000000, certCountStr)
+			dlog.Infof("[%s] OK (DNSCrypt V%d) - rtt: %dms%s", *serverName, esVersion, rtt.Nanoseconds()/1000000, certCountStr)
 		}
 		certCountStr = " - additional certificate"
 	}
 	if certInfo.CryptoConstruction == UndefinedConstruction {
-		return certInfo, 0, errors.New("No useable certificate found")
+		return nil, certInfo, 0, errors.New("No useable certificate found")
 	}
-	return certInfo, int(rtt.Nanoseconds() / 1000000), nil
+	return workingSet, certInfo, int(rtt.Nanoseconds() / 1000000), nil
 }
 
 func isDigit(b byte) bool { return b >= '0' && b <= '9' }
@@ -179,19 +203,21 @@ func packTxtString(s string) []byte {
 	return msg
 }
 
-func dnsExchange(proxy *Proxy, proto string, query *dns.Msg, serverAddress string, relayUDPAddr *net.UDPAddr, relayTCPAddr *net.TCPAddr, serverName *string) (*dns.Msg, time.Duration, error) {
-	response, ttl, err := _dnsExchange(proxy, proto, query, serverAddress, relayUDPAddr, relayTCPAddr)
-	if err != nil && relayUDPAddr != nil {
-		dlog.Debugf("Unable to get a certificate for [%v] via relay [%v], retrying over a direct connection", *serverName, relayUDPAddr.IP)
-		response, ttl, err = _dnsExchange(proxy, proto, query, serverAddress, nil, nil)
+func dnsExchange(proxy *Proxy, proto string, query *dns.Msg, serverAddress string, relayAddr *Endpoint, serverName *string) (*dns.Msg, time.Duration, error, bool) {
+	relay_f := relayAddr == nil
+	response, ttl, err := _dnsExchange(proxy, proto, query, serverAddress, relayAddr)
+	if err != nil && relayAddr != nil {
+		dlog.Debugf("failed to get a certificate for [%v] via relay [%v], retrying over a direct connection", *serverName, relayAddr.IP)
+		relay_f = true
+		response, ttl, err = _dnsExchange(proxy, proto, query, serverAddress, nil)
 		if err == nil {
-			dlog.Infof("Direct certificate retrieval for [%v] succeeded", *serverName)
+			dlog.Infof("direct certificate retrieval for [%v] succeeded", *serverName)
 		}
 	}
-	return response, ttl, err
+	return response, ttl, err, relay_f
 }
 
-func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, serverAddress string, relayUDPAddr *net.UDPAddr, relayTCPAddr *net.TCPAddr) (*dns.Msg, time.Duration, error) {
+func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, serverAddress string, relayAddr *Endpoint) (*dns.Msg, time.Duration, error) {
 	var packet []byte
 	var rtt time.Duration
 	if proto == "udp" {
@@ -207,80 +233,57 @@ func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, serverAddress stri
 			opt.Option = append(opt.Option, ext)
 			query.Extra = []dns.RR{opt}
 		}
-		binQuery, err := query.Pack()
-		if err != nil {
-			return nil, 0, err
-		}
-		udpAddr, err := net.ResolveUDPAddr("udp", serverAddress)
-		if err != nil {
-			return nil, 0, err
-		}
-		upstreamAddr := udpAddr
-		if relayUDPAddr != nil {
-			proxy.prepareForRelay(udpAddr.IP, udpAddr.Port, &binQuery)
-			upstreamAddr = relayUDPAddr
-		}
-		now := time.Now()
-		pc, err := net.DialUDP("udp", nil, upstreamAddr)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer pc.Close()
-		if err = pc.SetDeadline(time.Now().Add(proxy.timeout)); err != nil {
-			return nil, 0, err
-		}
-		if _, err = pc.Write(binQuery); err != nil {
-			return nil, 0, err
-		}
-		packet = make([]byte, MaxDNSPacketSize)
-		length, err := pc.Read(packet)
-		if err != nil {
-			return nil, 0, err
-		}
-		rtt = time.Since(now)
-		packet = packet[:length]
+	}
+	binQuery, err := query.Pack()
+	if err != nil {
+		return nil, 0, err
+	}
+	ipAddr, err := ResolveEndpoint(serverAddress)
+	if err != nil {
+		return nil, 0, err
+	}
+	upstreamAddr := ipAddr
+	if relayAddr != nil {
+		proxy.prepareForRelay(ipAddr, &binQuery)
+		upstreamAddr = relayAddr
+	}
+	now := time.Now()
+	var pc net.Conn
+	proxyDialer := proxy.xTransport.proxyDialer
+	if proto == "udp" || proxyDialer == nil {
+		pc, err = net.Dial(proto, upstreamAddr.String())
 	} else {
-		binQuery, err := query.Pack()
-		if err != nil {
-			return nil, 0, err
-		}
-		tcpAddr, err := net.ResolveTCPAddr("tcp", serverAddress)
-		if err != nil {
-			return nil, 0, err
-		}
-		upstreamAddr := tcpAddr
-		if relayTCPAddr != nil {
-			proxy.prepareForRelay(tcpAddr.IP, tcpAddr.Port, &binQuery)
-			upstreamAddr = relayTCPAddr
-		}
-		now := time.Now()
-		var pc net.Conn
-		proxyDialer := proxy.xTransport.proxyDialer
-		if proxyDialer == nil {
-			pc, err = net.DialTCP("tcp", nil, upstreamAddr)
-		} else {
-			pc, err = (*proxyDialer).Dial("tcp", tcpAddr.String())
-		}
-		if err != nil {
-			return nil, 0, err
-		}
-		defer pc.Close()
-		if err = pc.SetDeadline(time.Now().Add(proxy.timeout)); err != nil {
-			return nil, 0, err
-		}
+		pc, err = (*proxyDialer).Dial("tcp", upstreamAddr.String())
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	defer pc.Close()
+	if err = pc.SetDeadline(time.Now().Add(proxy.timeout)); err != nil {
+		return nil, 0, err
+	}
+	if proto == "tcp" {
 		binQuery, err = PrefixWithSize(binQuery)
 		if err != nil {
 			return nil, 0, err
 		}
-		if _, err = pc.Write(binQuery); err != nil {
-			return nil, 0, err
-		}
-		packet, err = ReadPrefixed(&pc)
-		if err != nil {
-			return nil, 0, err
-		}
-		rtt = time.Since(now)
 	}
+	if _, err = pc.Write(binQuery); err != nil {
+		return nil, 0, err
+	}
+	if proto == "udp" {
+		var length int
+		packet = make([]byte, MaxDNSPacketSize)
+		length, err = pc.Read(packet)
+		packet = packet[:length]
+	} else {
+		packet, err = ReadPrefixed(&pc)
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	rtt = time.Since(now)
+	
 	msg := dns.Msg{}
 	if err := msg.Unpack(packet); err != nil {
 		return nil, 0, err

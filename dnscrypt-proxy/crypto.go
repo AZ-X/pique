@@ -3,9 +3,8 @@ package main
 import (
 	"bytes"
 	crypto_rand "crypto/rand"
-	"crypto/sha512"
 	"errors"
-	"math/rand"
+	"math/big"
 
 	"github.com/jedisct1/dlog"
 	"github.com/jedisct1/xsecretbox"
@@ -23,11 +22,10 @@ const (
 	ResponseOverhead = len(ServerMagic) + NonceSize + TagSize
 )
 
-func pad(packet []byte, minSize int) []byte {
-	packet = append(packet, 0x80)
-	for len(packet) < minSize {
-		packet = append(packet, 0)
-	}
+func pad(packet []byte, padSize int) []byte {
+	var pad = make([]byte, padSize)
+	pad[0] = 0x80
+	packet = append(packet, pad[:]...)
 	return packet
 }
 
@@ -50,7 +48,7 @@ func ComputeSharedKey(cryptoConstruction CryptoConstruction, secretKey *[32]byte
 		var err error
 		sharedKey, err = xsecretbox.SharedKey(*secretKey, *serverPk)
 		if err != nil {
-			dlog.Criticalf("[%v] Weak public key", providerName)
+			dlog.Criticalf("[%v] weak public key", providerName)
 		}
 	} else {
 		box.Precompute(&sharedKey, serverPk, secretKey)
@@ -59,18 +57,24 @@ func ComputeSharedKey(cryptoConstruction CryptoConstruction, secretKey *[32]byte
 }
 
 func (proxy *Proxy) Encrypt(serverInfo *ServerInfo, packet []byte, proto string) (sharedKey *[32]byte, encrypted []byte, clientNonce []byte, err error) {
+	var publicKey *[PublicKeySize]byte
 	nonce, clientNonce := make([]byte, NonceSize), make([]byte, HalfNonceSize)
 	crypto_rand.Read(clientNonce)
 	copy(nonce, clientNonce)
-	var publicKey *[PublicKeySize]byte
 	if proxy.ephemeralKeys {
-		h := sha512.New512_256()
-		h.Write(clientNonce)
-		h.Write(proxy.proxySecretKey[:])
+		//h := sha512.New512_256()
+		//h.Write(clientNonce)
+		//h.Write(proxy.proxySecretKey[:])
 		var ephSk [32]byte
-		h.Sum(ephSk[:0])
+		//h.Sum(ephSk[:0])
+		crypto_rand.Read(ephSk[:])
 		var xPublicKey [PublicKeySize]byte
-		curve25519.ScalarBaseMult(&xPublicKey, &ephSk)
+		x, err1 := curve25519.X25519(ephSk[:],curve25519.Basepoint)
+		if err1 != nil {
+			err = err1
+			return
+		}
+		copy(xPublicKey[:], x)
 		publicKey = &xPublicKey
 		xsharedKey := ComputeSharedKey(serverInfo.CryptoConstruction, &ephSk, &serverInfo.ServerPk, nil)
 		sharedKey = &xsharedKey
@@ -78,28 +82,29 @@ func (proxy *Proxy) Encrypt(serverInfo *ServerInfo, packet []byte, proto string)
 		sharedKey = &serverInfo.SharedKey
 		publicKey = &proxy.proxyPublicKey
 	}
+	
 	minQuestionSize := QueryOverhead + len(packet)
-	if !serverInfo.knownBugs.incorrectPadding {
-		if proto == "udp" {
-			minQuestionSize = Max(proxy.questionSizeEstimator.MinQuestionSize(), minQuestionSize)
-		} else {
-			var xpad [1]byte
-			rand.Read(xpad[:])
-			minQuestionSize += int(xpad[0])
-		}
-	}
-	paddedLength := Min(MaxDNSUDPPacketSize, (Max(minQuestionSize, QueryOverhead)+1+63) & ^63)
-	if serverInfo.RelayUDPAddr != nil && proto == "tcp" {
-		// XXX - Note: Cisco's broken implementation doesn't accept more than 1472 bytes
-		paddedLength = MaxDNSPacketSize
-	}
-	if QueryOverhead+len(packet)+1 > paddedLength {
+	if minQuestionSize+1 > MaxDNSPacketSize -64 {
 		err = errors.New("Question too large; cannot be padded")
 		return
 	}
+	firstclass := 0 //tcp: a query sent over TCP can be shorter than the response.
+	initS := ((minQuestionSize+64) & ^63)
+	program_dbg_full_log("init size: %d", initS)
+	if proto == "udp" {
+		firstclass = Max(47, initS/64) //avoid TC="Truncated"
+	} else {
+		firstclass = initS/64
+	}
+	rangefc := 63 - firstclass
+	m := new(big.Int).SetInt64(int64(rangefc))
+	b1, _ := crypto_rand.Int(crypto_rand.Reader, m)
+	random_size := (firstclass + int(b1.Int64())) * 64
+	paddedLength :=  Min(MaxDNSUDPPacketSize, random_size)
+	program_dbg_full_log("padding size: %d", paddedLength)
 	encrypted = append(serverInfo.MagicQuery[:], publicKey[:]...)
 	encrypted = append(encrypted, nonce[:HalfNonceSize]...)
-	padded := pad(packet, paddedLength-QueryOverhead)
+	padded := pad(packet, paddedLength - len(packet))
 	if serverInfo.CryptoConstruction == XChacha20Poly1305 {
 		encrypted = xsecretbox.Seal(encrypted, nonce, padded, sharedKey[:])
 	} else {

@@ -1,18 +1,46 @@
 package main
 
 import (
-	"encoding/binary"
 	"errors"
 	"net"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/miekg/dns"
 )
 
+func SetDNSSECFlag(msg *dns.Msg) {
+	if len(msg.Question) > 0 {
+		msg.Question[0].Qtype = dns.TypeOPT
+	}
+	msg.CheckingDisabled = true
+	msg.SetEdns0(4096, true)
+	opt := msg.IsEdns0()
+	//https://www.iana.org/assignments/dns-sec-alg-numbers
+	//8	RSA/SHA-256	RSASHA256
+	//15 Ed25519	ED25519
+	
+	dau := new(dns.EDNS0_DAU)
+	dau.AlgCode = append(append(dau.AlgCode, dns.RSASHA256), dns.ED25519)
+	opt.Option = append(opt.Option, dau)
+	
+	dhu := new(dns.EDNS0_DHU)
+	dhu.AlgCode = append(dhu.AlgCode, dns.SHA256)
+	opt.Option = append(opt.Option, dhu)
+	
+	n3u := new(dns.EDNS0_N3U)
+	n3u.AlgCode = append(n3u.AlgCode, dns.SHA256)
+	opt.Option = append(opt.Option, n3u)
+
+	ext := new(dns.EDNS0_PADDING)
+	ext.Padding = make([]byte, 32)
+	for i,_ := range ext.Padding {
+		ext.Padding[i] = 0xff
+	}
+	opt.Option = append(opt.Option, ext)
+}
+
 func EmptyResponseFromMessage(srcMsg *dns.Msg) *dns.Msg {
-	dstMsg := dns.Msg{MsgHdr: srcMsg.MsgHdr, Compress: true}
+	dstMsg := &dns.Msg{MsgHdr: srcMsg.MsgHdr, Compress: true}
 	dstMsg.Question = srcMsg.Question
 	dstMsg.Response = true
 	if srcMsg.RecursionDesired {
@@ -24,113 +52,65 @@ func EmptyResponseFromMessage(srcMsg *dns.Msg) *dns.Msg {
 	if edns0 := srcMsg.IsEdns0(); edns0 != nil {
 		dstMsg.SetEdns0(edns0.UDPSize(), edns0.Do())
 	}
-	return &dstMsg
+	return dstMsg
 }
 
-func TruncatedResponse(packet []byte) ([]byte, error) {
-	srcMsg := dns.Msg{}
-	if err := srcMsg.Unpack(packet); err != nil {
-		return nil, err
-	}
-	dstMsg := EmptyResponseFromMessage(&srcMsg)
-	dstMsg.Truncated = true
-	return dstMsg.Pack()
+func TruncatedResponse(srcMsg *dns.Msg) {
+	srcMsg = EmptyResponseFromMessage(srcMsg)
+	srcMsg.Truncated = true
 }
 
-func RefusedResponseFromMessage(srcMsg *dns.Msg, refusedCode bool, ipv4 net.IP, ipv6 net.IP, ttl uint32) *dns.Msg {
+func RefusedResponseFromMessage(srcMsg *dns.Msg, blockedQueryResponse string, ipv4 net.IP, ipv6 net.IP, ttl uint32) *dns.Msg {
 	dstMsg := EmptyResponseFromMessage(srcMsg)
-	if refusedCode {
-		dstMsg.Rcode = dns.RcodeRefused
-	} else {
-		dstMsg.Rcode = dns.RcodeSuccess
-		questions := srcMsg.Question
-		if len(questions) == 0 {
-			return dstMsg
-		}
-		question := questions[0]
-		sendHInfoResponse := true
-
-		if ipv4 != nil && question.Qtype == dns.TypeA {
-			rr := new(dns.A)
-			rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: ttl}
-			rr.A = ipv4.To4()
-			if rr.A != nil {
-				dstMsg.Answer = []dns.RR{rr}
-				sendHInfoResponse = false
+	switch blockedQueryResponse {
+		case "nxdomain":
+			dstMsg.Rcode = dns.RcodeNameError
+		case "refused":
+			dstMsg.Rcode = dns.RcodeRefused
+		default:
+			dstMsg.Rcode = dns.RcodeSuccess
+			questions := srcMsg.Question
+			if len(questions) == 0 {
+				return dstMsg
 			}
-		} else if ipv6 != nil && question.Qtype == dns.TypeAAAA {
-			rr := new(dns.AAAA)
-			rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: ttl}
-			rr.AAAA = ipv6.To16()
-			if rr.AAAA != nil {
-				dstMsg.Answer = []dns.RR{rr}
-				sendHInfoResponse = false
+			question := questions[0]
+			sendHInfoResponse := true
+	
+			if ipv4 != nil && question.Qtype == dns.TypeA {
+				rr := new(dns.A)
+				rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: ttl}
+				rr.A = ipv4.To4()
+				if rr.A != nil {
+					dstMsg.Answer = []dns.RR{rr}
+					sendHInfoResponse = false
+				}
+			} else if ipv6 != nil && question.Qtype == dns.TypeAAAA {
+				rr := new(dns.AAAA)
+				rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: ttl}
+				rr.AAAA = ipv6.To16()
+				if rr.AAAA != nil {
+					dstMsg.Answer = []dns.RR{rr}
+					sendHInfoResponse = false
+				}
 			}
-		}
-
-		if sendHInfoResponse {
-			hinfo := new(dns.HINFO)
-			hinfo.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeHINFO,
-				Class: dns.ClassINET, Ttl: 1}
-			hinfo.Cpu = "This query has been locally blocked"
-			hinfo.Os = "by dnscrypt-proxy"
-			dstMsg.Answer = []dns.RR{hinfo}
-		}
+	
+			if sendHInfoResponse {
+				hinfo := new(dns.HINFO)
+				hinfo.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeHINFO,
+					Class: dns.ClassINET, Ttl: 1}
+				hinfo.Cpu = ""
+				hinfo.Os = ""
+				dstMsg.Answer = []dns.RR{hinfo}
+			}
 	}
 	return dstMsg
 }
 
-func HasTCFlag(packet []byte) bool {
-	return packet[2]&2 == 2
-}
-
-func TransactionID(packet []byte) uint16 {
-	return binary.BigEndian.Uint16(packet[0:2])
-}
-
-func SetTransactionID(packet []byte, tid uint16) {
-	binary.BigEndian.PutUint16(packet[0:2], tid)
-}
-
-func Rcode(packet []byte) uint8 {
-	return packet[3] & 0xf
-}
-
-func NormalizeRawQName(name *[]byte) {
-	for i, c := range *name {
-		if c >= 65 && c <= 90 {
-			(*name)[i] = c + 32
-		}
-	}
-}
-
 func NormalizeQName(str string) (string, error) {
-	if len(str) == 0 || str == "." {
-		return ".", nil
+	if _,ok := dns.IsDomainName(str); ok {
+		return dns.CanonicalName(str), nil
 	}
-	hasUpper := false
-	str = strings.TrimSuffix(str, ".")
-	strLen := len(str)
-	for i := 0; i < strLen; i++ {
-		c := str[i]
-		if c >= utf8.RuneSelf {
-			return str, errors.New("Query name is not an ASCII string")
-		}
-		hasUpper = hasUpper || ('A' <= c && c <= 'Z')
-	}
-	if !hasUpper {
-		return str, nil
-	}
-	var b strings.Builder
-	b.Grow(len(str))
-	for i := 0; i < strLen; i++ {
-		c := str[i]
-		if 'A' <= c && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		b.WriteByte(c)
-	}
-	return b.String(), nil
+	return "", errors.New("Invalid QName")
 }
 
 func getMinTTL(msg *dns.Msg, minTTL uint32, maxTTL uint32, cacheNegMinTTL uint32, cacheNegMaxTTL uint32) time.Duration {
@@ -222,30 +202,6 @@ func hasEDNS0Padding(packet []byte) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-func addEDNS0PaddingIfNoneFound(msg *dns.Msg, unpaddedPacket []byte, paddingLen int) ([]byte, error) {
-	edns0 := msg.IsEdns0()
-	if edns0 == nil {
-		msg.SetEdns0(uint16(MaxDNSPacketSize), false)
-		edns0 = msg.IsEdns0()
-		if edns0 == nil {
-			return unpaddedPacket, nil
-		}
-	}
-	for _, option := range edns0.Option {
-		if option.Option() == dns.EDNS0PADDING {
-			return unpaddedPacket, nil
-		}
-	}
-	ext := new(dns.EDNS0_PADDING)
-	padding := make([]byte, paddingLen)
-	for i := range padding {
-		padding[i] = 'X'
-	}
-	ext.Padding = padding[:paddingLen]
-	edns0.Option = append(edns0.Option, ext)
-	return msg.Pack()
 }
 
 func removeEDNS0Options(msg *dns.Msg) bool {

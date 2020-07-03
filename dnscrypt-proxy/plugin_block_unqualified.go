@@ -40,7 +40,7 @@ func (plugin *PluginBlockUnqualified) Eval(pluginsState *PluginsState, msg *dns.
 	synth := EmptyResponseFromMessage(msg)
 	synth.Rcode = dns.RcodeNameError
 	pluginsState.synthResponse = synth
-	pluginsState.action = PluginsActionSynth
+	pluginsState.state = PluginsStateSynth
 	pluginsState.returnCode = PluginsReturnCodeSynth
 
 	return nil

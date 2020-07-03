@@ -4,8 +4,8 @@ import (
 	"crypto/subtle"
 	"errors"
 
-	"github.com/aead/chacha20/chacha"
-	"github.com/aead/poly1305"
+	"golang.org/x/crypto/chacha20"
+	"golang.org/x/crypto/poly1305"
 )
 
 const (
@@ -17,6 +17,7 @@ const (
 	TagSize = 16
 )
 
+
 // Seal does what the name suggests
 func Seal(out, nonce, message, key []byte) []byte {
 	if len(nonce) != NonceSize {
@@ -27,7 +28,7 @@ func Seal(out, nonce, message, key []byte) []byte {
 	}
 
 	var firstBlock [64]byte
-	cipher, _ := chacha.NewCipher(nonce, key, 20)
+	cipher, _ := chacha20.NewUnauthenticatedCipher(key, nonce)
 	cipher.XORKeyStream(firstBlock[:], firstBlock[:])
 	var polyKey [32]byte
 	copy(polyKey[:], firstBlock[:32])
@@ -39,7 +40,7 @@ func Seal(out, nonce, message, key []byte) []byte {
 	}
 
 	tagOut := out
-	out = out[poly1305.TagSize:]
+	out = out[TagSize:]
 	for i, x := range firstMessageBlock {
 		out[i] = firstBlock[32+i] ^ x
 	}
@@ -51,7 +52,7 @@ func Seal(out, nonce, message, key []byte) []byte {
 	cipher.XORKeyStream(out, message)
 
 	var tag [TagSize]byte
-	hash := poly1305.New(polyKey)
+	hash := poly1305.New(&polyKey)
 	hash.Write(ciphertext)
 	hash.Sum(tag[:0])
 	copy(tagOut, tag[:])
@@ -72,14 +73,14 @@ func Open(out, nonce, box, key []byte) ([]byte, error) {
 	}
 
 	var firstBlock [64]byte
-	cipher, _ := chacha.NewCipher(nonce, key, 20)
+	cipher, _ := chacha20.NewUnauthenticatedCipher(key, nonce)
 	cipher.XORKeyStream(firstBlock[:], firstBlock[:])
 	var polyKey [32]byte
 	copy(polyKey[:], firstBlock[:32])
 
 	var tag [TagSize]byte
 	ciphertext := box[TagSize:]
-	hash := poly1305.New(polyKey)
+	hash := poly1305.New(&polyKey)
 	hash.Write(ciphertext)
 	hash.Sum(tag[:0])
 	if subtle.ConstantTimeCompare(tag[:], box[:TagSize]) != 1 {
@@ -87,7 +88,12 @@ func Open(out, nonce, box, key []byte) ([]byte, error) {
 	}
 
 	ret, out := sliceForAppend(out, len(ciphertext))
-
+	if !hash.Verify(tag[:]) {
+		for i := range out {
+			out[i] = 0
+		}
+		return nil, errors.New("failed to verify poly1305 tag")
+	}
 	firstMessageBlock := ciphertext
 	if len(firstMessageBlock) > 32 {
 		firstMessageBlock = firstMessageBlock[:32]

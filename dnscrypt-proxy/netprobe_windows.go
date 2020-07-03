@@ -32,16 +32,16 @@ func NetProbe(address string, timeout int) error {
 		if err != nil {
 			if !retried {
 				retried = true
-				dlog.Notice("Network not available yet -- waiting...")
+				dlog.Notice("network not available yet -- waiting...")
 			}
 			dlog.Debug(err)
 			time.Sleep(1 * time.Second)
 			continue
 		}
 		pc.Close()
-		dlog.Notice("Network connectivity detected")
+		dlog.Notice("network connectivity detected")
 		return nil
 	}
-	dlog.Error("Timeout while waiting for network connectivity")
+	dlog.Error("timeout while waiting for network connectivity")
 	return nil
 }

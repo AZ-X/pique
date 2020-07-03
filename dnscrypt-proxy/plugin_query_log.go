@@ -96,7 +96,7 @@ func (plugin *PluginQueryLog) Eval(pluginsState *PluginsState, msg *dns.Msg) err
 		line = fmt.Sprintf("time:%d\thost:%s\tmessage:%s\ttype:%s\treturn:%s\tcached:%d\tduration:%d\tserver:%s\n",
 			time.Now().Unix(), clientIPStr, StringQuote(qName), qType, returnCode, cached, requestDuration/time.Millisecond, StringQuote(pluginsState.serverName))
 	} else {
-		dlog.Fatalf("Unexpected log format: [%s]", plugin.format)
+		dlog.Fatalf("unexpected log format: [%s]", plugin.format)
 	}
 	if plugin.logger == nil {
 		return errors.New("Log file not initialized")

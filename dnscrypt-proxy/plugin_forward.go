@@ -29,7 +29,7 @@ func (plugin *PluginForward) Description() string {
 }
 
 func (plugin *PluginForward) Init(proxy *Proxy) error {
-	dlog.Noticef("Loading the set of forwarding rules from [%s]", proxy.forwardFile)
+	dlog.Noticef("loading the set of forwarding rules from [%s]", proxy.forwardFile)
 	bin, err := ReadTextFile(proxy.forwardFile)
 	if err != nil {
 		return err
@@ -41,7 +41,7 @@ func (plugin *PluginForward) Init(proxy *Proxy) error {
 		}
 		domain, serversStr, ok := StringTwoFields(line)
 		if !ok {
-			return fmt.Errorf("Syntax error for a forwarding rule at line %d. Expected syntax: example.com: 9.9.9.9,8.8.8.8", 1+lineNo)
+			return fmt.Errorf("Syntax error for a forwarding rule at line %d", 1+lineNo)
 		}
 		domain = strings.ToLower(domain)
 		var servers []string
@@ -106,7 +106,7 @@ func (plugin *PluginForward) Eval(pluginsState *PluginsState, msg *dns.Msg) erro
 	}
 	respMsg.Id = msg.Id
 	pluginsState.synthResponse = respMsg
-	pluginsState.action = PluginsActionSynth
+	pluginsState.state = PluginsStateSynth
 	pluginsState.returnCode = PluginsReturnCodeForward
 	return nil
 }

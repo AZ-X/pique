@@ -67,7 +67,7 @@ func (plugin *PluginNxLog) Eval(pluginsState *PluginsState, msg *dns.Msg) error 
 		line = fmt.Sprintf("time:%d\thost:%s\tmessage:%s\ttype:%s\n",
 			time.Now().Unix(), clientIPStr, StringQuote(qName), qType)
 	} else {
-		dlog.Fatalf("Unexpected log format: [%s]", plugin.format)
+		dlog.Fatalf("unexpected log format: [%s]", plugin.format)
 	}
 	if plugin.logger == nil {
 		return errors.New("Log file not initialized")

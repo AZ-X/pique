@@ -112,6 +112,7 @@ type Logger struct {
 	mu   sync.Mutex
 
 	millCh    chan bool
+	wg        *sync.WaitGroup
 	startMill sync.Once
 }
 
@@ -165,7 +166,13 @@ func (l *Logger) Write(p []byte) (n int, err error) {
 func (l *Logger) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.close()
+	err := l.close()
+	if l.millCh != nil {
+			close(l.millCh)
+			l.wg.Wait()
+			l.millCh = nil
+	}
+	return err
 }
 
 // close closes the file if it is open.
@@ -206,13 +213,13 @@ func (l *Logger) rotate() error {
 // openNew opens a new log file for writing, moving any old log file out of the
 // way.  This methods assumes the file has already been closed.
 func (l *Logger) openNew() error {
-	err := os.MkdirAll(l.dir(), 0744)
+	err := os.MkdirAll(l.dir(), 0755)
 	if err != nil {
 		return fmt.Errorf("can't make directories for new logfile: %s", err)
 	}
 
 	name := l.filename()
-	mode := os.FileMode(0644)
+	mode := os.FileMode(0600)
 	info, err := os_Stat(name)
 	if err == nil {
 		// Copy the mode off the old logfile.
@@ -376,6 +383,7 @@ func (l *Logger) millRunOnce() error {
 // millRun runs in a goroutine to manage post-rotation compression and removal
 // of old log files.
 func (l *Logger) millRun() {
+	defer l.wg.Done()
 	for _ = range l.millCh {
 		// what am I going to do, log this?
 		_ = l.millRunOnce()
@@ -386,6 +394,8 @@ func (l *Logger) millRun() {
 // starting the mill goroutine if necessary.
 func (l *Logger) mill() {
 	l.startMill.Do(func() {
+		l.wg = new(sync.WaitGroup)
+		l.wg.Add(1)
 		l.millCh = make(chan bool, 1)
 		go l.millRun()
 	})

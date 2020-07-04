@@ -629,12 +629,12 @@ func (config *Config) loadSource(proxy *Proxy, requiredProps stamps.ServerInform
 				continue
 			}
 		}
-		if registeredServer.stamp.Proto == stamps.StampProtoTypeDNSCryptRelay {
+		if registeredServer.stamp.Proto.String() == "Anonymized DNSCrypt" {
 			dlog.Debugf("applying [%s] to the set of available relays", registeredServer.name)
 			proxy.registeredRelays = append(proxy.registeredRelays, registeredServer)
 		} else {
-			if !((config.SourceDNSCrypt && registeredServer.stamp.Proto == stamps.StampProtoTypeDNSCrypt) ||
-				(config.SourceDoH && registeredServer.stamp.Proto == stamps.StampProtoTypeDoH)) {
+			if !((config.SourceDNSCrypt && registeredServer.stamp.Proto.String() == "DNSCrypt") ||
+				(config.SourceDoH && registeredServer.stamp.Proto.String() == "DoH")) {
 				continue
 			}
 			dlog.Debugf("applying [%s] to the set of wanted resolvers", registeredServer.name)

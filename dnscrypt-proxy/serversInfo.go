@@ -224,12 +224,12 @@ func (serversInfo *ServersInfo) getOne(request *dns.Msg, id uint16) *ServerInfo 
 }
 
 func fetchServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, isNew bool) (ServerInfo, error) {
-	if stamp.Proto == stamps.StampProtoTypeDNSCrypt {
-		return fetchDNSCryptServerInfo(proxy, name, stamp, isNew)
-	} else if stamp.Proto == stamps.StampProtoTypeDoH {
-		return fetchDoHServerInfo(proxy, name, stamp, isNew)
+	switch stamp.Proto.String() {
+		case "DNSCrypt":return fetchDNSCryptServerInfo(proxy, name, stamp, isNew)
+		case "DoH":return fetchDoHServerInfo(proxy, name, stamp, isNew)
+		default:return ServerInfo{}, errors.New("unsupported protocol")
+			
 	}
-	return ServerInfo{}, errors.New("Unsupported protocol")
 }
 
 func routes(proxy *Proxy, name string) ([]*Endpoint, error) {

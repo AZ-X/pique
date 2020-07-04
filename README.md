@@ -2,7 +2,7 @@
 
 ## Autobiography
 
-This project started from [#issues/932] (https://github.com/DNSCrypt/dnscrypt-proxy/issues/932) when I went through full issues list(Not just opened)
+This project started from [#issues/932](https://github.com/DNSCrypt/dnscrypt-proxy/issues/932) when I went through full issues list (Not just opened)
 
 I caught up with a quote in that issue 'the best option is to change these, and you already found how to do it :)'
 

@@ -1,9 +1,26 @@
 # ![dnscrypt-proxy-r2](https://github.com/AZ-X/MEDIA/blob/master/PNG/RD.png?raw=true)
 
+## Autobiography
+
+This project started from [#issues/932] (https://github.com/DNSCrypt/dnscrypt-proxy/issues/932) when I went through full issues list(Not just opened)
+
+I caught up with a quote in that issue 'the best option is to change these, and you already found how to do it :)'
+
+Since than I patched my own version since the author encouraged these alternative changes
+
+I don't want to rewrite everything, it's boring
+
+The more I patched it the more dull idea became volatile
+
+Finally I found myself become partner of it, I learned golang in deep because of it and notepad++ is the only tooling reflecting these source code for me on Windows
+
+I decide to share a whole of these reformed code for community
+
+This is a show case of AMAZING project
 
 ## Overview
 
-A flexible DNS proxy, with support for modern encrypted DNS protocols such as [DNSCrypt v2](https://github.com/AZ-X/dnscrypt-proxy-r2/protocol/DNSCRYPT-V2-PROTOCOL.txt), [DNS-over-HTTPS](https://www.rfc-editor.org/rfc/rfc8484.txt) and [Anonymized DNSCrypt](https://github.com/AZ-X/dnscrypt-proxy-r2/protocol/ANONYMIZED-DNSCRYPT.txt).
+A flexible DNS proxy, with support for modern encrypted DNS protocols such as [DNSCrypt v2](https://github.com/AZ-X/dnscrypt-proxy-r2/blob/master/dnscrypt-proxy/protocol/DNSCRYPT-V2-PROTOCOL.txt), [DNS-over-HTTPS](https://www.rfc-editor.org/rfc/rfc8484.txt) and [Anonymized DNSCrypt](https://github.com/AZ-X/dnscrypt-proxy-r2/blob/master/dnscrypt-proxy/protocol/ANONYMIZED-DNSCRYPT.txt).
 
 Less than 7mb for single file size
 

@@ -6,7 +6,7 @@ This project started from [#issues/932](https://github.com/DNSCrypt/dnscrypt-pro
 
 I caught up with a quote in that issue 'the best option is to change these, and you already found how to do it :)'
 
-Since than I patched my own version since the author encouraged these alternative changes
+Since then I patched my own version since the author encouraged these alternative changes
 
 I don't want to rewrite everything, it's boring
 
@@ -17,6 +17,9 @@ Finally I found myself become partner of it, I learned golang in deep because of
 I decide to share a whole of these reformed code for community
 
 This is a show case of AMAZING project
+
+
+
 
 ## Overview
 
@@ -30,6 +33,31 @@ Better than original one comparing to most aspect
 ## [Download the latest release] coming soon maybe tomorrow
 
 Available as source code and pre-built binaries for most operating systems and architectures (see below).
+
+
+## Comparison between R2 and dnscrypt-proxy
+
+### Pros:
+
+1.	Improved debug info – principal stage of a program
+2.	Improved configuration to an HTTPS2 interface 
+3.	Enable multiple IPs to same domain (DoH/DoT)
+4.	Improved flows of data handling
+5.	Improved crypto functions
+6.	Improved general design
+7.	Improved usage of relays
+8.	Strict & Small & Smart
+9.	Aimed at improving use on Ath79 devices
+
+### Cons:
+
+1.	Removed Windows Services feature (security concern)
+2.	Removed Linux systemd feature (I don’t use it)
+3.	Removed Windows Event Logs feature (security concern)
+4.	Removed weekly schedules feature (I don’t think people will use it)
+5.	Removed Mac support (I don’t  have a powerful Mac device to run test on	:slightly_frowning_face:)
+6.	Removed Android support (I don’t agree a Non-GUI app and poor integration for Android)
+
 
 ## Features
 

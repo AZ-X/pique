@@ -25,7 +25,7 @@ This is a show case of AMAZING project
 
 A flexible DNS proxy, with support for modern encrypted DNS protocols such as [DNSCrypt v2](https://github.com/AZ-X/dnscrypt-proxy-r2/blob/master/dnscrypt-proxy/protocol/DNSCRYPT-V2-PROTOCOL.txt), [DNS-over-HTTPS](https://www.rfc-editor.org/rfc/rfc8484.txt) and [Anonymized DNSCrypt](https://github.com/AZ-X/dnscrypt-proxy-r2/blob/master/dnscrypt-proxy/protocol/ANONYMIZED-DNSCRYPT.txt).
 
-Less than 7mb for single file size
+Less than 7mb for go binary size
 
 Better than original one comparing to most aspect
 

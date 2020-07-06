@@ -19,28 +19,28 @@ import (
 )
 
 const (
-	DOHMediaType					= "application/dns-message"
-	DefaultKeepAlive        		= 0 * time.Second
-	DefaultTimeout          		= 30 * time.Second
+	DOHMediaType                    = "application/dns-message"
+	DefaultKeepAlive                = 0 * time.Second
+	DefaultTimeout                  = 30 * time.Second
 )
 
 type TransportHolding struct {
 	*http.Transport
 	*EPRing
-	Name							*string //redundant key: name of stamp for now
-	DomainName						string
-	SNIShadow     					string
-	SNIBlotUp     					stamps.SNIBlotUpType
+	Name                            *string //redundant key: name of stamp for now
+	DomainName                      string
+	SNIShadow                       string
+	SNIBlotUp                       stamps.SNIBlotUpType
 }
 
 type XTransport struct {
-	transports              		map[string]*TransportHolding //key: name of stamp for now
-	proxyDialer             		*net.Dialer
-	keepAlive               		time.Duration
-	timeout                 		time.Duration
-	tlsDisableSessionTickets		bool
-	tlsCipherSuite          		[]uint16
-	httpProxyFunction       		func(*http.Request) (*url.URL, error)
+	transports                      map[string]*TransportHolding //key: name of stamp for now
+	proxyDialer                     *net.Dialer
+	keepAlive                       time.Duration
+	timeout                         time.Duration
+	tlsDisableSessionTickets        bool
+	tlsCipherSuite                  []uint16
+	httpProxyFunction               func(*http.Request) (*url.URL, error)
 }
 
 type HTTPSContext struct {

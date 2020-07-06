@@ -57,7 +57,7 @@ type DNSCryptInfo struct {
 	MagicQuery         [ClientMagicLen]byte
 	ServerPk           [32]byte
 	SharedKey          [32]byte
-	Version			   CryptoConstruction
+	Version            CryptoConstruction
 	knownBugs          ServerBugs
 }
 
@@ -78,7 +78,7 @@ func (info DOHInfo) Proto() string {
 type ServerInfo struct {
 	Name               string
 	Proto              stamps.StampProtoType
-	Info			   ServerInterface
+	Info               ServerInterface
 	lastActionTS       time.Time
 	Timeout            time.Duration
 	rtt                ewma.MovingAverage

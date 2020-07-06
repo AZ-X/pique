@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	EMPTY 						= "-"
-	NonSvrName 					= EMPTY
+	EMPTY                       = "-"
+	NonSvrName                  = EMPTY
 )
 
 type Proxy struct {

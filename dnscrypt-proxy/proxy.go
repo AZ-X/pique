@@ -19,6 +19,11 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
+const (
+	EMPTY 						= "-"
+	NonSvrName 					= EMPTY
+)
+
 type Proxy struct {
 	userName                      string
 	child                         bool
@@ -316,12 +321,12 @@ func ReadPrefixed(conn *net.Conn) ([]byte, error) {
 	}
 }
 
-func (proxy *Proxy) exchangeDnScRypt(serverInfo *ServerInfo, packet []byte, serverProto string) ([]byte, error) {
+func (proxy *Proxy) exchangeDnScRypt(serverInfo *DNSCryptInfo, packet []byte, serverProto string) ([]byte, error) {
 	var err error
 	goto Go
 Error:
 	return nil, err
-Go:	
+Go:
 	sharedKey , encryptedQuery , clientNonce, err := proxy.Encrypt(serverInfo, packet, serverProto)
 	if err != nil {
 		program_dbg_full_log("exchangeDnScRypt E01")
@@ -389,7 +394,7 @@ Go:
 	return proxy.Decrypt(serverInfo, sharedKey, encryptedResponse, clientNonce)
 }
 
-func (proxy *Proxy) ExchangeDnScRypt(serverInfo *ServerInfo, request *dns.Msg, serverProto string) (*dns.Msg, error) {
+func (proxy *Proxy) ExchangeDnScRypt(serverInfo *DNSCryptInfo, request *dns.Msg, serverProto string) (*dns.Msg, error) {
 	var err error
 	goto Go
 Error:
@@ -417,7 +422,7 @@ func (proxy *Proxy) doHQuery(name string, path string, useGet bool, ctx *HTTPSCo
 	return proxy.xTransport.FetchHTTPS(name, path, "POST", true, ctx, body, proxy.timeout, cbs...)
 }
 
-func (proxy *Proxy) DoHQuery(name string, path string, useGet bool, ctx *HTTPSContext, request *dns.Msg, cbs ...interface{}) (*dns.Msg, error) {
+func (proxy *Proxy) DoHQuery(name string, info *DOHInfo, ctx *HTTPSContext, request *dns.Msg, cbs ...interface{}) (*dns.Msg, error) {
 	var err error
 	goto Go
 Error:
@@ -427,7 +432,7 @@ Go:
 	if err != nil {
 		goto Error
 	}
-	bin, err := proxy.doHQuery(name, path, useGet, ctx, &body, cbs...)
+	bin, err := proxy.doHQuery(name, info.Path, info.useGet, ctx, &body, cbs...)
 	if err != nil {
 		goto Error
 	}
@@ -452,7 +457,6 @@ func (proxy *Proxy) clientsCountDec() {
 	proxy.smaxClients.Release(1)
 }
 
-const NonSvrName = "-"
 func (proxy *Proxy) processIncomingQuery(clientProto string, serverProto string, query []byte, clientAddr *net.Addr, clientPc net.Conn, start time.Time) {
 	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, start)
 	var request *dns.Msg
@@ -471,7 +475,7 @@ Go:
 		pluginsState.returnCode = PluginsStateReject
 		goto Response
 	}
-	request, id = pluginsState.PreEvalPlugins(proxy, query, NonSvrName)
+	request, id = pluginsState.PreEvalPlugins(proxy, query, nil)
 	if pluginsState.state != PluginsStateNone {
 		goto Response
 	}
@@ -494,17 +498,19 @@ Go:
 	if serverInfo == nil {
 		goto SvrFault
 	}
-	pluginsState.serverName = serverInfo.Name
+	pluginsState.serverName = &(serverInfo.Name)
 	serverInfo.noticeBegin(proxy)
 	switch serverInfo.Proto.String() {
 		case "DoH":
 			pluginsState.ApplyEDNS0PaddingQueryPlugins(request)
-			response, err = proxy.DoHQuery(serverInfo.Name, serverInfo.Path, serverInfo.useGet, nil, request)
+			info := (serverInfo.Info).(*DOHInfo)
+			response, err = proxy.DoHQuery(serverInfo.Name, info, nil, request)
 		case "DNSCrypt":
-			if serverInfo.RelayAddr!= nil {
-				relayIndex = "*" + serverInfo.RelayAddr.Order()
+			info := (serverInfo.Info).(*DNSCryptInfo)
+			if info.RelayAddr!= nil {
+				relayIndex = "*" + info.RelayAddr.Order()
 			}
-			response, err = proxy.ExchangeDnScRypt(serverInfo, request, serverProto)
+			response, err = proxy.ExchangeDnScRypt(info, request, serverProto)
 		default:
 			dlog.Fatalf("unsupported server protocol:[%s]", serverInfo.Proto.String())
 			goto SvrFault
@@ -514,10 +520,10 @@ Go:
 		serverInfo.noticeFailure(proxy)
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout(){
 			pluginsState.returnCode = PluginsReturnCodeServerTimeout
-			dlog.Debugf("%v [%s]", err, pluginsState.serverName)
+			dlog.Debugf("%v [%s]", err, pluginsState.ServerName())
 		}else {
 			pluginsState.returnCode = PluginsReturnCodeServFail
-			dlog.Errorf("%v [%s]", err, pluginsState.serverName)
+			dlog.Errorf("%v [%s]", err, pluginsState.ServerName())
 		}
 		if stale, ok := pluginsState.sessionData["stale"]; ok {
 			dlog.Warnf("serving stale response, curErr:[%v]", err)
@@ -540,11 +546,11 @@ Response:
 		if response.Len() > pluginsState.maxUnencryptedUDPSafePayloadSize {
 			response.Truncate(pluginsState.maxUnencryptedUDPSafePayloadSize)
 			if response.Truncated {
-				dlog.Debugf("response has been truncated, qName: %s, sName: %s", pluginsState.qName, pluginsState.serverName)
+				dlog.Debugf("response has been truncated, qName: %s, sName: %s", pluginsState.qName, pluginsState.ServerName())
 			}
 		}
 	}
-	answer := "-"
+	answer := EMPTY
 	for _, asr := range response.Answer {
 		switch asr.Header().Rrtype {
 		case dns.TypeA:
@@ -556,14 +562,14 @@ Response:
 		}
 	}
 	if !isRefreshing {
-		if pluginsState.serverName == NonSvrName {
-			question := "-"
+		if pluginsState.ServerName() == NonSvrName {
+			question := EMPTY
 			if len(response.Question) > 0 {
 				question = request.Question[0].Name
 			}
 			dlog.Debugf("ID: %5d I: |%-15s| O: |%-15s| Code:%s", response.Id, question, answer, dns.RcodeToString[response.Rcode])
 		} else {
-			if answer == "-" {
+			if answer == EMPTY {
 				if response.Truncated {
 					answer += " **Truncated**"
 					response.Rcode = dns.RcodeServerFailure //prevent cache, no redirection to tcp from udp
@@ -572,7 +578,7 @@ Response:
 				}
 				
 			}
-			dlog.Debugf("ID: %5d O: |%-15s| [%s]", response.Id, answer, pluginsState.serverName + relayIndex)
+			dlog.Debugf("ID: %5d O: |%-15s| [%s]", response.Id, answer, pluginsState.ServerName() + relayIndex)
 		}
 	}
 	packet, err := response.Pack()
@@ -585,7 +591,7 @@ Response:
 	} else if clientProto == "tcp" {
 		packet, err = PrefixWithSize(packet)
 		if err != nil {
-			dlog.Debugf("response has a fault of prefixing size, packet size: %d, qName: %s, sName: %s", len(packet), pluginsState.qName, pluginsState.serverName)
+			dlog.Debugf("response has a fault of prefixing size, packet size: %d, qName: %s, sName: %s", len(packet), pluginsState.qName, pluginsState.ServerName())
 		}
 		if clientPc != nil {
 			clientPc.Write(packet)

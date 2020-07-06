@@ -34,7 +34,7 @@ func (plugin *PluginBlockUnqualified) Eval(pluginsState *PluginsState, msg *dns.
 	if question.Qclass != dns.ClassINET || (question.Qtype != dns.TypeA && question.Qtype != dns.TypeAAAA) {
 		return nil
 	}
-	if strings.IndexByte(pluginsState.qName, '.') >= 0 {
+	if strings.IndexByte(*(pluginsState.qName), '.') >= 0 {
 		return nil
 	}
 	synth := EmptyResponseFromMessage(msg)

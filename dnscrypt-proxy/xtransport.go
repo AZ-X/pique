@@ -27,7 +27,7 @@ const (
 type TransportHolding struct {
 	*http.Transport
 	*EPRing
-	Name							string //redundant key: name of stamp for now
+	Name							*string //redundant key: name of stamp for now
 	DomainName						string
 	SNIShadow     					string
 	SNIBlotUp     					stamps.SNIBlotUpType
@@ -115,7 +115,7 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer) error {
 	transport.TLSClientConfig = &tlsClientConfig
 	
 	th := &TransportHolding{
-		Name:		server.name,
+		Name:		&server.name,
 		DomainName: domain,
 		SNIShadow:  stamp.SNIShadow,
 		SNIBlotUp:  stamp.SNIBlotUp,
@@ -235,7 +235,6 @@ Go:
 	}
 	if doh {
 		header["accept"] = []string{DOHMediaType}
-		
 		if method == "POST" {
 			header["content-type"] = []string{DOHMediaType}
 		} else if method == "GET" {

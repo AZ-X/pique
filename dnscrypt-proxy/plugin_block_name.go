@@ -22,7 +22,7 @@ const aliasesLimit = 8
 
 var blockedNames *BlockedNames
 
-func (blockedNames *BlockedNames) check(pluginsState *PluginsState, qName string, aliasFor *string) (bool, error) {
+func (blockedNames *BlockedNames) check(pluginsState *PluginsState, qName *string, aliasFor *string) (bool, error) {
 	reject, reason, _ := blockedNames.patternMatcher.Eval(qName)
 	if aliasFor != nil {
 		reason = reason + " (alias for [" + *aliasFor + "])"
@@ -33,7 +33,7 @@ func (blockedNames *BlockedNames) check(pluginsState *PluginsState, qName string
 	pluginsState.state = PluginsStateReject
 	if blockedNames.logger != nil {
 		var clientIPStr string
-		if pluginsState.clientProto == "udp" {
+		if *(pluginsState.clientProto) == "udp" {
 			clientIPStr = (*pluginsState.clientAddr).(*net.UDPAddr).IP.String()
 		} else {
 			clientIPStr = (*pluginsState.clientAddr).(*net.TCPAddr).IP.String()
@@ -44,9 +44,9 @@ func (blockedNames *BlockedNames) check(pluginsState *PluginsState, qName string
 			year, month, day := now.Date()
 			hour, minute, second := now.Clock()
 			tsStr := fmt.Sprintf("[%d-%02d-%02d %02d:%02d:%02d]", year, int(month), day, hour, minute, second)
-			line = fmt.Sprintf("%s\t%s\t%s\t%s\n", tsStr, clientIPStr, StringQuote(qName), StringQuote(reason))
+			line = fmt.Sprintf("%s\t%s\t%s\t%s\n", tsStr, clientIPStr, StringQuote(*qName), StringQuote(reason))
 		} else if blockedNames.format == "ltsv" {
-			line = fmt.Sprintf("time:%d\thost:%s\tqname:%s\tmessage:%s\n", time.Now().Unix(), clientIPStr, StringQuote(qName), StringQuote(reason))
+			line = fmt.Sprintf("time:%d\thost:%s\tqname:%s\tmessage:%s\n", time.Now().Unix(), clientIPStr, StringQuote(*qName), StringQuote(reason))
 		} else {
 			dlog.Fatalf("unexpected log format: [%s]", blockedNames.format)
 		}
@@ -162,7 +162,7 @@ func (plugin *PluginBlockNameResponse) Eval(pluginsState *PluginsState, msg *dns
 		if err != nil {
 			return err
 		}
-		if blocked, err := blockedNames.check(pluginsState, target, &aliasFor); blocked || err != nil {
+		if blocked, err := blockedNames.check(pluginsState, &target, aliasFor); blocked || err != nil {
 			return err
 		}
 		aliasesLeft--

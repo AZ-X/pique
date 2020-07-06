@@ -131,7 +131,7 @@ PartsLoop:
 		}
 		subparts = subparts[1:]
 		name = prefix + name
-		var stampStr, description string
+		var stampStr string
 		for _, subpart := range subparts {
 			subpart = strings.TrimFunc(subpart, unicode.IsSpace)
 			if strings.HasPrefix(subpart, "sdns:") {
@@ -144,10 +144,6 @@ PartsLoop:
 			} else if len(subpart) == 0 || strings.HasPrefix(subpart, "//") {
 				continue
 			}
-			if len(description) > 0 {
-				description += "\n"
-			}
-			description += subpart
 		}
 		if len(stampStr) < 6 {
 			appendStampErr("Missing stamp for server [%s]", name)
@@ -158,9 +154,7 @@ PartsLoop:
 			appendStampErr("Invalid or unsupported stamp [%v]: %s", stampStr, err.Error())
 			continue
 		}
-		registeredServer := RegisteredServer{
-			name: name, stamp: &stamp, description: description,
-		}
+		registeredServer := RegisteredServer{name: name, stamp: &stamp,}
 		dlog.Debugf("registered [%s] with stamp [%s]", name, stamp.String())
 		registeredServers = append(registeredServers, registeredServer)
 	}

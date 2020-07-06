@@ -73,9 +73,9 @@ type PluginsState struct {
 	cacheMinTTL                      uint32
 	cacheMaxTTL                      uint32
 	rejectTTL                        uint32
-	clientProto                      string
-	qName                            string
-	serverName                       string
+	clientProto                      *string
+	qName                            *string
+	serverName                       *string
 	requestStart                     time.Time
 	requestEnd                       time.Time
 	clientAddr                       *net.Addr
@@ -84,6 +84,15 @@ type PluginsState struct {
 	cacheHit                         bool
 	returnCode                       PluginsReturnCode	
 }
+
+func (p PluginsState) ServerName() string {
+	if p.serverName == nil {
+		return NonSvrName
+	} else {
+		return *(p.serverName)
+	}
+}
+
 
 func (proxy *Proxy) InitPluginsGlobals() error {
 	if len(proxy.userName) > 0 && !proxy.child {
@@ -215,21 +224,21 @@ func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, sta
 		state:                            PluginsStateNone,
 		returnCode:                       PluginsReturnCodePass,
 		maxPayloadSize:                   MaxDNSUDPPacketSize - ResponseOverhead,
-		clientProto:                      clientProto,
+		clientProto:                      &clientProto,
 		clientAddr:                       clientAddr,
 		cacheNegMinTTL:                   proxy.cacheNegMinTTL,
 		cacheNegMaxTTL:                   proxy.cacheNegMaxTTL,
 		cacheMinTTL:                      proxy.cacheMinTTL,
 		cacheMaxTTL:                      proxy.cacheMaxTTL,
 		rejectTTL:                        proxy.rejectTTL,
-		qName:                            "",
+		qName:                            nil,
 		requestStart:                     start,
 		maxUnencryptedUDPSafePayloadSize: MaxDNSUDPSafePacketSize,
 		sessionData:                      make(map[string]interface{}),
 	}
 }
 
-func (pluginsState *PluginsState) PreEvalPlugins(proxy *Proxy, packet []byte, serverName string) (*dns.Msg, uint16) {
+func (pluginsState *PluginsState) PreEvalPlugins(proxy *Proxy, packet []byte, serverName *string) (*dns.Msg, uint16) {
 	pluginsGlobals := &proxy.pluginsGlobals
 	pluginsState.serverName = serverName
 	goto Go
@@ -252,7 +261,7 @@ Go:
 		goto ERROR
 	}
 	
-	pluginsState.qName = qName
+	pluginsState.qName = &qName
 	for _, plugin := range *pluginsGlobals.queryPlugins {
 		if err := plugin.Eval(pluginsState, msg); err != nil {
 			dlog.Warnf(">>>>>>>>>>>>>>>>>>>>>QueryPlugins return error: %v", err)

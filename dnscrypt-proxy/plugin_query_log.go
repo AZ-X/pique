@@ -56,19 +56,18 @@ func (plugin *PluginQueryLog) Eval(pluginsState *PluginsState, msg *dns.Msg) err
 		}
 	}
 	var clientIPStr string
-	if pluginsState.clientProto == "udp" {
+	if *(pluginsState.clientProto) == "udp" {
 		clientIPStr = (*pluginsState.clientAddr).(*net.UDPAddr).IP.String()
 	} else {
 		clientIPStr = (*pluginsState.clientAddr).(*net.TCPAddr).IP.String()
 	}
-	qName := pluginsState.qName
-
+	qName := *(pluginsState.qName)
 	if pluginsState.cacheHit {
-		pluginsState.serverName = "-"
+		pluginsState.serverName = nil
 	} else {
 		switch pluginsState.returnCode {
 		case PluginsReturnCodeSynth, PluginsReturnCodeCloak, PluginsReturnCodeParseError:
-			pluginsState.serverName = "-"
+			pluginsState.serverName = nil
 		}
 	}
 	returnCode, ok := PluginsReturnCodeToString[pluginsState.returnCode]
@@ -87,14 +86,14 @@ func (plugin *PluginQueryLog) Eval(pluginsState *PluginsState, msg *dns.Msg) err
 		hour, minute, second := now.Clock()
 		tsStr := fmt.Sprintf("[%d-%02d-%02d %02d:%02d:%02d]", year, int(month), day, hour, minute, second)
 		line = fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%dms\t%s\n", tsStr, clientIPStr, StringQuote(qName), qType, returnCode, requestDuration/time.Millisecond,
-			StringQuote(pluginsState.serverName))
+			StringQuote(pluginsState.ServerName()))
 	} else if plugin.format == "ltsv" {
 		cached := 0
 		if pluginsState.cacheHit {
 			cached = 1
 		}
 		line = fmt.Sprintf("time:%d\thost:%s\tmessage:%s\ttype:%s\treturn:%s\tcached:%d\tduration:%d\tserver:%s\n",
-			time.Now().Unix(), clientIPStr, StringQuote(qName), qType, returnCode, cached, requestDuration/time.Millisecond, StringQuote(pluginsState.serverName))
+			time.Now().Unix(), clientIPStr, StringQuote(qName), qType, returnCode, cached, requestDuration/time.Millisecond, StringQuote(pluginsState.ServerName()))
 	} else {
 		dlog.Fatalf("unexpected log format: [%s]", plugin.format)
 	}

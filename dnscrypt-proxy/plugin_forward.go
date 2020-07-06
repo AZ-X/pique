@@ -71,7 +71,7 @@ func (plugin *PluginForward) Reload() error {
 }
 
 func (plugin *PluginForward) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
-	qName := pluginsState.qName
+	qName := *(pluginsState.qName)
 	qNameLen := len(qName)
 	var servers []string
 	for _, candidate := range plugin.forwardMap {
@@ -88,7 +88,7 @@ func (plugin *PluginForward) Eval(pluginsState *PluginsState, msg *dns.Msg) erro
 		return nil
 	}
 	server := servers[rand.Intn(len(servers))]
-	pluginsState.serverName = server
+	pluginsState.serverName = &server
 	client := dns.Client{Net: "udp"}
 	respMsg, _, err := client.Exchange(msg, server)
 	if err != nil {

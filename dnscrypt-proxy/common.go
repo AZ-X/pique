@@ -17,14 +17,6 @@ import (
 //only if raw msg dumping
 const program_dbg_full = false
 
-type CryptoConstruction uint16
-
-const (
-	UndefinedConstruction CryptoConstruction = iota
-	XSalsa20Poly1305
-	XChacha20Poly1305
-)
-
 const (
 	ClientMagicLen = 8
 )

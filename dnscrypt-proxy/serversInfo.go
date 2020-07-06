@@ -31,29 +31,58 @@ const (
 type RegisteredServer struct {
 	name        string
 	stamp       *stamps.ServerStamp
-	description string
 }
+
+
+type ServerInterface interface {
+	Proto() string
+}
+
+type CryptoConstruction uint8
+
+const (
+	UndefinedConstruction CryptoConstruction = iota
+	XSalsa20Poly1305
+	XChacha20Poly1305
+)
 
 type ServerBugs struct {
 	incorrectPadding bool
 }
 
-type ServerInfo struct {
-	Proto              stamps.StampProtoType
-	MagicQuery         [8]byte
-	ServerPk           [32]byte
-	SharedKey          [32]byte
-	CryptoConstruction CryptoConstruction
-	Name               string
-	Timeout            time.Duration
-	Path           	   string
+type DNSCryptInfo struct {
+	*ServerInfo
 	IPAddr             *EPRing
 	RelayAddr          *EPRing
+	MagicQuery         [ClientMagicLen]byte
+	ServerPk           [32]byte
+	SharedKey          [32]byte
+	Version			   CryptoConstruction
 	knownBugs          ServerBugs
+}
+
+func (info DNSCryptInfo) Proto() string {
+	return "DNSCrypt"
+}
+
+type DOHInfo struct {
+	*ServerInfo
+	Path           	   string
+	useGet             bool
+}
+
+func (info DOHInfo) Proto() string {
+	return "DoH"
+}
+
+type ServerInfo struct {
+	Name               string
+	Proto              stamps.StampProtoType
+	Info			   ServerInterface
 	lastActionTS       time.Time
+	Timeout            time.Duration
 	rtt                ewma.MovingAverage
 	initialRtt         int
-	useGet             bool
 }
 
 type LBStrategy int
@@ -330,30 +359,25 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStam
 	if err != nil {
 		return ServerInfo{}, err
 	}
-	working_relays, certInfo, rtt, err := FetchCurrentDNSCryptCert(proxy, &name, proxy.mainProto, []uint8(stamp.ServerPk), stamp.ServerAddrStr, stamp.ProviderName, isNew, relays)
-	if err != nil {
-		return ServerInfo{}, err
-	}
 	remoteAddr, err := ResolveEndpoint(stamp.ServerAddrStr)
 	if err != nil {
 		return ServerInfo{}, err
 	}
-	relaysEP := LinkEPRing(working_relays...)
-	relaysEP.Do(func(v interface{}){dlog.Infof("relay [%s*%s]=%s",name, v.(*EPRing).Order(), v.(*EPRing).String())})
-	
-	return ServerInfo{
+	certInfo, rtt, err := FetchCurrentDNSCryptCert(proxy, &name, proxy.mainProto, []uint8(stamp.ServerPk), remoteAddr, stamp.ProviderName, isNew, relays)
+	if err != nil {
+		return ServerInfo{}, err
+	}
+
+	certInfo.knownBugs = knownBugs
+	serverInfo := ServerInfo{
 		Proto:              stamps.StampProtoTypeDNSCrypt,
-		MagicQuery:         certInfo.MagicQuery,
-		ServerPk:           certInfo.ServerPk,
-		SharedKey:          certInfo.SharedKey,
-		CryptoConstruction: certInfo.CryptoConstruction,
+		Info:				certInfo,
 		Name:               name,
 		Timeout:            proxy.timeout,
-		IPAddr:            	LinkEPRing(remoteAddr),
-		RelayAddr:       	LinkEPRing(working_relays...),
 		initialRtt:         rtt,
-		knownBugs:          knownBugs,
-	}, nil
+	}
+	certInfo.ServerInfo = &serverInfo
+	return serverInfo, nil
 }
 
 func dohTestPacket(dnssec bool) (*dns.Msg, uint16) {
@@ -435,13 +459,15 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 		}
 		return nil
 	}
-	
+	info := &DOHInfo{
+		Path:		stamp.Path,
+		useGet:     useGet,
+	}
 	retry := 3
 Retry:
-	
 	for tries := retry; tries > 0; tries-- {
 		now := time.Now()
-		if serverResponse, err = proxy.DoHQuery(name, stamp.Path, useGet, nil, body, matchCert); err != nil {
+		if serverResponse, err = proxy.DoHQuery(name, info, nil, body, matchCert); err != nil {
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
 			continue
 		}
@@ -486,14 +512,16 @@ Retry:
 	} else {
 		dlog.Infof("[%s] OK (DoH) - rtt: %dms", name, xrtt)
 	}
-	return ServerInfo{
+	
+	serverInfo := ServerInfo{
 		Proto:      stamps.StampProtoTypeDoH,
+		Info:		info,
 		Name:       name,
 		Timeout:    proxy.timeout,
-		Path:		stamp.Path,
 		initialRtt: xrtt,
-		useGet:     useGet,
-	}, nil
+	}
+	info.ServerInfo = &serverInfo
+	return serverInfo, nil
 }
 
 func (serverInfo *ServerInfo) noticeFailure(proxy *Proxy) {

@@ -115,7 +115,8 @@ func (patternMatcher *PatternMatcher) Add(pattern string, val interface{}, posit
 	return nil
 }
 
-func (patternMatcher *PatternMatcher) Eval(qName string) (reject bool, reason string, val interface{}) {
+func (patternMatcher *PatternMatcher) Eval(qName1 *string) (reject bool, reason string, val interface{}) {
+	qName := *qName1
 	if len(qName) < 2 {
 		return false, "", nil
 	}

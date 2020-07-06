@@ -43,7 +43,7 @@ func unpad(packet []byte) ([]byte, error) {
 	}
 }
 
-func ComputeSharedKey(cryptoConstruction CryptoConstruction, secretKey *[32]byte, serverPk *[32]byte, providerName *string) (sharedKey [32]byte) {
+func ComputeSharedKey(cryptoConstruction CryptoConstruction, secretKey *[32]byte, serverPk *[32]byte, providerName string) (sharedKey [32]byte) {
 	if cryptoConstruction == XChacha20Poly1305 {
 		var err error
 		sharedKey, err = xsecretbox.SharedKey(*secretKey, *serverPk)
@@ -56,7 +56,7 @@ func ComputeSharedKey(cryptoConstruction CryptoConstruction, secretKey *[32]byte
 	return
 }
 
-func (proxy *Proxy) Encrypt(serverInfo *ServerInfo, packet []byte, proto string) (sharedKey *[32]byte, encrypted []byte, clientNonce []byte, err error) {
+func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto string) (sharedKey *[32]byte, encrypted []byte, clientNonce []byte, err error) {
 	var publicKey *[PublicKeySize]byte
 	nonce, clientNonce := make([]byte, NonceSize), make([]byte, HalfNonceSize)
 	crypto_rand.Read(clientNonce)
@@ -76,7 +76,7 @@ func (proxy *Proxy) Encrypt(serverInfo *ServerInfo, packet []byte, proto string)
 		}
 		copy(xPublicKey[:], x)
 		publicKey = &xPublicKey
-		xsharedKey := ComputeSharedKey(serverInfo.CryptoConstruction, &ephSk, &serverInfo.ServerPk, nil)
+		xsharedKey := ComputeSharedKey(serverInfo.Version, &ephSk, &serverInfo.ServerPk, serverInfo.Name)
 		sharedKey = &xsharedKey
 	} else {
 		sharedKey = &serverInfo.SharedKey
@@ -105,7 +105,7 @@ func (proxy *Proxy) Encrypt(serverInfo *ServerInfo, packet []byte, proto string)
 	encrypted = append(serverInfo.MagicQuery[:], publicKey[:]...)
 	encrypted = append(encrypted, nonce[:HalfNonceSize]...)
 	padded := pad(packet, paddedLength - len(packet))
-	if serverInfo.CryptoConstruction == XChacha20Poly1305 {
+	if serverInfo.Version == XChacha20Poly1305 {
 		encrypted = xsecretbox.Seal(encrypted, nonce, padded, sharedKey[:])
 	} else {
 		var xsalsaNonce [24]byte
@@ -115,7 +115,7 @@ func (proxy *Proxy) Encrypt(serverInfo *ServerInfo, packet []byte, proto string)
 	return
 }
 
-func (proxy *Proxy) Decrypt(serverInfo *ServerInfo, sharedKey *[32]byte, encrypted []byte, nonce []byte) ([]byte, error) {
+func (proxy *Proxy) Decrypt(serverInfo *DNSCryptInfo, sharedKey *[32]byte, encrypted []byte, nonce []byte) ([]byte, error) {
 	serverMagicLen := len(ServerMagic)
 	responseHeaderLen := serverMagicLen + NonceSize
 	if len(encrypted) < responseHeaderLen+TagSize+int(MinDNSPacketSize) ||
@@ -129,7 +129,7 @@ func (proxy *Proxy) Decrypt(serverInfo *ServerInfo, sharedKey *[32]byte, encrypt
 	}
 	var packet []byte
 	var err error
-	if serverInfo.CryptoConstruction == XChacha20Poly1305 {
+	if serverInfo.Version == XChacha20Poly1305 {
 		packet, err = xsecretbox.Open(nil, serverNonce, encrypted[responseHeaderLen:], sharedKey[:])
 	} else {
 		var xsalsaServerNonce [24]byte

@@ -13,17 +13,9 @@ import (
 	"golang.org/x/crypto/ed25519"
 )
 
-type CertInfo struct {
-	ServerPk           [32]byte
-	SharedKey          [32]byte
-	MagicQuery         [ClientMagicLen]byte
-	CryptoConstruction CryptoConstruction
-	ForwardSecurity    bool
-}
-
-func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk ed25519.PublicKey, serverAddress string, providerName string, isNew bool, relays []*Endpoint) ([]*Endpoint, CertInfo, int, error) {
+func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk ed25519.PublicKey, upstreamAddr *Endpoint, providerName string, isNew bool, relays []*Endpoint) (*DNSCryptInfo, int, error) {
 	if len(pk) != ed25519.PublicKeySize {
-		return nil, CertInfo{}, 0, errors.New("Invalid public key length")
+		return nil, 0, errors.New("Invalid public key length")
 	}
 	if !strings.HasSuffix(providerName, ".") {
 		providerName = providerName + "."
@@ -39,34 +31,34 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 	var in *dns.Msg
 	var rtt time.Duration
 	var err error
-	var workingSet []*Endpoint
+	var working_relays []*Endpoint
 	var relay_f bool
 	if len(relays) > 0 {
 		for i , relayAddr := range relays {
-			in, rtt, err, relay_f = dnsExchange(proxy, proto, &query, serverAddress, relayAddr, serverName)
+			in, rtt, err, relay_f = dnsExchange(proxy, proto, &query, upstreamAddr, relayAddr, serverName)
 			if err != nil {
 				dlog.Debug(err)
 				continue
 			}
 			if !relay_f {
-				workingSet = append(workingSet, relayAddr)
+				working_relays = append(working_relays, relayAddr)
 			} else {
 				dlog.Noticef("relay [%d] failed for [%s]", i + 1, *serverName)
 			}
 		}
-		if len(workingSet) < 1 {
+		if len(working_relays) < 1 {
 			dlog.Noticef("all relays failed for [%s]", *serverName)
-			return nil, CertInfo{}, 0, errors.New("all relays failed")
+			return nil, 0, errors.New("all relays failed")
 		}
 	} else {
-		in, rtt, err, _ = dnsExchange(proxy, proto, &query, serverAddress, nil, serverName)
+		in, rtt, err, _ = dnsExchange(proxy, proto, &query, upstreamAddr, nil, serverName)
 	}
 	if err != nil {
 		dlog.Debug(err)
-		return nil, CertInfo{}, 0, err
+		return nil, 0, err
 	}
 	now := uint32(time.Now().Unix())
-	certInfo := CertInfo{CryptoConstruction: UndefinedConstruction}
+	certInfo := &DNSCryptInfo{Version: UndefinedConstruction}
 	highestSerial := uint32(0)
 	var certCountStr string
 	for _, answerRr := range in.Answer {
@@ -121,9 +113,6 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 			} else if daysLeft <= 30 {
 				dlog.Infof("[%v] certificate will expire in %d days", *serverName, daysLeft)
 			}
-			certInfo.ForwardSecurity = false
-		} else {
-			certInfo.ForwardSecurity = true
 		}
 		if !proxy.certIgnoreTimestamp {
 			if now > tsEnd || now < tsBegin {
@@ -136,24 +125,24 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 			continue
 		}
 		if serial == highestSerial {
-			if cryptoConstruction < certInfo.CryptoConstruction {
+			if cryptoConstruction < certInfo.Version {
 				dlog.Debugf("[%v] keeping the previous, preferred crypto construction", *serverName)
 				continue
 			} else {
-				dlog.Debugf("[%v] upgrading the construction from %v to %v", *serverName, certInfo.CryptoConstruction, cryptoConstruction)
+				dlog.Debugf("[%v] upgrading the construction from %v to %v", *serverName, certInfo.Version, cryptoConstruction)
 			}
 		}
 		if cryptoConstruction != XChacha20Poly1305 && cryptoConstruction != XSalsa20Poly1305 {
 			dlog.Noticef("[%v] Crypto construction %v not supported", *serverName, cryptoConstruction)
 			continue
 		}
-		var serverPk [32]byte
-		copy(serverPk[:], binCert[72:104])
-		sharedKey := ComputeSharedKey(cryptoConstruction, &proxy.proxySecretKey, &serverPk, &providerName)
+		var resolverPk [32]byte
+		copy(resolverPk[:], binCert[72:104])
+		sharedKey := ComputeSharedKey(cryptoConstruction, &proxy.proxySecretKey, &resolverPk, providerName)
 		certInfo.SharedKey = sharedKey
 		highestSerial = serial
-		certInfo.CryptoConstruction = cryptoConstruction
-		copy(certInfo.ServerPk[:], serverPk[:])
+		certInfo.Version = cryptoConstruction
+		copy(certInfo.ServerPk[:], resolverPk[:])
 		copy(certInfo.MagicQuery[:], binCert[104:112])
 		if isNew {
 			dlog.Noticef("[%s] OK (DNSCrypt V%d) - rtt: %dms%s", *serverName, esVersion, rtt.Nanoseconds()/1000000, certCountStr)
@@ -162,10 +151,18 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 		}
 		certCountStr = " - additional certificate"
 	}
-	if certInfo.CryptoConstruction == UndefinedConstruction {
-		return nil, certInfo, 0, errors.New("No useable certificate found")
+	if certInfo.Version == UndefinedConstruction {
+		return nil, 0, errors.New("No useable certificate found")
 	}
-	return workingSet, certInfo, int(rtt.Nanoseconds() / 1000000), nil
+	certInfo.RelayAddr = LinkEPRing(working_relays...)
+	certInfo.IPAddr	   = LinkEPRing(upstreamAddr)
+	if certInfo.RelayAddr != nil {
+		certInfo.RelayAddr.Do(
+		func(v interface{}){
+		dlog.Infof("relay [%s*%s]=%s", *serverName, v.(*EPRing).Order(), v.(*EPRing).String())
+		})
+	}
+	return certInfo, int(rtt.Nanoseconds() / 1000000), nil
 }
 
 func isDigit(b byte) bool { return b >= '0' && b <= '9' }
@@ -203,13 +200,13 @@ func packTxtString(s string) []byte {
 	return msg
 }
 
-func dnsExchange(proxy *Proxy, proto string, query *dns.Msg, serverAddress string, relayAddr *Endpoint, serverName *string) (*dns.Msg, time.Duration, error, bool) {
+func dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endpoint, relayAddr *Endpoint, serverName *string) (*dns.Msg, time.Duration, error, bool) {
 	relay_f := relayAddr == nil
-	response, ttl, err := _dnsExchange(proxy, proto, query, serverAddress, relayAddr)
+	response, ttl, err := _dnsExchange(proxy, proto, query, upstreamAddr, relayAddr)
 	if err != nil && relayAddr != nil {
 		dlog.Debugf("failed to get a certificate for [%v] via relay [%v], retrying over a direct connection", *serverName, relayAddr.IP)
 		relay_f = true
-		response, ttl, err = _dnsExchange(proxy, proto, query, serverAddress, nil)
+		response, ttl, err = _dnsExchange(proxy, proto, query, upstreamAddr, nil)
 		if err == nil {
 			dlog.Infof("direct certificate retrieval for [%v] succeeded", *serverName)
 		}
@@ -217,7 +214,7 @@ func dnsExchange(proxy *Proxy, proto string, query *dns.Msg, serverAddress strin
 	return response, ttl, err, relay_f
 }
 
-func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, serverAddress string, relayAddr *Endpoint) (*dns.Msg, time.Duration, error) {
+func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endpoint, relayAddr *Endpoint) (*dns.Msg, time.Duration, error) {
 	var packet []byte
 	var rtt time.Duration
 	if proto == "udp" {
@@ -238,13 +235,8 @@ func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, serverAddress stri
 	if err != nil {
 		return nil, 0, err
 	}
-	ipAddr, err := ResolveEndpoint(serverAddress)
-	if err != nil {
-		return nil, 0, err
-	}
-	upstreamAddr := ipAddr
 	if relayAddr != nil {
-		proxy.prepareForRelay(ipAddr, &binQuery)
+		proxy.prepareForRelay(upstreamAddr, &binQuery)
 		upstreamAddr = relayAddr
 	}
 	now := time.Now()

@@ -183,7 +183,7 @@ func (plugin *PluginBlockUndelegated) Reload() error {
 }
 
 func (plugin *PluginBlockUndelegated) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
-	revQname := StringReverse(pluginsState.qName)
+	revQname := StringReverse(*(pluginsState.qName))
 	match, _, found := plugin.suffixes.LongestPrefix([]byte(revQname))
 	if !found {
 		return nil

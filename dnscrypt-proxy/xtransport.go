@@ -135,7 +135,7 @@ func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
 	cfg := transport.TLSClientConfig
 	cfg.ServerName = th.DomainName
 	if cfg.InsecureSkipVerify {
-		dlog.Debugf("SNI setup for [%s]", th.Name)
+		dlog.Debugf("SNI setup for [%s]", *th.Name)
 		switch th.SNIBlotUp {
 			case stamps.SNIBlotUpTypeOmit: 	  cfg.ServerName = ""
 			case stamps.SNIBlotUpTypeIPAddr:  cfg.ServerName = th.EPRing.IP.String()

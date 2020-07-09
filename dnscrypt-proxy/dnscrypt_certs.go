@@ -242,10 +242,10 @@ func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endp
 	now := time.Now()
 	var pc net.Conn
 	proxyDialer := proxy.xTransport.proxyDialer
-	if proto == "udp" || proxyDialer == nil {
+	if proxyDialer == nil {
 		pc, err = net.Dial(proto, upstreamAddr.String())
 	} else {
-		pc, err = (*proxyDialer).Dial("tcp", upstreamAddr.String())
+		pc, err = proxyDialer.Dial(proto, upstreamAddr.String())
 	}
 	if err != nil {
 		return nil, 0, err

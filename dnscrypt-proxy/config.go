@@ -28,26 +28,27 @@ const (
 )
 
 type Config struct {
-	LogLevel                 int            `toml:"log_level"`
-	LogFile                  *string        `toml:"log_file"`
-	UseSyslog                bool           `toml:"use_syslog"`
-	ServerNames              []string       `toml:"server_names"`
-	DisabledServerNames      []string       `toml:"disabled_server_names"`
-	ListenAddresses          []string       `toml:"listen_addresses"`
+
 	Daemonize                bool
-	UserName                 string `toml:"user_name"`
-	ForceTCP                 bool   `toml:"force_tcp"`
-	Timeout                  int    `toml:"timeout"`
-	KeepAlive                int    `toml:"keepalive"`
-	CertRefreshDelay         int    `toml:"cert_refresh_delay"`
-	CertIgnoreTimestamp      bool   `toml:"cert_ignore_timestamp"`
-	EphemeralKeys            bool   `toml:"dnscrypt_ephemeral_keys"`
-	LBStrategy               string `toml:"lb_strategy"`
-	LBEstimator              bool   `toml:"lb_estimator"`
-	BlockIPv6                bool   `toml:"block_ipv6"`
-	BlockUnqualified         bool   `toml:"block_unqualified"`
-	BlockUndelegated         bool   `toml:"block_undelegated"`
 	Cache                    bool
+	LogLevel                 int                         `toml:"log_level"`
+	LogFile                  *string                     `toml:"log_file"`
+	UseSyslog                bool                        `toml:"use_syslog"`
+	ServerNames              []string                    `toml:"server_names"`
+	DisabledServerNames      []string                    `toml:"disabled_server_names"`
+	ListenAddresses          []string                    `toml:"listen_addresses"`
+	UserName                 string                      `toml:"user_name"`
+	ForceTCP                 bool                        `toml:"force_tcp"`
+	Timeout                  int                         `toml:"timeout"`
+	KeepAlive                int                         `toml:"keepalive"`
+	CertRefreshDelay         int                         `toml:"cert_refresh_delay"`
+	CertIgnoreTimestamp      bool                        `toml:"cert_ignore_timestamp"`
+	EphemeralKeys            bool                        `toml:"dnscrypt_ephemeral_keys"`
+	LBStrategy               string                      `toml:"lb_strategy"`
+	LBEstimator              bool                        `toml:"lb_estimator"`
+	BlockIPv6                bool                        `toml:"block_ipv6"`
+	BlockUnqualified         bool                        `toml:"block_unqualified"`
+	BlockUndelegated         bool                        `toml:"block_undelegated"`
 	CacheSize                int                         `toml:"cache_size"`
 	CacheNegTTL              uint32                      `toml:"cache_neg_ttl"`
 	CacheNegMinTTL           uint32                      `toml:"cache_neg_min_ttl"`
@@ -82,8 +83,7 @@ type Config struct {
 	NetprobeAddress          string                      `toml:"netprobe_address"`
 	NetprobeTimeout          int                         `toml:"netprobe_timeout"`
 	OfflineMode              bool                        `toml:"offline_mode"`
-	SOCKS5ProxyURL           string 					 `toml:"socks5_proxy"`
-	HTTPProxyURL             string                      `toml:"http_proxy"`
+	ProxyURI                 string                      `toml:"proxy_uri"`
 	BlockedQueryResponse     string                      `toml:"blocked_query_response"`
 	QueryMeta                []string                    `toml:"query_meta"`
 	AnonymizedDNS            AnonymizedDNSConfig         `toml:"anonymized_dns"`
@@ -277,10 +277,10 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	proxy.xTransport.tlsCipherSuite = config.TLSCipherSuite
 	proxy.xTransport.keepAlive = time.Duration(config.KeepAlive) * time.Second
 	proxy.xTransport.transports = make(map[string]*TransportHolding)
-	if len(config.HTTPProxyURL) > 0 {
-		httpProxyURL, err := url.Parse(config.HTTPProxyURL)
+	if len(config.ProxyURI) > 0 {
+		httpProxyURL, err := url.Parse(config.ProxyURI)
 		if err != nil {
-			dlog.Fatalf("failed to parse the HTTP proxy URL [%v]", config.HTTPProxyURL)
+			dlog.Fatalf("failed to parse the HTTP proxy URL [%v]", config.ProxyURI)
 		}
 		proxy.xTransport.httpProxyFunction = http.ProxyURL(httpProxyURL)
 	}
@@ -291,7 +291,7 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	proxy.smaxClients = semaphore.NewWeighted(int64(proxy.maxClients))
 	proxy.ctx, proxy.cancel = context.WithCancel(context.Background())
 	proxy.mainProto = "udp"
-	if config.ForceTCP || len(config.SOCKS5ProxyURL) > 0 {
+	if config.ForceTCP {
 		proxy.mainProto = "tcp"
 	}
 	dlog.Noticef("dnscrypt-protocol bind to %s", proxy.mainProto)

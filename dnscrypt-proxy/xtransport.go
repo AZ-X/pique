@@ -26,6 +26,7 @@ const (
 
 type TransportHolding struct {
 	*http.Transport
+	*tls.Config
 	*EPRing
 	Name                            *string //redundant key: name of stamp for now
 	DomainName                      string
@@ -98,30 +99,16 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer) error {
 	if xTransport.httpProxyFunction != nil {
 		transport.Proxy = xTransport.httpProxyFunction
 	}
-	tlsClientConfig := tls.Config{
-		SessionTicketsDisabled: xTransport.tlsDisableSessionTickets,
-		MinVersion: tls.VersionTLS13,
-		CurvePreferences: []tls.CurveID{tls.X25519},
-		DynamicRecordSizingDisabled: true,
-		InsecureSkipVerify: stamp.SNIBlotUp != stamps.SNIBlotUpTypeDefault,
-	}
-	if !xTransport.tlsDisableSessionTickets {
-		tlsClientConfig.ClientSessionCache = tls.NewLRUClientSessionCache(10)
-	}
-	if xTransport.tlsCipherSuite != nil {
-		tlsClientConfig.PreferServerCipherSuites = false
-		tlsClientConfig.CipherSuites = xTransport.tlsCipherSuite
-	}
-	transport.TLSClientConfig = &tlsClientConfig
-	
+
 	th := &TransportHolding{
-		Name:		&server.name,
+		Name:       &server.name,
 		DomainName: domain,
 		SNIShadow:  stamp.SNIShadow,
 		SNIBlotUp:  stamp.SNIBlotUp,
 	}
 	th.Transport = transport
 	th.EPRing = epring
+	transport.TLSClientConfig = th.buildTLS(xTransport)
 	if err := th.buildTransport(xTransport); err != nil {
 		return err
 	}
@@ -129,15 +116,54 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer) error {
 	return nil
 }
 
-func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
-	alive := xTransport.keepAlive
-	transport := th.Transport
-	cfg := transport.TLSClientConfig
+func (xTransport *XTransport) buildTLS(server RegisteredServer) error {
+	dlog.Debugf("building TLS for [%s]", server.name)
+	stamp := server.stamp
+	domain, port, err := ExtractHostAndPort(stamp.ProviderName, stamps.DefaultPort)
+	if err != nil {
+		return err
+	}
+	endpoint, err := ResolveEndpoint(stamp.ServerAddrStr)
+	if err != nil {
+		return err
+	}
+	if endpoint.Port != 0 && endpoint.Port != stamps.DefaultPort {
+		port = endpoint.Port
+	}
+	endpoint.Port = port
+	epring := LinkEPRing(endpoint)
+	th := &TransportHolding{
+		Name:       &server.name,
+		DomainName: domain,
+		SNIShadow:  stamp.SNIShadow,
+		SNIBlotUp:  stamp.SNIBlotUp,
+	}
+	th.EPRing = epring
+	th.Config = th.buildTLS(xTransport)
+	xTransport.transports[server.name] = th
+	return nil
+}
+
+func (th *TransportHolding) buildTLS(xTransport *XTransport) (cfg *tls.Config) {
+	cfg = &tls.Config{
+		SessionTicketsDisabled: xTransport.tlsDisableSessionTickets,
+		MinVersion: tls.VersionTLS13,
+		CurvePreferences: []tls.CurveID{tls.X25519},
+		DynamicRecordSizingDisabled: true,
+		InsecureSkipVerify: th.SNIBlotUp != stamps.SNIBlotUpTypeDefault,
+	}
+	if !xTransport.tlsDisableSessionTickets {
+		cfg.ClientSessionCache = tls.NewLRUClientSessionCache(10)
+	}
+	if xTransport.tlsCipherSuite != nil {
+		cfg.PreferServerCipherSuites = false
+		cfg.CipherSuites = xTransport.tlsCipherSuite
+	}
 	cfg.ServerName = th.DomainName
 	if cfg.InsecureSkipVerify {
 		dlog.Debugf("SNI setup for [%s]", *th.Name)
 		switch th.SNIBlotUp {
-			case stamps.SNIBlotUpTypeOmit: 	  cfg.ServerName = ""
+			case stamps.SNIBlotUpTypeOmit:    cfg.ServerName = ""
 			case stamps.SNIBlotUpTypeIPAddr:  cfg.ServerName = th.EPRing.IP.String()
 			case stamps.SNIBlotUpTypeMoniker: cfg.ServerName = th.SNIShadow
 		}
@@ -169,6 +195,14 @@ func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
 			return errors.New("VerifyPeerCertificate failed")
 		}
 	}
+	return cfg
+}
+
+func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
+	alive := xTransport.keepAlive
+	transport := th.Transport
+	cfg := transport.TLSClientConfig
+
 	getDialContext := func(t *TransportHolding, ctx context.Context, netw, addr string, isTLS bool) (net.Conn, error) {
 		if strings.HasSuffix(addr, t.DomainName) {
 			dlog.Criticalf("mismatch addr for TransportHolding(%s): [%s]", t.Name, addr)
@@ -188,7 +222,7 @@ func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
 			return tls.DialWithDialer(xTransport.proxyDialer, netw, addr, cfg)
 
 		} else {
-			return (*xTransport.proxyDialer).Dial(netw, addr)
+			return xTransport.proxyDialer.Dial(netw, addr)
 		}
 	}
 	transport.DialContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {

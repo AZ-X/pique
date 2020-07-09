@@ -342,7 +342,7 @@ Go:
 	if proxyDialer == nil {
 		pc, err = net.Dial(serverProto, upstreamAddr.String())
 	} else {
-		pc, err = (*proxyDialer).Dial(serverProto, upstreamAddr.String())
+		pc, err = proxyDialer.Dial(serverProto, upstreamAddr.String())
 	}
 	if err != nil {
 		program_dbg_full_log("exchangeDnScRypt E02")

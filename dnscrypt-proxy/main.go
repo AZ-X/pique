@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	AppVersion            = "2.0.x"
 	DefaultConfigFileName = "dnscrypt-proxy.toml"
 )
 
+var	AppVersion            = "dev-X"
 type App struct {
 	wg    sync.WaitGroup
 	quit  chan struct{}

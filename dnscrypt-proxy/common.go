@@ -72,7 +72,7 @@ func LinkEPRing(endpoints ...*Endpoint) *EPRing {
 
 func (e *Endpoint) String() string {
 	return net.JoinHostPort(e.IPAddr.String(), strconv.Itoa(e.Port))
-} 
+}
 
 var (
 	FileDescriptors   = make([]*os.File, 0)

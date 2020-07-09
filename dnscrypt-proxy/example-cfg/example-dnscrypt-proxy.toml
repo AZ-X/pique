@@ -90,17 +90,11 @@ disabled_server_names = []
 force_tcp = false
 
 
-## SOCKS 5 proxy
-## Uncomment the following line to route all TCP connections to a local Tor node
-## Tor doesn't support UDP, so set `force_tcp` to `true` as well.
+## SOCKS5/HTTP/HTTPS proxy
 
-# socks5_proxy = 'socks5://127.0.0.1:9050'
-
-
-## HTTP/HTTPS proxy
-## Only for DoH servers
-
-# http_proxy = 'http://127.0.0.1:8888'
+# proxy_uri = 'socks5://127.0.0.1:9050'
+# proxy_uri = 'http://127.0.0.1:8888'
+# proxy_uri = 'https://127.0.0.1:8888'
 
 
 ## How long a DNS query will wait for a response, in milliseconds.

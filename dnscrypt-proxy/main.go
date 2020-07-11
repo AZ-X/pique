@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/facebookgo/pidfile"
 	"github.com/jedisct1/dlog"
 )
 
@@ -70,9 +69,15 @@ func (app *App) AppMain() {
 	}
 	app.quit = make(chan struct{})
 	app.wg.Add(1)
-	_ = pidfile.Write()
+	pid, err := NewPidFile()
+	if err != nil {
+		dlog.Fatal(err)
+	}
 	app.proxy.StartProxy()
 	<-app.quit
 	dlog.Notice("Quit signal received...")
+	if pid != nil {
+		pid.Remove()
+	}
 	app.wg.Done()
 }

@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"container/ring"
-	"encoding/binary"
-	"errors"
 	"io/ioutil"
 	"net"
 	"os"
@@ -18,32 +16,23 @@ import (
 const program_dbg_full = false
 
 const (
-	ClientMagicLen = 8
-)
-
-const (
-	MaxHTTPBodyLength = 4000000
-)
-
-var (
-	CertMagic               = [4]byte{0x44, 0x4e, 0x53, 0x43}
-	ServerMagic             = [8]byte{0x72, 0x36, 0x66, 0x6e, 0x76, 0x57, 0x6a, 0x38}
+	ClientMagicLen          = 8
+	MaxHTTPBodyLength       = 4000000
 	MinDNSPacketSize        = 12 + 5
-	MaxDNSPacketSize        = dns.DefaultMsgSize
+	MaxDNSPacketSize        = dns.MaxMsgSize
 	MaxDNSUDPPacketSize     = dns.DefaultMsgSize
 	MaxDNSUDPSafePacketSize = 1252
-	InitialMinQuestionSize  = dns.MinMsgSize
 )
 
 type Endpoint struct {
 	*net.IPAddr
-	Port					  int
+	Port                      int
 }
 
 type EPRing struct {
 	*ring.Ring
 	*Endpoint
-	order 					  int `aka name`
+	order                     int `aka name`
 }
 
 func (e *EPRing) Order() string {
@@ -78,17 +67,6 @@ var (
 	FileDescriptors   = make([]*os.File, 0)
 	FileDescriptorNum = 0
 )
-
-func PrefixWithSize(packet []byte) ([]byte, error) {
-	packetLen := len(packet)
-	if packetLen > 0xffff {
-		return packet, errors.New("Packet too large")
-	}
-	packet = append(packet, 0, 0)
-	copy(packet[2:], packet[:len(packet)-2])
-	binary.BigEndian.PutUint16(packet[0:2], uint16(len(packet)-2))
-	return packet, nil
-}
 
 func Min(a, b int) int {
 	if a < b {
@@ -185,7 +163,6 @@ func ResolveEndpoint(hostport string) (*Endpoint, error) {
 	}
 	return &Endpoint{IPAddr:ipaddr, Port:port}, nil
 }
-
 
 func ExtractHostAndPort(hostport string, defaultPort int) (string, int, error) {
 	host, portStr, err := net.SplitHostPort(hostport)

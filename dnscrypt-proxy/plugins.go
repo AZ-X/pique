@@ -307,7 +307,7 @@ func (pluginsState *PluginsState) ApplyEDNS0PaddingQueryPlugins(msg *dns.Msg) {
 	ext := new(dns.EDNS0_PADDING)
 	padding := make([]byte, padLen)
 	for i,_ := range padding {
-		padding[i] = 0xff
+		padding[i] = 0x00
 	}
 	ext.Padding = padding[:padLen]
 	opt.Option = append(opt.Option, ext)

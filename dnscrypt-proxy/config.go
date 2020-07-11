@@ -72,6 +72,7 @@ type Config struct {
 	SourceRequireNoFilter    bool                        `toml:"require_nofilter"`
 	SourceDNSCrypt           bool                        `toml:"dnscrypt_servers"`
 	SourceDoH                bool                        `toml:"doh_servers"`
+	SourceDoT                bool                        `toml:"dot_servers"`
 	SourceIPv4               bool                        `toml:"ipv4_servers"`
 	SourceIPv6               bool                        `toml:"ipv6_servers"`
 	MaxClients               uint32                      `toml:"max_clients"`
@@ -111,8 +112,9 @@ func newConfig() Config {
 		SourceRequireNoFilter:    true,
 		SourceIPv4:               true,
 		SourceIPv6:               false,
-		SourceDNSCrypt:           true,
 		SourceDoH:                true,
+		SourceDoT:                true,
+		SourceDNSCrypt:           true,
 		MaxClients:               250,
 		LogMaxSize:               10,
 		LogMaxAge:                7,
@@ -282,7 +284,7 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		if err != nil {
 			dlog.Fatalf("failed to parse the HTTP proxy URL [%v]", config.ProxyURI)
 		}
-		proxy.xTransport.httpProxyFunction = http.ProxyURL(httpProxyURL)
+		proxy.xTransport.HttpProxyFunction = http.ProxyURL(httpProxyURL)
 	}
 
 	proxy.blockedQueryResponse = config.BlockedQueryResponse
@@ -423,8 +425,9 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		config.SourceRequireNoLog = false
 		config.SourceIPv4 = true
 		config.SourceIPv6 = true
-		config.SourceDNSCrypt = true
 		config.SourceDoH = true
+		config.SourceDoT = true
+		config.SourceDNSCrypt = true
 	}
 
 	netprobeTimeout := config.NetprobeTimeout
@@ -631,16 +634,23 @@ func (config *Config) loadSource(proxy *Proxy, requiredProps stamps.ServerInform
 			dlog.Debugf("applying [%s] to the set of available relays", registeredServer.name)
 			proxy.registeredRelays = append(proxy.registeredRelays, registeredServer)
 		} else {
-			if !((config.SourceDNSCrypt && registeredServer.stamp.Proto.String() == "DNSCrypt") ||
-				(config.SourceDoH && registeredServer.stamp.Proto.String() == "DoH")) {
-				continue
+			proto := registeredServer.stamp.Proto.String()
+			switch {
+			case config.SourceDNSCrypt && proto == "DNSCrypt":
+			case config.SourceDoH && proto == "DoH":
+				if err := proxy.xTransport.buildTransport(registeredServer); err != nil {
+					dlog.Fatal(err)
+					return err;
+				}
+			case config.SourceDoT && proto == "DoT":
+				if err := proxy.xTransport.buildTLS(registeredServer); err != nil {
+					dlog.Fatal(err)
+					return err;
+				}
+			default:continue
 			}
 			dlog.Debugf("applying [%s] to the set of wanted resolvers", registeredServer.name)
 			proxy.registeredServers = append(proxy.registeredServers, registeredServer)
-		}
-		if err := proxy.xTransport.buildTransport(registeredServer); err != nil {
-			dlog.Fatal(err)
-			return err;
 		}
 	}
 	return nil

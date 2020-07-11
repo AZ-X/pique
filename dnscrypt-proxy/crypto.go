@@ -18,8 +18,9 @@ const (
 	HalfNonceSize    = xsecretbox.NonceSize / 2
 	TagSize          = xsecretbox.TagSize
 	PublicKeySize    = 32
+	ServerMagicLen   = 8
 	QueryOverhead    = ClientMagicLen + PublicKeySize + HalfNonceSize + TagSize
-	ResponseOverhead = len(ServerMagic) + NonceSize + TagSize
+	ResponseOverhead = ServerMagicLen + NonceSize + TagSize
 )
 
 func pad(packet []byte, padSize int) []byte {
@@ -84,7 +85,7 @@ func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto strin
 	}
 	
 	minQuestionSize := QueryOverhead + len(packet)
-	if minQuestionSize+1 > MaxDNSPacketSize -64 {
+	if minQuestionSize+1 > MaxDNSUDPPacketSize -64 {
 		err = errors.New("Question too large; cannot be padded")
 		return
 	}
@@ -115,15 +116,20 @@ func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto strin
 	return
 }
 
-func (proxy *Proxy) Decrypt(serverInfo *DNSCryptInfo, sharedKey *[32]byte, encrypted []byte, nonce []byte) ([]byte, error) {
-	serverMagicLen := len(ServerMagic)
-	responseHeaderLen := serverMagicLen + NonceSize
+func (proxy *Proxy) Decrypt(serverInfo *DNSCryptInfo, sharedKey *[32]byte, encrypted []byte, nonce []byte, proto string) ([]byte, error) {
+	responseHeaderLen := ServerMagicLen + NonceSize
+	var maxDNSPacketSize int64
+	if proto == "udp" {
+		maxDNSPacketSize = MaxDNSUDPPacketSize
+	} else {
+		maxDNSPacketSize = MaxDNSPacketSize
+	}
 	if len(encrypted) < responseHeaderLen+TagSize+int(MinDNSPacketSize) ||
-		len(encrypted) > responseHeaderLen+TagSize+int(MaxDNSPacketSize) ||
-		!bytes.Equal(encrypted[:serverMagicLen], ServerMagic[:]) {
+		len(encrypted) > responseHeaderLen+TagSize+int(maxDNSPacketSize) ||
+		!bytes.Equal(encrypted[:ServerMagicLen], ServerMagic()) {
 		return encrypted, errors.New("Invalid message size or prefix")
 	}
-	serverNonce := encrypted[serverMagicLen:responseHeaderLen]
+	serverNonce := encrypted[ServerMagicLen:responseHeaderLen]
 	if !bytes.Equal(nonce[:HalfNonceSize], serverNonce[:HalfNonceSize]) {
 		return encrypted, errors.New("Unexpected nonce")
 	}

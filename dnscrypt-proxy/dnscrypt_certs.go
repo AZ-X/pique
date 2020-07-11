@@ -74,7 +74,7 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 			dlog.Warnf("certificate of [%v] is too short", *serverName)
 			continue
 		}
-		if !bytes.Equal(binCert[:4], CertMagic[:4]) {
+		if !bytes.Equal(binCert[:4], CertMagic()) {
 			dlog.Warnf("[%v] has invalid cert magic", *serverName)
 			continue
 		}
@@ -241,11 +241,11 @@ func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endp
 	}
 	now := time.Now()
 	var pc net.Conn
-	proxyDialer := proxy.xTransport.proxyDialer
-	if proxyDialer == nil {
+	proxy_ctx := proxy.xTransport.DialContext
+	if proxy_ctx == nil {
 		pc, err = net.Dial(proto, upstreamAddr.String())
 	} else {
-		pc, err = proxyDialer.Dial(proto, upstreamAddr.String())
+		pc, err = proxy_ctx(nil, proto, upstreamAddr.String())
 	}
 	if err != nil {
 		return nil, 0, err
@@ -254,23 +254,11 @@ func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endp
 	if err = pc.SetDeadline(time.Now().Add(proxy.timeout)); err != nil {
 		return nil, 0, err
 	}
-	if proto == "tcp" {
-		binQuery, err = PrefixWithSize(binQuery)
-		if err != nil {
-			return nil, 0, err
-		}
-	}
-	if _, err = pc.Write(binQuery); err != nil {
+	
+	if err = WriteDP(pc, binQuery); err != nil {
 		return nil, 0, err
 	}
-	if proto == "udp" {
-		var length int
-		packet = make([]byte, MaxDNSPacketSize)
-		length, err = pc.Read(packet)
-		packet = packet[:length]
-	} else {
-		packet, err = ReadPrefixed(&pc)
-	}
+	packet, err = ReadDP(pc)
 	if err != nil {
 		return nil, 0, err
 	}

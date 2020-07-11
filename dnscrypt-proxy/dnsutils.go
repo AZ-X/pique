@@ -13,7 +13,7 @@ func SetDNSSECFlag(msg *dns.Msg) {
 		msg.Question[0].Qtype = dns.TypeOPT
 	}
 	msg.CheckingDisabled = true
-	msg.SetEdns0(4096, true)
+	msg.SetEdns0(MaxDNSUDPPacketSize-64, true)
 	opt := msg.IsEdns0()
 	//https://www.iana.org/assignments/dns-sec-alg-numbers
 	//8	RSA/SHA-256	RSASHA256
@@ -34,7 +34,7 @@ func SetDNSSECFlag(msg *dns.Msg) {
 	ext := new(dns.EDNS0_PADDING)
 	ext.Padding = make([]byte, 32)
 	for i,_ := range ext.Padding {
-		ext.Padding[i] = 0xff
+		ext.Padding[i] = 0x00
 	}
 	opt.Option = append(opt.Option, ext)
 }

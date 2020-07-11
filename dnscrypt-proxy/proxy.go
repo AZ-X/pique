@@ -24,6 +24,19 @@ const (
 	NonSvrName                  = EMPTY
 )
 
+func AnonymizedDNSHeader() []byte {
+	return []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
+}
+
+func CertMagic() []byte {
+	return []byte{0x44, 0x4e, 0x53, 0x43}
+}
+
+func ServerMagic() []byte {
+	return []byte{0x72, 0x36, 0x66, 0x6e, 0x76, 0x57, 0x6a, 0x38}
+}
+
+
 type Proxy struct {
 	userName                      string
 	child                         bool
@@ -97,7 +110,6 @@ func program_dbg_full_log(args ...interface{}) {
 		} else {
 			dlog.Debug(format)
 		}
-		
 	}
 }
 
@@ -227,7 +239,7 @@ func (proxy *Proxy) StartProxy() {
 func (proxy *Proxy) udpListener(clientPc *net.UDPConn) {
 	defer clientPc.Close()
 	for {
-		buffer := make([]byte, MaxDNSPacketSize-1)
+		buffer := make([]byte, MaxDNSUDPPacketSize-1)
 		length, clientAddr, err := clientPc.ReadFrom(buffer)
 		if err != nil {
 			return
@@ -263,7 +275,7 @@ func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener) {
 			if err = clientPc.SetDeadline(time.Now().Add(proxy.timeout + 500 * time.Millisecond)); err != nil {
 				return
 			}
-			packet, err := ReadPrefixed(&clientPc)
+			packet, err := ReadDP(clientPc)
 			if err != nil {
 				return
 			}
@@ -284,8 +296,7 @@ func (proxy *Proxy) tcpListenerFromAddr(listenAddr *net.TCPAddr) error {
 }
 
 func (proxy *Proxy) prepareForRelay(endpoint *Endpoint, encryptedQuery *[]byte) {
-	anonymizedDNSHeader := []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
-	relayedQuery := append(anonymizedDNSHeader, endpoint.IP.To16()...)
+	relayedQuery := append(AnonymizedDNSHeader(), endpoint.IP.To16()...)
 	var tmp [2]byte
 	binary.BigEndian.PutUint16(tmp[0:2], uint16(endpoint.Port))
 	relayedQuery = append(relayedQuery, tmp[:]...)
@@ -293,32 +304,62 @@ func (proxy *Proxy) prepareForRelay(endpoint *Endpoint, encryptedQuery *[]byte) 
 	*encryptedQuery = relayedQuery
 }
 
-func ReadPrefixed(conn *net.Conn) ([]byte, error) {
-	buf := make([]byte, 2+MaxDNSPacketSize)
-	packetLength, pos := -1, 0
-	for {
-		readnb, err := (*conn).Read(buf[pos:])
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				program_dbg_full_log("ReadPrefixed EOF %d", readnb)  //0
-			}
-			return buf, err
-		}
-		pos += readnb
-		if pos >= 2 && packetLength < 0 {
-			packetLength = int(binary.BigEndian.Uint16(buf[0:2]))
-			if packetLength > MaxDNSPacketSize-1 {
-				return buf, errors.New("Packet too large")
-			}
-			if packetLength < MinDNSPacketSize {
-				return buf, errors.New("Packet too short")
-			}
-		}
-		if packetLength >= 0 && pos >= 2+packetLength {
-			program_dbg_full_log("[RAW packet length]: %d", packetLength)
-			return buf[2 : 2+packetLength], nil
-		}
+func ReadDP(conn net.Conn) ([]byte, error) {
+	if conn == nil {
+		return nil, dns.ErrConnEmpty
 	}
+	var err error
+	var n int
+	var length uint16
+	var p []byte
+
+	if _, ok := conn.(net.PacketConn); ok {
+		p = make([]byte, MaxDNSUDPPacketSize)
+		n, err = conn.Read(p)
+		goto Ret
+	}
+
+	if err := binary.Read(conn, binary.BigEndian, &length); err != nil {
+		return nil, err
+	}
+	if length > MaxDNSPacketSize-1 {
+		return nil, errors.New("Packet too large")
+	}
+	if length < MinDNSPacketSize {
+		return nil, errors.New("Packet too short")
+	}
+	p = make([]byte, length)
+	n, err = io.ReadFull(conn, p[:length])
+Ret:
+	program_dbg_full_log("[RAW packet length]: %d", length)
+	return p[:n], err
+}
+
+
+func WriteDP(conn net.Conn, p []byte, clients ...*net.Addr) error {
+
+	if _, ok := conn.(net.PacketConn); ok {
+		if len(p) > MaxDNSUDPPacketSize {
+			return errors.New("Packet too large")
+		}
+		var err error
+		if len(clients) > 0 {
+			_, err = conn.(net.PacketConn).WriteTo(p, *clients[0])
+		} else {
+			_, err = conn.Write(p)
+			
+		}
+		return err
+	}
+	if len(p) > MaxDNSPacketSize {
+		return errors.New("Packet too large")
+	}
+
+	l := make([]byte, 2)
+	binary.BigEndian.PutUint16(l, uint16(len(p)))
+
+	_, err := (&net.Buffers{l, p}).WriteTo(conn)
+	return err
 }
 
 func (proxy *Proxy) exchangeDnScRypt(serverInfo *DNSCryptInfo, packet []byte, serverProto string) ([]byte, error) {
@@ -338,11 +379,11 @@ Go:
 		serverInfo.RelayAddr = serverInfo.RelayAddr.Next()
 	}
 	var pc net.Conn
-	proxyDialer := proxy.xTransport.proxyDialer
-	if proxyDialer == nil {
+	proxy_ctx := proxy.xTransport.DialContext
+	if proxy_ctx == nil {
 		pc, err = net.Dial(serverProto, upstreamAddr.String())
 	} else {
-		pc, err = proxyDialer.Dial(serverProto, upstreamAddr.String())
+		pc, err = proxy_ctx(nil, serverProto, upstreamAddr.String())
 	}
 	if err != nil {
 		program_dbg_full_log("exchangeDnScRypt E02")
@@ -357,41 +398,21 @@ Go:
 		proxy.prepareForRelay(serverInfo.IPAddr.Endpoint, &encryptedQuery)
 	}
 	var encryptedResponse []byte
-	if serverProto == "udp" {
-		encryptedResponse = make([]byte, MaxDNSPacketSize)
-	} else {
-		encryptedQuery, err = PrefixWithSize(encryptedQuery)
-		if err != nil {
-			program_dbg_full_log("exchangeDnScRypt E04")
-			goto Error
-		}
-	}
 	for tries := 2; tries > 0; tries-- {
-		if _, err = pc.Write(encryptedQuery); err != nil {
-			program_dbg_full_log("exchangeDnScRypt E05")
+		if err = WriteDP(pc, encryptedQuery); err != nil {
+			program_dbg_full_log("exchangeDnScRypt E04")
 			continue
 		}
-		if serverProto == "tcp" {
-			encryptedResponse, err = ReadPrefixed(&pc)
-			if err == nil {
-				break
-			}
-		} else {
-			length := 0
-			length, err = pc.Read(encryptedResponse)
-			if err == nil {
-				encryptedResponse = encryptedResponse[:length]
-				program_dbg_full_log("[RAW packet length]: %d", length)
-				break
-			}
+		if encryptedResponse, err = ReadDP(pc); err == nil {
+			break
 		}
 		program_dbg_full_log("retry on timeout or <-EOF msg")
 	}
 	if err != nil {
-		program_dbg_full_log("exchangeDnScRypt E06")
+		program_dbg_full_log("exchangeDnScRypt E05")
 		return nil, err
 	}
-	return proxy.Decrypt(serverInfo, sharedKey, encryptedResponse, clientNonce)
+	return proxy.Decrypt(serverInfo, sharedKey, encryptedResponse, clientNonce, serverProto)
 }
 
 func (proxy *Proxy) ExchangeDnScRypt(serverInfo *DNSCryptInfo, request *dns.Msg, serverProto string) (*dns.Msg, error) {
@@ -443,6 +464,27 @@ Go:
 	return response, nil
 }
 
+func (proxy *Proxy) DoTQuery(name string, ctx *TLSContext, request *dns.Msg, cbs ...interface{}) (*dns.Msg, error) {
+	var err error
+	goto Go
+Error:
+	return nil, err
+Go:
+	body, err := request.Pack()
+	if err != nil {
+		goto Error
+	}
+	bin, err := proxy.xTransport.FetchDoT(name, proxy.mainProto, ctx, &body, proxy.timeout, cbs...)
+	if err != nil {
+		goto Error
+	}
+	response := &dns.Msg{}
+	if err = response.Unpack(bin); err != nil {
+		goto Error
+	}
+	return response, nil
+}
+
 func (proxy *Proxy) clientsCountInc() (success bool) {
 	if success := proxy.smaxClients.TryAcquire(1); success {
 		//DO NOT CARE
@@ -471,7 +513,7 @@ Go:
 	var isRefreshing bool
 	var id uint16
 	var relayIndex string
-	if len(query) < MinDNSPacketSize || len(query) > MaxDNSPacketSize {
+	if len(query) < MinDNSPacketSize || len(query) > MaxDNSUDPPacketSize {
 		pluginsState.returnCode = PluginsStateReject
 		goto Response
 	}
@@ -505,6 +547,9 @@ Go:
 			pluginsState.ApplyEDNS0PaddingQueryPlugins(request)
 			info := (serverInfo.Info).(*DOHInfo)
 			response, err = proxy.DoHQuery(serverInfo.Name, info, nil, request)
+		case "DoT":
+			pluginsState.ApplyEDNS0PaddingQueryPlugins(request)
+			response, err = proxy.DoTQuery(serverInfo.Name, nil, request)
 		case "DNSCrypt":
 			info := (serverInfo.Info).(*DNSCryptInfo)
 			if info.RelayAddr!= nil {
@@ -576,7 +621,6 @@ Response:
 				} else {
 					answer += " " + dns.RcodeToString[response.Rcode]
 				}
-				
 			}
 			dlog.Debugf("ID: %5d O: |%-15s| [%s]", response.Id, answer, pluginsState.ServerName() + relayIndex)
 		}
@@ -586,16 +630,8 @@ Response:
 		dlog.Errorf("dns packing error: %v", err)
 		goto Exit
 	}
-	if clientProto == "udp" {
-		clientPc.(net.PacketConn).WriteTo(packet, *clientAddr)
-	} else if clientProto == "tcp" {
-		packet, err = PrefixWithSize(packet)
-		if err != nil {
-			dlog.Debugf("response has a fault of prefixing size, packet size: %d, qName: %s, sName: %s", len(packet), pluginsState.qName, pluginsState.ServerName())
-		}
-		if clientPc != nil {
-			clientPc.Write(packet)
-		}
+	if err = WriteDP(clientPc, packet, clientAddr); err != nil {
+		dlog.Debug(err)
 	}
 	goto Exit
 }

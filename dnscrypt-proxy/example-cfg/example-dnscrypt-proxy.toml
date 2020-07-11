@@ -60,15 +60,21 @@ ipv4_servers = true
 # Use servers reachable over IPv6 -- Do not enable if you don't have IPv6 connectivity
 ipv6_servers = false
 
-# Use servers implementing the DNSCrypt protocol
-dnscrypt_servers = true
-
 # Use servers implementing the DNS-over-HTTPS protocol
 doh_servers = true
+
+# Use servers implementing the DNS-over-TLS protocol
+dot_servers = true
+
+# Use servers implementing the DNSCrypt protocol
+# You only need it if you are not aware of local dnssec validation or use it for untrusted zones
+# or you just exclusively use this program as a last hop stub resolver
+dnscrypt_servers = true
 
 ## Require servers defined by remote sources to satisfy specific properties
 
 # Server must support DNS security extensions (DNSSEC)
+# You cannot trust any validation result online unless you deployed additional program locally to perform validation
 require_dnssec = false
 
 # Server must not log user queries (declarative)
@@ -81,11 +87,10 @@ require_nofilter = true
 disabled_server_names = []
 
 
-## Always use TCP to connect to upstream servers.
-## This can be useful if you need to route everything through Tor.
-## Otherwise, leave this to `false`, as it doesn't improve security
-## (dnscrypt-proxy will always encrypt everything even using UDP), and can
-## only increase latency.
+## Always use TCP to connect to upstream servers (current for DNSCrypt, spares for DoT/QUIC later).
+## This can be useful if you need to prepare dnssec queries.
+## Otherwise, leave this to `false`, as it doesn't improve your privacy
+
 
 force_tcp = false
 

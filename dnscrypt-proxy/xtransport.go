@@ -22,6 +22,7 @@ const (
 	DOHMediaType                    = "application/dns-message"
 	DefaultKeepAlive                = 0 * time.Second
 	DefaultTimeout                  = 30 * time.Second
+	DoTDefaultPort                  = 853
 )
 
 type TransportHolding struct {
@@ -36,17 +37,22 @@ type TransportHolding struct {
 
 type XTransport struct {
 	transports                      map[string]*TransportHolding //key: name of stamp for now
-	proxyDialer                     *net.Dialer
 	keepAlive                       time.Duration
 	timeout                         time.Duration
 	tlsDisableSessionTickets        bool
 	tlsCipherSuite                  []uint16
-	httpProxyFunction               func(*http.Request) (*url.URL, error)
+	DialContext                     func(ctx context.Context, network, addr string) (net.Conn, error)
+	HttpProxyFunction               func(*http.Request) (*url.URL, error)
 }
 
 type HTTPSContext struct {
 	context.Context
 }
+
+type TLSContext struct {
+	context.Context
+}
+
 
 func NewXTransport() *XTransport {
 	xTransport := XTransport{
@@ -96,8 +102,8 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer) error {
 	ExpectContinueTimeout:  timeout,
 	MaxResponseHeaderBytes: 4096,
 	}
-	if xTransport.httpProxyFunction != nil {
-		transport.Proxy = xTransport.httpProxyFunction
+	if xTransport.HttpProxyFunction != nil {
+		transport.Proxy = xTransport.HttpProxyFunction
 	}
 
 	th := &TransportHolding{
@@ -119,7 +125,7 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer) error {
 func (xTransport *XTransport) buildTLS(server RegisteredServer) error {
 	dlog.Debugf("building TLS for [%s]", server.name)
 	stamp := server.stamp
-	domain, port, err := ExtractHostAndPort(stamp.ProviderName, stamps.DefaultPort)
+	domain, port, err := ExtractHostAndPort(stamp.ProviderName, DoTDefaultPort)
 	if err != nil {
 		return err
 	}
@@ -127,7 +133,7 @@ func (xTransport *XTransport) buildTLS(server RegisteredServer) error {
 	if err != nil {
 		return err
 	}
-	if endpoint.Port != 0 && endpoint.Port != stamps.DefaultPort {
+	if endpoint.Port != 0 && endpoint.Port != DoTDefaultPort {
 		port = endpoint.Port
 	}
 	endpoint.Port = port
@@ -199,6 +205,10 @@ func (th *TransportHolding) buildTLS(xTransport *XTransport) (cfg *tls.Config) {
 }
 
 func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
+	if xTransport.HttpProxyFunction != nil {
+		return nil
+	}
+
 	alive := xTransport.keepAlive
 	transport := th.Transport
 	cfg := transport.TLSClientConfig
@@ -210,23 +220,12 @@ func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
 		}
 		addr = t.EPRing.String()
 		t.EPRing = t.EPRing.Next()
-		if xTransport.proxyDialer == nil {
-			dialer := &net.Dialer{Timeout: 2000 * time.Millisecond, KeepAlive: alive, FallbackDelay: -1}
-			if isTLS {
-				return tls.DialWithDialer(dialer, netw, addr, cfg)
-			} else {
-				return dialer.DialContext(ctx, netw, addr)
-			}
-		}
+		dialer := &net.Dialer{Timeout: 2000 * time.Millisecond, KeepAlive: alive, FallbackDelay: -1}
 		if isTLS {
-			return tls.DialWithDialer(xTransport.proxyDialer, netw, addr, cfg)
-
+			return tls.DialWithDialer(dialer, netw, addr, cfg)
 		} else {
-			return xTransport.proxyDialer.Dial(netw, addr)
+			return dialer.DialContext(ctx, netw, addr)
 		}
-	}
-	transport.DialContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
-			return getDialContext(th, ctx, netw, addr, false)
 	}
 	transport.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
 		c, err := getDialContext(th, ctx, netw, addr, true)
@@ -240,6 +239,76 @@ func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
 	}
 	return nil
 }
+
+// I don't foresee any benefit from dtls, so let's wait for DNS over QUIC 
+func (xTransport *XTransport) FetchDoT(name string, serverProto string, ctx *TLSContext, body *[]byte, timeout time.Duration, cbs ...interface{}) ([]byte, error) {
+	th, found := xTransport.transports[name]
+	if !found {
+		dlog.Fatalf("name [%s] not found for transports", name)
+		return nil, errors.New("name not found for transports")
+	}
+	return xTransport.fetchDoT(th, serverProto, ctx, body, timeout, cbs...)
+}
+
+func (xTransport *XTransport) fetchDoT(th *TransportHolding, _ string, ctx *TLSContext, msg *[]byte, timeout time.Duration, cbs ...interface{}) ([]byte, error) {
+	var err error
+	var conn net.Conn
+	var response []byte
+	goto Go
+Error:
+	return nil, err
+Go:
+	if timeout <= 0 {
+		timeout = xTransport.timeout
+	}
+	if xTransport.DialContext == nil {
+		dialer := &net.Dialer{Deadline: time.Now().Add(timeout), KeepAlive: xTransport.keepAlive, FallbackDelay: -1}
+		if ctx == nil {
+			conn, err = net.Dial("tcp", th.EPRing.String())
+		} else {
+			conn, err = dialer.DialContext(ctx, "tcp", th.EPRing.String())
+		}
+	} else {
+		conn, err = xTransport.DialContext(ctx, "tcp", th.EPRing.String())
+	}
+	if err != nil {
+		goto Error
+	}
+	defer conn.Close()
+	tlsConn := tls.Client(conn, th.Config)
+	err = tlsConn.Handshake()
+	if err != nil {
+		goto Error
+	}
+	for _, cb := range cbs {
+		switch cb := cb.(type) {
+			case func(*tls.ConnectionState) error:
+				cs := tlsConn.ConnectionState()
+				if err = cb(&cs); err != nil {
+					goto Error
+				}
+			default:
+				dlog.Errorf("unhandled callback(T=%T) calling fetchDoT", cb)
+		}
+	}
+	for tries := 2; tries > 0; tries-- {
+		if err = WriteDP(tlsConn, *msg); err != nil {
+			program_dbg_full_log("FetchDoT E01")
+			continue
+		}
+		if response, err = ReadDP(tlsConn); err == nil {
+			break
+		}
+		program_dbg_full_log("retry on timeout or <-EOF msg")
+	}
+	if err != nil {
+		program_dbg_full_log("FetchDoT E02")
+		goto Error
+	}
+
+	return response, nil
+}
+
 
 func (xTransport *XTransport) FetchHTTPS(name string, path string, method string, doh bool, ctx *HTTPSContext, body *[]byte, timeout time.Duration, cbs ...interface{}) ([]byte, error) {
 	th, found := xTransport.transports[name]
@@ -290,7 +359,7 @@ Go:
 	//	url2.RawQuery = qs.Encode()
 	//	url = &url2
 	//}
-	if xTransport.proxyDialer == nil && strings.HasSuffix(url.Host, ".onion") {
+	if xTransport.HttpProxyFunction == nil && strings.HasSuffix(url.Host, ".onion") {
 		err = errors.New("Onion service is not reachable without Tor")
 		goto Error
 	}
@@ -331,7 +400,7 @@ Go:
 					goto Error
 				}
 			default:
-				dlog.Errorf("unhandled callback(T=%T) calling FetchHTTPS", cb)
+				dlog.Errorf("unhandled callback(T=%T) calling fetchHTTPS", cb)
 		}
 	}
 	var size int64

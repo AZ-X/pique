@@ -75,6 +75,14 @@ func (info DOHInfo) Proto() string {
 	return "DoH"
 }
 
+type DOTInfo struct {
+	*ServerInfo
+}
+
+func (info DOTInfo) Proto() string {
+	return "DoT"
+}
+
 type ServerInfo struct {
 	Name               string
 	Proto              stamps.StampProtoType
@@ -256,6 +264,7 @@ func fetchServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, isNew
 	switch stamp.Proto.String() {
 		case "DNSCrypt":return fetchDNSCryptServerInfo(proxy, name, stamp, isNew)
 		case "DoH":return fetchDoHServerInfo(proxy, name, stamp, isNew)
+		case "DoT":return fetchDoTServerInfo(proxy, name, stamp, isNew)
 		default:return ServerInfo{}, errors.New("unsupported protocol")
 			
 	}
@@ -384,7 +393,7 @@ func dohTestPacket(dnssec bool) (*dns.Msg, uint16) {
 	msg := &dns.Msg{}
 	msg.SetQuestion(".", dns.TypeMX)
 	id := msg.Id
-	msg.SetEdns0(uint16(MaxDNSPacketSize), dnssec)
+	msg.SetEdns0(uint16(MaxDNSUDPPacketSize), dnssec)
 	opt := msg.IsEdns0()
 	//https://www.iana.org/assignments/dns-sec-alg-numbers
 	//8	RSA/SHA-256	RSASHA256
@@ -405,10 +414,103 @@ func dohTestPacket(dnssec bool) (*dns.Msg, uint16) {
 	ext := new(dns.EDNS0_PADDING)
 	ext.Padding = make([]byte, 32)
 	for i,_ := range ext.Padding {
-		ext.Padding[i] = 0xff
+		ext.Padding[i] = 0x00
 	}
 	opt.Option = append(opt.Option, ext)
 	return msg, id
+}
+
+func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, isNew bool) (ServerInfo, error) {
+	dnssec := stamp.Props&stamps.ServerInformalPropertyDNSSEC != 0
+	body, msgId := dohTestPacket(dnssec)
+	var rtt time.Duration
+	var serverResponse *dns.Msg
+	var err error
+	var matchCert = func(state *tls.ConnectionState) error {
+		if state == nil || !state.HandshakeComplete {
+			errors.New("TLS handshake failed")
+		}
+		dlog.Infof("[%s] TLS version: %x - cipher suite: %v", name, state.Version, state.CipherSuite)
+		showCerts := proxy.showCerts
+		found := false
+		var wantedHash [32]byte
+		for _, cert := range state.PeerCertificates {
+			l := len(cert.RawTBSCertificate)
+			h := sha256.Sum256(cert.RawTBSCertificate)
+
+			if showCerts {
+				dlog.Noticef("advertised cert: [%s] [%x] [%i]", cert.Subject, h,l)
+			} else {
+				dlog.Debugf("advertised cert: [%s] [%x]", cert.Subject, h)
+			}
+			for _, hash := range stamp.Hashes {
+				if len(hash) == len(wantedHash) {
+					copy(wantedHash[:], hash)
+					if h == wantedHash {
+						found = true
+						break
+					}
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found && len(stamp.Hashes) > 0 {
+			return fmt.Errorf("Certificate hash [%x] not found for [%s]", wantedHash, name)
+		}
+		return nil
+	}
+	info := &DOTInfo{}
+	retry := 3
+	for tries := retry; tries > 0; tries-- {
+		now := time.Now()
+		if serverResponse, err = proxy.DoTQuery(name, nil, body, matchCert); err != nil {
+		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
+			continue
+		}
+		}
+		rtt = time.Since(now)
+		break
+	}
+	if err != nil {
+		return ServerInfo{}, err
+	}
+	if program_dbg_full {
+		bin, err := json.Marshal(serverResponse)
+		if err == nil {
+			jsonStr := string(bin)
+			dlog.Debug("[processed request]:" + jsonStr)
+		}
+	}
+	respBody, _ := serverResponse.Pack()
+	var rmsgId uint16
+	revData := respBody[0:2];
+	revData[0], revData[1] = revData[1], revData[0] 
+	buf := bytes.NewReader(revData)
+	err = binary.Read(buf, binary.LittleEndian, &rmsgId)
+	if err != nil || len(respBody) < MinDNSPacketSize || len(respBody) > MaxDNSPacketSize ||
+		msgId != rmsgId || respBody[4] != 0x00 || respBody[5] != 0x01 {
+		errMsg := "Webserver returned an unexpected response"
+		dlog.Warn(errMsg)
+		return ServerInfo{}, errors.New(errMsg)
+	}
+	xrtt := int(rtt.Nanoseconds() / 1000000)
+	if isNew {
+		dlog.Noticef("[%s] OK (DoT) - rtt: %dms", name, xrtt)
+	} else {
+		dlog.Infof("[%s] OK (DoT) - rtt: %dms", name, xrtt)
+	}
+	
+	serverInfo := ServerInfo{
+		Proto:      stamp.Proto,
+		Info:		info,
+		Name:       name,
+		Timeout:    proxy.timeout,
+		initialRtt: xrtt,
+	}
+	info.ServerInfo = &serverInfo
+	return serverInfo, nil
 }
 
 func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, isNew bool) (ServerInfo, error) {
@@ -514,7 +616,7 @@ Retry:
 	}
 	
 	serverInfo := ServerInfo{
-		Proto:      stamps.StampProtoTypeDoH,
+		Proto:      stamp.Proto,
 		Info:		info,
 		Name:       name,
 		Timeout:    proxy.timeout,

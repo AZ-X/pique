@@ -28,20 +28,23 @@ const (
 	StampProtoTypeDNSCrypt      = StampProtoType(0x01)
 	StampProtoTypeDoH           = StampProtoType(0x02)
 	StampProtoTypeTLS           = StampProtoType(0x03)
+	StampProtoTypeDoTEx         = StampProtoType(0x45)
 	StampProtoTypeDoHEx         = StampProtoType(0x69)
 	StampProtoTypeDNSCryptRelay = StampProtoType(0x81)
 )
 
 func (stampProtoType *StampProtoType) String() string {
 	switch *stampProtoType {
-	case StampProtoTypePlain:
-		return "Plain"
-	case StampProtoTypeDNSCrypt:
-		return "DNSCrypt"
 	case StampProtoTypeDoH, StampProtoTypeDoHEx:
 		return "DoH"
+	case StampProtoTypeTLS, StampProtoTypeDoTEx:
+		return "DoT"
+	case StampProtoTypeDNSCrypt:
+		return "DNSCrypt"
 	case StampProtoTypeDNSCryptRelay:
 		return "Anonymized DNSCrypt"
+	case StampProtoTypePlain:
+		return "Plain"
 	default:
 		panic("Unexpected protocol")
 	}
@@ -123,6 +126,8 @@ func NewServerStampFromString(stampStr string) (ServerStamp, error) {
 		return newDoHServerStamp(bin, false)
 	} else if bin[0] == uint8(StampProtoTypeDoHEx) {
 		return newDoHServerStamp(bin, true)
+	} else if bin[0] == uint8(StampProtoTypeDoTEx) {
+		return newDoTExServerStamp(bin)
 	} else if bin[0] == uint8(StampProtoTypeDNSCryptRelay) {
 		return newDNSCryptRelayStamp(bin)
 	}
@@ -290,6 +295,99 @@ func newDoHServerStamp(bin []byte, ex bool) (ServerStamp, error) {
 	return stamp, nil
 }
 
+
+func newDoTExServerStamp(bin []byte) (ServerStamp, error) {
+	stamp := ServerStamp{Proto: StampProtoTypeDoTEx}
+
+	if len(bin) < 21 {
+		return stamp, errors.New("Stamp is too short")
+	}
+	
+	stamp.Props = ServerInformalProperties(binary.LittleEndian.Uint64(bin[1:9]))
+	binLen := len(bin)
+	pos := 9
+
+	length := int(bin[pos])
+	if 1+length >= binLen-pos {
+		return stamp, errors.New("Invalid stamp 1")
+	}
+	pos++
+	stamp.ServerAddrStr = string(bin[pos : pos+length])
+	pos += length
+
+	for {
+		vlen := int(bin[pos])
+		length = vlen & ^0x80
+		if 1+length >= binLen-pos {
+			return stamp, errors.New("Invalid stamp 2")
+		}
+		pos++
+		if length > 0 {
+			stamp.Hashes = append(stamp.Hashes, bin[pos:pos+length])
+		}
+		pos += length
+		if vlen&0x80 != 0x80 {
+			break
+		}
+	}
+
+	length = int(bin[pos])
+	if 1+length >= binLen-pos {
+		return stamp, errors.New("Invalid stamp 3")
+	}
+	pos++
+	stamp.ProviderName = string(bin[pos : pos+length])
+	pos += length
+
+	length = int(bin[pos])
+	if length >= binLen-pos {
+		return stamp, errors.New("Invalid stamp 4")
+	}
+
+	
+	stamp.SNIBlotUp = SNIBlotUpType(bin[pos])
+	pos++
+
+	length = int(bin[pos])
+	if length >= binLen-pos {
+		return stamp, errors.New("Invalid stamp 5")
+	}
+	pos++
+
+	stamp.SNIShadow = string(bin[pos : pos+length])
+	pos += length
+	
+
+	if pos != binLen {
+		return stamp, errors.New("Invalid stamp (garbage after end)")
+	}
+
+	if len(stamp.ServerAddrStr) > 0 {
+		colIndex := strings.LastIndex(stamp.ServerAddrStr, ":")
+		bracketIndex := strings.LastIndex(stamp.ServerAddrStr, "]")
+		if colIndex < bracketIndex {
+			colIndex = -1
+		}
+		if colIndex < 0 {
+			colIndex = len(stamp.ServerAddrStr)
+			stamp.ServerAddrStr = fmt.Sprintf("%s:%d", stamp.ServerAddrStr, DefaultPort)
+		}
+		if colIndex >= len(stamp.ServerAddrStr)-1 {
+			return stamp, errors.New("Invalid stamp (empty port)")
+		}
+		ipOnly := stamp.ServerAddrStr[:colIndex]
+		portOnly := stamp.ServerAddrStr[colIndex+1:]
+		if _, err := strconv.ParseUint(portOnly, 10, 16); err != nil {
+			return stamp, errors.New("Invalid stamp (port range)")
+		}
+		if net.ParseIP(strings.TrimRight(strings.TrimLeft(ipOnly, "["), "]")) == nil {
+			return stamp, errors.New("Invalid stamp (IP address)")
+		}
+	}
+
+	return stamp, nil
+}
+
 // id(u8)=0x81 addrLen(1) serverAddr
 
 func newDNSCryptRelayStamp(bin []byte) (ServerStamp, error) {
@@ -335,12 +433,14 @@ func newDNSCryptRelayStamp(bin []byte) (ServerStamp, error) {
 
 func (stamp *ServerStamp) String() string {
 	switch stamp.Proto {
-	case StampProtoTypeDNSCrypt:
-		return stamp.dnsCryptString()
 	case StampProtoTypeDoH:
 		return stamp.dohString(false)
 	case StampProtoTypeDoHEx:
 		return stamp.dohString(true)
+	case StampProtoTypeDoTEx:
+		return stamp.dotExString()
+	case StampProtoTypeDNSCrypt:
+		return stamp.dnsCryptString()
 	case StampProtoTypeDNSCryptRelay:
 		return stamp.dnsCryptRelayString()
 	}
@@ -369,8 +469,6 @@ func (stamp *ServerStamp) dnsCryptString() string {
 
 	return "sdns://" + str
 }
-
-
 
 func (stamp *ServerStamp) dohString(ex bool) string {
 	bin := make([]uint8, 9)
@@ -417,6 +515,50 @@ func (stamp *ServerStamp) dohString(ex bool) string {
 		bin = append(bin, uint8(len(stamp.SNIShadow)))
 		bin = append(bin, []uint8(stamp.SNIShadow)...)
 	}
+
+	str := base64.RawURLEncoding.Strict().EncodeToString(bin)
+
+	return "sdns://" + str
+}
+
+
+func (stamp *ServerStamp) dotExString() string {
+	bin := make([]uint8, 9)
+
+	
+	bin[0] = uint8(StampProtoTypeDoTEx)
+
+	binary.LittleEndian.PutUint64(bin[1:9], uint64(stamp.Props))
+
+	serverAddrStr := stamp.ServerAddrStr
+	if strings.HasSuffix(serverAddrStr, ":"+strconv.Itoa(DefaultPort)) {
+		serverAddrStr = serverAddrStr[:len(serverAddrStr)-1-len(strconv.Itoa(DefaultPort))]
+	}
+	bin = append(bin, uint8(len(serverAddrStr)))
+	bin = append(bin, []uint8(serverAddrStr)...)
+
+	if len(stamp.Hashes) == 0 {
+		bin = append(bin, uint8(0))
+	} else {
+		last := len(stamp.Hashes) - 1
+		for i, hash := range stamp.Hashes {
+			vlen := len(hash)
+			if i < last {
+				vlen |= 0x80
+			}
+			bin = append(bin, uint8(vlen))
+			bin = append(bin, hash...)
+		}
+	}
+	bin = append(bin, uint8(len(stamp.ProviderName)))
+	bin = append(bin, []uint8(stamp.ProviderName)...)
+
+	
+	bin = append(bin, uint8(stamp.SNIBlotUp))
+
+	bin = append(bin, uint8(len(stamp.SNIShadow)))
+	bin = append(bin, []uint8(stamp.SNIShadow)...)
+
 
 	str := base64.RawURLEncoding.Strict().EncodeToString(bin)
 

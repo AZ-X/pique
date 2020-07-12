@@ -24,26 +24,16 @@
 
 package main
 
-import (
-	"syscall"
-)
 
-const (
-	processQueryLimitedInformation = 0x1000
-	stillActive                    = 259
-)
+type PIDFile struct {
+}
 
-func processExists(pid int) bool {
-	if h, err := syscall.OpenProcess(processQueryLimitedInformation, false, uint32(pid)); err != nil {
-		return false
-	} else {
-		defer syscall.Close(h)
+// New creates a PIDfile using the specified path.
+func NewPidFile() (*PIDFile, error) {
+	return nil, nil
+}
 
-		var c uint32
-		if err := syscall.GetExitCodeProcess(h, &c); err != nil {
-			return c == stillActive
-		}
-	}
-
-	return true
+// Remove the PIDFile.
+func (file PIDFile) Remove() error {
+	return nil
 }

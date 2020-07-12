@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"sync"
+	"os/signal"
+	"syscall"
 
 	"github.com/jedisct1/dlog"
 )
@@ -18,8 +19,6 @@ const (
 
 var	AppVersion            = "dev-X"
 type App struct {
-	wg    sync.WaitGroup
-	quit  chan struct{}
 	proxy *Proxy
 	flags *ConfigFlags
 }
@@ -67,17 +66,23 @@ func (app *App) AppMain() {
 		dlog.Fatal(err)
 		os.Exit(1)
 	}
-	app.quit = make(chan struct{})
-	app.wg.Add(1)
 	pid, err := NewPidFile()
 	if err != nil {
 		dlog.Fatal(err)
 	}
+	sig := make(chan os.Signal, 10)
+	done := make(chan bool, 1)
+	signal.Notify(sig, syscall.SIGABRT, syscall.SIGALRM, syscall.SIGHUP, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
+	go func() {
+		<-sig
+		if pid != nil {
+				pid.Remove()
+		}
+		done <- true
+		os.Exit(1)
+	}()
 	app.proxy.StartProxy()
-	<-app.quit
+	<-done
 	dlog.Notice("Quit signal received...")
-	if pid != nil {
-		pid.Remove()
-	}
-	app.wg.Done()
+
 }

@@ -241,11 +241,11 @@ func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endp
 	}
 	now := time.Now()
 	var pc net.Conn
-	proxy_ctx := proxy.xTransport.DialContext
-	if proxy_ctx == nil {
+	proxies := proxy.xTransport.Proxies
+	if proxies == nil {
 		pc, err = net.Dial(proto, upstreamAddr.String())
 	} else {
-		pc, err = proxy_ctx(nil, proto, upstreamAddr.String())
+		pc, err = proxies.GetDialContext()(nil, proto, upstreamAddr.String())
 	}
 	if err != nil {
 		return nil, 0, err

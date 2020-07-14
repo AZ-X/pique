@@ -49,6 +49,3 @@ func (d *socksDialer) connect(ctx context.Context, c net.Conn, address string) (
 
 //go:linkname Authenticate http.Authenticate
 func (up *socksUsernamePassword) Authenticate(ctx context.Context, rw io.ReadWriter, auth socksAuthMethod) error
-
-
-

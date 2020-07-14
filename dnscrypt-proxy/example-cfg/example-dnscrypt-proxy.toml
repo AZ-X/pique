@@ -95,11 +95,20 @@ disabled_server_names = []
 force_tcp = false
 
 
-## SOCKS5/HTTP/HTTPS proxy
+## SOCKS5/HTTP/HTTPS proxy 
+## NOTICE: proxies from environment are ignored 
 
 # proxy_uri = 'socks5://127.0.0.1:9050'
 # proxy_uri = 'http://127.0.0.1:8888'
 # proxy_uri = 'https://127.0.0.1:8888'
+
+
+## SOCKS5/HTTP/HTTPS IP of hostname of proxy
+## leave this section comment off unless you want to use hostname e.g. proxy_uri = 'socks5://hostname:9050'
+## since dnscrypt-proxy-r2 nerver use any insecure DNS and sys DNS loops
+
+# proxy_ip = '127.0.0.1'
+# proxy_ip = '[fe80::1%eth0]'
 
 
 ## How long a DNS query will wait for a response, in milliseconds.

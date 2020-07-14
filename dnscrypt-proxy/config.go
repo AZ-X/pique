@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -85,6 +84,7 @@ type Config struct {
 	NetprobeTimeout          int                         `toml:"netprobe_timeout"`
 	OfflineMode              bool                        `toml:"offline_mode"`
 	ProxyURI                 string                      `toml:"proxy_uri"`
+	ProxyIP                  string                      `toml:"proxy_ip"`
 	BlockedQueryResponse     string                      `toml:"blocked_query_response"`
 	QueryMeta                []string                    `toml:"query_meta"`
 	AnonymizedDNS            AnonymizedDNSConfig         `toml:"anonymized_dns"`
@@ -280,11 +280,19 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	proxy.xTransport.keepAlive = time.Duration(config.KeepAlive) * time.Second
 	proxy.xTransport.transports = make(map[string]*TransportHolding)
 	if len(config.ProxyURI) > 0 {
-		httpProxyURL, err := url.Parse(config.ProxyURI)
+		globalProxy, err := url.Parse(config.ProxyURI)
 		if err != nil {
-			dlog.Fatalf("failed to parse the HTTP proxy URL [%v]", config.ProxyURI)
+			dlog.Fatalf("failed to parse the proxy URL [%v]", config.ProxyURI)
 		}
-		proxy.xTransport.HttpProxyFunction = http.ProxyURL(httpProxyURL)
+		proxy.xTransport.Proxies = InitProxies()
+		var ep *Endpoint
+		if len(config.ProxyIP) > 0 {
+			
+			if ep, err = ResolveEndpoint(config.ProxyIP); err !=nil {
+				dlog.Fatalf("failed to parse the proxy IP [%v]", config.ProxyIP)
+			}
+		}
+		proxy.xTransport.Proxies.AddGlobalProxy(globalProxy, ep)
 	}
 
 	proxy.blockedQueryResponse = config.BlockedQueryResponse
@@ -638,7 +646,7 @@ func (config *Config) loadSource(proxy *Proxy, requiredProps stamps.ServerInform
 			switch {
 			case config.SourceDNSCrypt && proto == "DNSCrypt":
 			case config.SourceDoH && proto == "DoH":
-				if err := proxy.xTransport.buildTransport(registeredServer); err != nil {
+				if err := proxy.xTransport.buildTransport(registeredServer, nil); err != nil {
 					dlog.Fatal(err)
 					return err;
 				}

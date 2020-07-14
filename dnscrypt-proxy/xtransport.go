@@ -33,6 +33,8 @@ type TransportHolding struct {
 	DomainName                      string
 	SNIShadow                       string
 	SNIBlotUp                       stamps.SNIBlotUpType
+	Proxies                         *NestedProxy // individual proxies chain
+
 }
 
 type XTransport struct {
@@ -41,8 +43,7 @@ type XTransport struct {
 	timeout                         time.Duration
 	tlsDisableSessionTickets        bool
 	tlsCipherSuite                  []uint16
-	DialContext                     func(ctx context.Context, network, addr string) (net.Conn, error)
-	HttpProxyFunction               func(*http.Request) (*url.URL, error)
+	Proxies                         *NestedProxy
 }
 
 type HTTPSContext struct {
@@ -64,16 +65,13 @@ func NewXTransport() *XTransport {
 	return &xTransport
 }
 
-func ParseIP(ipStr string) net.IP {
-	return net.ParseIP(strings.TrimRight(strings.TrimLeft(ipStr, "["), "]"))
-}
-
 func (xTransport *XTransport) closeIdleConnections() {
 
 }
 
+
 //general template for all TLS conn;
-func (xTransport *XTransport) buildTransport(server RegisteredServer) error {
+func (xTransport *XTransport) buildTransport(server RegisteredServer, _ *NestedProxy) error {
 	dlog.Debugf("building transport for [%s]", server.name)
 	timeout := xTransport.timeout
 	stamp := server.stamp
@@ -102,9 +100,6 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer) error {
 	ExpectContinueTimeout:  timeout,
 	MaxResponseHeaderBytes: 4096,
 	}
-	if xTransport.HttpProxyFunction != nil {
-		transport.Proxy = xTransport.HttpProxyFunction
-	}
 
 	th := &TransportHolding{
 		Name:       &server.name,
@@ -115,7 +110,7 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer) error {
 	th.Transport = transport
 	th.EPRing = epring
 	transport.TLSClientConfig = th.buildTLS(xTransport)
-	if err := th.buildTransport(xTransport); err != nil {
+	if err := th.buildTransport(xTransport, xTransport.Proxies); err != nil {
 		return err
 	}
 	xTransport.transports[server.name] = th
@@ -204,13 +199,15 @@ func (th *TransportHolding) buildTLS(xTransport *XTransport) (cfg *tls.Config) {
 	return cfg
 }
 
-func (th *TransportHolding) buildTransport(xTransport *XTransport) error {
-	if xTransport.HttpProxyFunction != nil {
+func (th *TransportHolding) buildTransport(xTransport *XTransport, proxies *NestedProxy) error {
+	transport := th.Transport
+	if proxies != nil {
+		dc, pf := proxies.GetTransportProxy()
+		transport.Proxy = pf
+		transport.DialTLSContext = dc
 		return nil
 	}
-
 	alive := xTransport.keepAlive
-	transport := th.Transport
 	cfg := transport.TLSClientConfig
 
 	getDialContext := func(t *TransportHolding, ctx context.Context, netw, addr string, isTLS bool) (net.Conn, error) {
@@ -261,7 +258,8 @@ Go:
 	if timeout <= 0 {
 		timeout = xTransport.timeout
 	}
-	if xTransport.DialContext == nil {
+	proxies := xTransport.Proxies.Merge(th.Proxies)
+	if proxies == nil {
 		dialer := &net.Dialer{Deadline: time.Now().Add(timeout), KeepAlive: xTransport.keepAlive, FallbackDelay: -1}
 		if ctx == nil {
 			conn, err = net.Dial("tcp", th.EPRing.String())
@@ -269,7 +267,7 @@ Go:
 			conn, err = dialer.DialContext(ctx, "tcp", th.EPRing.String())
 		}
 	} else {
-		conn, err = xTransport.DialContext(ctx, "tcp", th.EPRing.String())
+		conn, err = xTransport.Proxies.GetDialContext()(ctx, "tcp", th.EPRing.String())
 	}
 	if err != nil {
 		goto Error
@@ -359,10 +357,7 @@ Go:
 	//	url2.RawQuery = qs.Encode()
 	//	url = &url2
 	//}
-	if xTransport.HttpProxyFunction == nil && strings.HasSuffix(url.Host, ".onion") {
-		err = errors.New("Onion service is not reachable without Tor")
-		goto Error
-	}
+
 	req := &http.Request{
 		Method: method,
 		URL:    url,

@@ -59,6 +59,7 @@ type DNSCryptInfo struct {
 	SharedKey          [32]byte
 	Version            CryptoConstruction
 	knownBugs          ServerBugs
+	Proxies            *NestedProxy // individual proxies chain
 }
 
 func (info DNSCryptInfo) Proto() string {

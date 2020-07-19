@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
@@ -21,11 +22,6 @@ import (
 	"github.com/jedisct1/dlog"
 	stamps "stammel"
 	"github.com/miekg/dns"
-	"golang.org/x/crypto/ed25519"
-)
-
-const (
-	RTTEwmaDecay = 10.0
 )
 
 type RegisteredServer struct {
@@ -86,12 +82,10 @@ func (info DOTInfo) Proto() string {
 
 type ServerInfo struct {
 	Name               string
-	Proto              stamps.StampProtoType
 	Info               ServerInterface
 	lastActionTS       time.Time
 	Timeout            time.Duration
 	rtt                ewma.MovingAverage
-	initialRtt         int
 }
 
 type LBStrategy int
@@ -148,8 +142,6 @@ func (serversInfo *ServersInfo) refreshServer(proxy *Proxy, name string, stamp *
 	if name != newServer.Name {
 		dlog.Fatalf("[%s] != [%s]", name, newServer.Name)
 	}
-	newServer.rtt = ewma.NewMovingAverage(RTTEwmaDecay)
-	newServer.rtt.Set(float64(newServer.initialRtt))
 	isNew = true
 	for i, oldServer := range serversInfo.inner {
 		if oldServer.Name == name {
@@ -181,7 +173,7 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 		} 
 	}
 	sort.SliceStable(serversInfo.inner, func(i, j int) bool {
-		return serversInfo.inner[i].initialRtt < serversInfo.inner[j].initialRtt
+		return serversInfo.inner[i].rtt.Value() < serversInfo.inner[j].rtt.Value()
 	})
 	if(liveServers > 0) {
 		inner := serversInfo.inner
@@ -189,11 +181,11 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 		if innerLen > 1 {
 			dlog.Notice("sorted latencies:")
 			for i := 0; i < innerLen; i++ {
-				dlog.Noticef("- %5dms %s", inner[i].initialRtt, inner[i].Name)
+				dlog.Noticef("- %5.fms %s", inner[i].rtt.Value(), inner[i].Name)
 			}
 		}
 		if innerLen > 0 {
-			dlog.Noticef("serve with the lowest initial latency: %s (rtt: %dms)", inner[0].Name, inner[0].initialRtt)
+			dlog.Noticef("serve with the lowest initial latency: %s (rtt: %.fms)", inner[0].Name, inner[0].rtt.Value())
 		}
 	}
 	return liveServers, err
@@ -304,7 +296,7 @@ func routes(proxy *Proxy, name string) ([]*Endpoint, error) {
 			return nil, fmt.Errorf("Route declared for [%v] but an empty relay list", name)
 		} else if relayStamp, err := stamps.NewServerStampFromString(relayName); err == nil {
 			relayCandidateStamp = &relayStamp
-		} else if _, err := net.ResolveUDPAddr("udp", relayName); err == nil {
+		} else if _, err := ResolveEndpoint(relayName); err == nil {
 			relayCandidateStamp = &stamps.ServerStamp{
 				ServerAddrStr: relayName,
 				Proto:         stamps.StampProtoTypeDNSCryptRelay,
@@ -380,12 +372,12 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStam
 
 	certInfo.knownBugs = knownBugs
 	serverInfo := ServerInfo{
-		Proto:              stamps.StampProtoTypeDNSCrypt,
 		Info:				certInfo,
 		Name:               name,
 		Timeout:            proxy.timeout,
-		initialRtt:         rtt,
+		rtt:                &ewma.VariableEWMA{},
 	}
+	serverInfo.rtt.Set(float64(rtt))
 	certInfo.ServerInfo = &serverInfo
 	return serverInfo, nil
 }
@@ -432,18 +424,14 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 			errors.New("TLS handshake failed")
 		}
 		dlog.Infof("[%s] TLS version: %x - cipher suite: %v", name, state.Version, state.CipherSuite)
-		showCerts := proxy.showCerts
 		found := false
 		var wantedHash [32]byte
 		for _, cert := range state.PeerCertificates {
 			l := len(cert.RawTBSCertificate)
 			h := sha256.Sum256(cert.RawTBSCertificate)
 
-			if showCerts {
-				dlog.Noticef("advertised cert: [%s] [%x] [%i]", cert.Subject, h,l)
-			} else {
-				dlog.Debugf("advertised cert: [%s] [%x]", cert.Subject, h)
-			}
+			dlog.Debugf("advertised cert: [%s] [%x] [%d]", cert.Subject, h, l)
+
 			for _, hash := range stamp.Hashes {
 				if len(hash) == len(wantedHash) {
 					copy(wantedHash[:], hash)
@@ -504,12 +492,12 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	}
 	
 	serverInfo := ServerInfo{
-		Proto:      stamp.Proto,
 		Info:		info,
 		Name:       name,
 		Timeout:    proxy.timeout,
-		initialRtt: xrtt,
+		rtt:        &ewma.VariableEWMA{},
 	}
+	serverInfo.rtt.Set(float64(xrtt))
 	info.ServerInfo = &serverInfo
 	return serverInfo, nil
 }
@@ -532,18 +520,14 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 			dlog.Warnf("[%s] does not support HTTP/2", name)
 		}
 		dlog.Infof("[%s] TLS version: %x - protocol: %v - cipher suite: %v", name, state.Version, protocol, state.CipherSuite)
-		showCerts := proxy.showCerts
 		found := false
 		var wantedHash [32]byte
 		for _, cert := range state.PeerCertificates {
 			l := len(cert.RawTBSCertificate)
 			h := sha256.Sum256(cert.RawTBSCertificate)
 
-			if showCerts {
-				dlog.Noticef("advertised cert: [%s] [%x] [%i]", cert.Subject, h,l)
-			} else {
-				dlog.Debugf("advertised cert: [%s] [%x]", cert.Subject, h)
-			}
+			dlog.Debugf("advertised cert: [%s] [%x] [%d]", cert.Subject, h, l)
+
 			for _, hash := range stamp.Hashes {
 				if len(hash) == len(wantedHash) {
 					copy(wantedHash[:], hash)
@@ -617,12 +601,12 @@ Retry:
 	}
 	
 	serverInfo := ServerInfo{
-		Proto:      stamp.Proto,
 		Info:		info,
 		Name:       name,
 		Timeout:    proxy.timeout,
-		initialRtt: xrtt,
+		rtt:        &ewma.VariableEWMA{},
 	}
+	serverInfo.rtt.Set(float64(xrtt))
 	info.ServerInfo = &serverInfo
 	return serverInfo, nil
 }

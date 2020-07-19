@@ -2,15 +2,16 @@ package main
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/binary"
 	"errors"
 	"net"
 	"strings"
 	"time"
+	
 
 	"github.com/jedisct1/dlog"
 	"github.com/miekg/dns"
-	"golang.org/x/crypto/ed25519"
 )
 
 func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk ed25519.PublicKey, upstreamAddr *Endpoint, providerName string, isNew bool, relays []*Endpoint) (*DNSCryptInfo, int, error) {

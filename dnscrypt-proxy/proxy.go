@@ -78,7 +78,6 @@ type Proxy struct {
 	blockIPFile                   string
 	blockIPLogFile                string
 	blockIPFormat                 string
-	forwardFile                   string
 	cloakFile                     string
 	pluginsGlobals                PluginsGlobals
 	sources                       []*Source
@@ -97,7 +96,6 @@ type Proxy struct {
 	queryMeta                     []string
 	routes                        *map[string][]string
 	serversWithBrokenQueryPadding []string
-	showCerts                     bool
 }
 
 func program_dbg_full_log(args ...interface{}) {
@@ -209,9 +207,6 @@ func (proxy *Proxy) StartProxy() {
 	liveServers, err := proxy.serversInfo.refresh(proxy)
 	if liveServers > 0 {
 		proxy.certIgnoreTimestamp = false
-	}
-	if proxy.showCerts {
-		os.Exit(0)
 	}
 	if liveServers > 0 {
 		dlog.Noticef("dnscrypt-proxy is ready - live servers: %d", liveServers)
@@ -368,6 +363,10 @@ func (proxy *Proxy) exchangeDnScRypt(serverInfo *DNSCryptInfo, packet []byte, se
 Error:
 	return nil, err
 Go:
+	proxies := proxy.xTransport.Proxies.Merge(serverInfo.Proxies)
+	if serverProto == "udp" && !proxies.UDPProxies() {
+		serverProto = "tcp"
+	}
 	sharedKey , encryptedQuery , clientNonce, err := proxy.Encrypt(serverInfo, packet, serverProto)
 	if err != nil {
 		program_dbg_full_log("exchangeDnScRypt E01")
@@ -379,8 +378,7 @@ Go:
 		serverInfo.RelayAddr = serverInfo.RelayAddr.Next()
 	}
 	var pc net.Conn
-	proxies := proxy.xTransport.Proxies.Merge(serverInfo.Proxies)
-	if proxies == nil {
+	if !proxies.HasValue() {
 		pc, err = net.Dial(serverProto, upstreamAddr.String())
 	} else {
 		pc, err = proxies.GetDialContext()(nil, serverProto, upstreamAddr.String())
@@ -542,7 +540,7 @@ Go:
 	}
 	pluginsState.serverName = &(serverInfo.Name)
 	serverInfo.noticeBegin(proxy)
-	switch serverInfo.Proto.String() {
+	switch serverInfo.Info.Proto() {
 		case "DoH":
 			pluginsState.ApplyEDNS0PaddingQueryPlugins(request)
 			info := (serverInfo.Info).(*DOHInfo)
@@ -557,7 +555,7 @@ Go:
 			}
 			response, err = proxy.ExchangeDnScRypt(info, request, serverProto)
 		default:
-			dlog.Fatalf("unsupported server protocol:[%s]", serverInfo.Proto.String())
+			dlog.Fatalf("unsupported server protocol:[%s]", serverInfo.Info.Proto())
 			goto SvrFault
 	}
 

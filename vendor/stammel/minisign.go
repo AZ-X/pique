@@ -1,12 +1,12 @@
 package stammel
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
 	"io/ioutil"
 	"strings"
 
-	"golang.org/x/crypto/ed25519"
 )
 
 type PublicKey struct {

@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/dsa"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	_ "crypto/md5"
 	"crypto/rand"
@@ -20,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/ed25519"
 )
 
 // DNSSEC encryption algorithm codes.

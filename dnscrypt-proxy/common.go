@@ -3,13 +3,14 @@ package main
 import (
 	"bytes"
 	"container/ring"
+	"errors"
 	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 	"unicode"
-	
+	_ "unsafe"
 	"github.com/miekg/dns"
 )
 //only if raw msg dumping
@@ -152,12 +153,19 @@ func TrimAndStripInlineComments(str string) string {
 	return strings.TrimFunc(str, unicode.IsSpace)
 }
 
+//go:linkname ParseIPZone net.parseIPZone
+func ParseIPZone(s string) (net.IP, string)
+
 func ResolveEndpoint(hostport string) (*Endpoint, error) {
 	host, port, err := ExtractHostAndPort(hostport, 0)
 	if err != nil {
 		return nil, err
 	}
-	ipaddr, err := net.ResolveIPAddr("ip", host)
+	ip, zone := ParseIPZone(host)
+	if ip == nil {
+		return nil, errors.New("ResolveEndpoint error: illegal IP format")
+	}
+	ipaddr := &net.IPAddr{IP:ip, Zone:zone}
 	if err != nil {
 		return nil, err
 	}

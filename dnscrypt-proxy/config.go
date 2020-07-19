@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -61,7 +60,6 @@ type Config struct {
 	BlockName                BlockNameConfig             `toml:"blacklist"`
 	WhitelistName            WhitelistNameConfig         `toml:"whitelist"`
 	BlockIP                  BlockIPConfig               `toml:"ip_blacklist"`
-	ForwardFile              string                      `toml:"forwarding_rules"`
 	CloakFile                string                      `toml:"cloaking_rules"`
 	StaticsConfig            map[string]StaticConfig     `toml:"static"`
 	SourcesConfig            map[string]SourceConfig     `toml:"sources"`
@@ -200,14 +198,10 @@ type ServerSummary struct {
 }
 
 type ConfigFlags struct {
-	List                    *bool
-	ListAll                 *bool
-	JSONOutput              *bool
 	Check                   *bool
 	ConfigFile              *string
 	Child                   *bool
 	NetprobeTimeoutOverride *int
-	ShowCerts               *bool
 }
 
 func findConfigFile(configFile *string) (string, error) {
@@ -413,7 +407,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	proxy.blockIPFormat = config.BlockIP.Format
 	proxy.blockIPLogFile = config.BlockIP.LogFile
 
-	proxy.forwardFile = config.ForwardFile
 	proxy.cloakFile = config.CloakFile
 
 	if configRoutes := config.AnonymizedDNS.Routes; configRoutes != nil {
@@ -424,19 +417,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		proxy.routes = &routes
 	}
 	proxy.serversWithBrokenQueryPadding = config.BrokenImplementations.BrokenQueryPadding
-
-	if *flags.ListAll {
-		config.ServerNames = nil
-		config.DisabledServerNames = nil
-		config.SourceRequireDNSSEC = false
-		config.SourceRequireNoFilter = false
-		config.SourceRequireNoLog = false
-		config.SourceIPv4 = true
-		config.SourceIPv6 = true
-		config.SourceDoH = true
-		config.SourceDoT = true
-		config.SourceDNSCrypt = true
-	}
 
 	netprobeTimeout := config.NetprobeTimeout
 	flag.Visit(func(flag *flag.Flag) {
@@ -449,10 +429,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		netprobeAddress = config.NetprobeAddress
 	}
 	
-	proxy.showCerts = *flags.ShowCerts || len(os.Getenv("SHOW_CERTS")) > 0
-	if proxy.showCerts {
-		proxy.listenAddresses = nil
-	}
 	if err := NetProbe(netprobeAddress, netprobeTimeout); err != nil {
 		return err
 	}
@@ -464,10 +440,7 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 			return errors.New("No servers configured")
 		}
 	}
-	if *flags.List || *flags.ListAll {
-		config.printRegisteredServers(proxy, *flags.JSONOutput)
-		os.Exit(0)
-	}
+	
 	if proxy.routes != nil && len(*proxy.routes) > 0 {
 		hasSpecificRoutes := false
 		for _, server := range proxy.registeredServers {
@@ -493,48 +466,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		os.Exit(0)
 	}
 	return nil
-}
-
-func (config *Config) printRegisteredServers(proxy *Proxy, jsonOutput bool) {
-	var summary []ServerSummary
-	for _, registeredServer := range proxy.registeredServers {
-		addrStr, port := registeredServer.stamp.ServerAddrStr, stamps.DefaultPort
-		var hostAddr string
-		hostAddr, port, _ = ExtractHostAndPort(addrStr, port)
-		addrs := make([]string, 0)
-		if registeredServer.stamp.Proto == stamps.StampProtoTypeDoH && len(registeredServer.stamp.ProviderName) > 0 {
-			providerName := registeredServer.stamp.ProviderName
-			var host string
-			host, port, _ = ExtractHostAndPort(providerName, port)
-			addrs = append(addrs, host)
-		}
-		if len(addrStr) > 0 {
-			addrs = append(addrs, hostAddr)
-		}
-		serverSummary := ServerSummary{
-			Name:        registeredServer.name,
-			Proto:       registeredServer.stamp.Proto.String(),
-			IPv6:        strings.HasPrefix(addrStr, "["),
-			Ports:       []int{port},
-			Addrs:       addrs,
-			DNSSEC:      registeredServer.stamp.Props&stamps.ServerInformalPropertyDNSSEC != 0,
-			NoLog:       registeredServer.stamp.Props&stamps.ServerInformalPropertyNoLog != 0,
-			NoFilter:    registeredServer.stamp.Props&stamps.ServerInformalPropertyNoFilter != 0,
-			Stamp:       registeredServer.stamp.String(),
-		}
-		if jsonOutput {
-			summary = append(summary, serverSummary)
-		} else {
-			fmt.Println(serverSummary.Name)
-		}
-	}
-	if jsonOutput {
-		jsonStr, err := json.MarshalIndent(summary, "", " ")
-		if err != nil {
-			dlog.Fatal(err)
-		}
-		fmt.Print(string(jsonStr))
-	}
 }
 
 func (config *Config) loadSources(proxy *Proxy) error {

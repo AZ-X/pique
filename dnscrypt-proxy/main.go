@@ -32,14 +32,10 @@ func main() {
 
 	version := flag.Bool("version", false, "print current proxy version")
 	flags := ConfigFlags{}
-	flags.List = flag.Bool("list", false, "print the list of available resolvers for the enabled filters")
-	flags.ListAll = flag.Bool("list-all", false, "print the complete list of available resolvers, ignoring filters")
-	flags.JSONOutput = flag.Bool("json", false, "output list as JSON")
 	flags.Check = flag.Bool("check", false, "check the configuration file and exit")
 	flags.ConfigFile = flag.String("config", DefaultConfigFileName, "Path to the configuration file")
 	flags.Child = flag.Bool("child", false, "Invokes program as a child process")
 	flags.NetprobeTimeoutOverride = flag.Int("netprobe-timeout", 60, "Override the netprobe timeout")
-	flags.ShowCerts = flag.Bool("show-certs", false, "print DoH certificate chain hashes")
 
 	flag.Parse()
 
@@ -76,7 +72,7 @@ func (app *App) AppMain() {
 	go func() {
 		<-sig
 		if pid != nil {
-				pid.Remove()
+			pid.Remove()
 		}
 		done <- true
 		os.Exit(1)

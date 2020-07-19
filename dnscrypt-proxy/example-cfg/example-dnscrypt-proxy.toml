@@ -280,17 +280,6 @@ block_undelegated = true
 reject_ttl = 600
 
 
-
-##################################################################################
-#        Route queries for specific domains to a dedicated set of servers        #
-##################################################################################
-
-## See the `example-forwarding-rules.txt` file for an example
-
-# forwarding_rules = 'forwarding-rules.txt'
-
-
-
 ###############################
 #        Cloaking rules       #
 ###############################

@@ -121,9 +121,6 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 	if proxy.cache {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginCache)))
 	}
-	if len(proxy.forwardFile) != 0 {
-		*queryPlugins = append(*queryPlugins, Plugin(new(PluginForward)))
-	}
 	if proxy.pluginBlockUnqualified {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginBlockUnqualified)))
 	}

@@ -300,7 +300,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	}
 	dlog.Noticef("dnscrypt-protocol bind to %s", proxy.mainProto)
 	proxy.certRefreshDelay = time.Duration(Max(60, config.CertRefreshDelay)) * time.Minute
-	proxy.certRefreshDelayAfterFailure = time.Duration(10 * time.Second)
 	proxy.certIgnoreTimestamp = config.CertIgnoreTimestamp
 	proxy.ephemeralKeys = config.EphemeralKeys
 	if len(config.ListenAddresses) == 0 {

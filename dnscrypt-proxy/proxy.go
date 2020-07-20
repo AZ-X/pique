@@ -46,7 +46,6 @@ type Proxy struct {
 	serversInfo                   ServersInfo
 	timeout                       time.Duration
 	certRefreshDelay              time.Duration
-	certRefreshDelayAfterFailure  time.Duration
 	certIgnoreTimestamp           bool
 	mainProto                     string
 	listenAddresses               []string
@@ -593,18 +592,18 @@ Response:
 			}
 		}
 	}
-	answer := EMPTY
-	for _, asr := range response.Answer {
-		switch asr.Header().Rrtype {
-		case dns.TypeA:
-			answer = asr.(*dns.A).A.String()
-			break
-		case dns.TypeAAAA:
-			answer = asr.(*dns.AAAA).AAAA.String()
-			break
-		}
-	}
 	if !isRefreshing {
+		answer := EMPTY
+		for _, asr := range response.Answer {
+			switch asr.Header().Rrtype {
+			case dns.TypeA:
+				answer = asr.(*dns.A).A.String()
+				break
+			case dns.TypeAAAA:
+				answer = asr.(*dns.AAAA).AAAA.String()
+				break
+			}
+		}
 		if pluginsState.ServerName() == NonSvrName {
 			question := EMPTY
 			if len(response.Question) > 0 {

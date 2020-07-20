@@ -372,7 +372,7 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStam
 
 	certInfo.knownBugs = knownBugs
 	serverInfo := ServerInfo{
-		Info:				certInfo,
+		Info:               certInfo,
 		Name:               name,
 		Timeout:            proxy.timeout,
 		rtt:                &ewma.VariableEWMA{},
@@ -492,7 +492,7 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	}
 	
 	serverInfo := ServerInfo{
-		Info:		info,
+		Info:       info,
 		Name:       name,
 		Timeout:    proxy.timeout,
 		rtt:        &ewma.VariableEWMA{},
@@ -547,7 +547,7 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 		return nil
 	}
 	info := &DOHInfo{
-		Path:		stamp.Path,
+		Path:       stamp.Path,
 		useGet:     useGet,
 	}
 	retry := 3
@@ -601,7 +601,7 @@ Retry:
 	}
 	
 	serverInfo := ServerInfo{
-		Info:		info,
+		Info:       info,
 		Name:       name,
 		Timeout:    proxy.timeout,
 		rtt:        &ewma.VariableEWMA{},

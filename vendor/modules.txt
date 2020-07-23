@@ -1,9 +1,9 @@
 # github.com/BurntSushi/toml v0.3.1
 ## explicit
 github.com/BurntSushi/toml
-# github.com/VividCortex/ewma v1.1.1
+# github.com/RobinUS2/golang-moving-average v1.0.0
 ## explicit
-github.com/VividCortex/ewma
+github.com/RobinUS2/golang-moving-average
 # github.com/hashicorp/go-immutable-radix v1.2.0
 ## explicit
 github.com/hashicorp/go-immutable-radix

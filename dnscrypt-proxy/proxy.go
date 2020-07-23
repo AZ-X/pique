@@ -510,6 +510,7 @@ Go:
 	var isRefreshing bool
 	var id uint16
 	var relayIndex string
+	var timer time.Time
 	if len(query) < MinDNSPacketSize || len(query) > MaxDNSUDPPacketSize {
 		pluginsState.returnCode = PluginsStateReject
 		goto Response
@@ -538,7 +539,7 @@ Go:
 		goto SvrFault
 	}
 	pluginsState.serverName = &(serverInfo.Name)
-	serverInfo.noticeBegin(proxy)
+	timer = time.Now()
 	switch serverInfo.Info.Proto() {
 		case "DoH":
 			pluginsState.ApplyEDNS0PaddingQueryPlugins(request)
@@ -557,9 +558,9 @@ Go:
 			dlog.Fatalf("unsupported server protocol:[%s]", serverInfo.Info.Proto())
 			goto SvrFault
 	}
-
+	
 	if err != nil {
-		serverInfo.noticeFailure(proxy)
+		serverInfo.rtt.Add(float64(proxy.timeout.Nanoseconds() / 1000000))
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout(){
 			pluginsState.returnCode = PluginsReturnCodeServerTimeout
 			dlog.Debugf("%v [%s]", err, pluginsState.ServerName())
@@ -574,7 +575,8 @@ Go:
 			goto Response
 		}
 	} else {
-		serverInfo.noticeSuccess(proxy)
+		elapsed := time.Since(timer).Nanoseconds() / 1000000
+		serverInfo.rtt.Add(float64(elapsed))
 	}
 	goto Response
 SvrFault:

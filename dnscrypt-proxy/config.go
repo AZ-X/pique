@@ -43,7 +43,6 @@ type Config struct {
 	CertIgnoreTimestamp      bool                        `toml:"cert_ignore_timestamp"`
 	EphemeralKeys            bool                        `toml:"dnscrypt_ephemeral_keys"`
 	LBStrategy               string                      `toml:"lb_strategy"`
-	LBEstimator              bool                        `toml:"lb_estimator"`
 	BlockIPv6                bool                        `toml:"block_ipv6"`
 	BlockUnqualified         bool                        `toml:"block_unqualified"`
 	BlockUndelegated         bool                        `toml:"block_undelegated"`
@@ -121,7 +120,6 @@ func newConfig() Config {
 		TLSCipherSuite:           nil,
 		NetprobeTimeout:          60,
 		OfflineMode:              false,
-		LBEstimator:              true,
 		BlockedQueryResponse:     "hinfo",
 		BrokenImplementations: BrokenImplementationsConfig{
 			BrokenQueryPadding: []string{"cisco", "cisco-ipv6", "cisco-familyshield", "quad9-dnscrypt-ip4-filter-alt", "quad9-dnscrypt-ip4-filter-pri", "quad9-dnscrypt-ip4-nofilter-alt", "quad9-dnscrypt-ip4-nofilter-pri", "quad9-dnscrypt-ip6-filter-alt", "quad9-dnscrypt-ip6-filter-pri", "quad9-dnscrypt-ip6-nofilter-alt", "quad9-dnscrypt-ip6-nofilter-pri"},
@@ -323,7 +321,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		dlog.Warnf("unknown load balancing strategy: [%s]", config.LBStrategy)
 	}
 	proxy.serversInfo.lbStrategy = lbStrategy
-	proxy.serversInfo.lbEstimator = config.LBEstimator
 
 	proxy.daemonize = config.Daemonize
 	proxy.pluginBlockIPv6 = config.BlockIPv6

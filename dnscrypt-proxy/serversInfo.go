@@ -14,16 +14,16 @@ import (
 	"net"
 	"sort"
 	"strings"
-	"sync"
 	"context"
 	"time"
 	
-	"github.com/VividCortex/ewma"
 	"github.com/jedisct1/dlog"
+	mm "github.com/RobinUS2/golang-moving-average"
 	stamps "stammel"
 	"github.com/miekg/dns"
 )
 
+const Windows = 7
 type RegisteredServer struct {
 	name        string
 	stamp       *stamps.ServerStamp
@@ -83,9 +83,8 @@ func (info DOTInfo) Proto() string {
 type ServerInfo struct {
 	Name               string
 	Info               ServerInterface
-	lastActionTS       time.Time
 	Timeout            time.Duration
-	rtt                ewma.MovingAverage
+	rtt                *mm.ConcurrentMovingAverage
 }
 
 type LBStrategy int
@@ -101,15 +100,13 @@ const (
 const DefaultLBStrategy = LBStrategyP2
 
 type ServersInfo struct {
-	sync.Mutex
 	inner             []*ServerInfo
 	registeredServers []RegisteredServer
 	lbStrategy        LBStrategy
-	lbEstimator       bool
 }
 
 func NewServersInfo() ServersInfo {
-	return ServersInfo{lbStrategy: DefaultLBStrategy, lbEstimator: true, registeredServers: make([]RegisteredServer, 0)}
+	return ServersInfo{lbStrategy: DefaultLBStrategy, registeredServers: make([]RegisteredServer, 0)}
 }
 
 func (serversInfo *ServersInfo) registerServer(name string, stamp *stamps.ServerStamp) {
@@ -173,7 +170,7 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 		} 
 	}
 	sort.SliceStable(serversInfo.inner, func(i, j int) bool {
-		return serversInfo.inner[i].rtt.Value() < serversInfo.inner[j].rtt.Value()
+		return serversInfo.inner[i].rtt.Avg() < serversInfo.inner[j].rtt.Avg()
 	})
 	if(liveServers > 0) {
 		inner := serversInfo.inner
@@ -181,57 +178,21 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 		if innerLen > 1 {
 			dlog.Notice("sorted latencies:")
 			for i := 0; i < innerLen; i++ {
-				dlog.Noticef("- %5.fms %s", inner[i].rtt.Value(), inner[i].Name)
+				dlog.Noticef("- %5.fms %s", inner[i].rtt.Avg(), inner[i].Name)
 			}
 		}
 		if innerLen > 0 {
-			dlog.Noticef("serve with the lowest initial latency: %s (rtt: %.fms)", inner[0].Name, inner[0].rtt.Value())
+			dlog.Noticef("serve with the lowest initial latency: %s (rtt: %.fms)", inner[0].Name, inner[0].rtt.Avg())
 		}
 	}
 	return liveServers, err
 }
 
-func (serversInfo *ServersInfo) estimatorUpdate() {
-	serversInfo.Lock()
-	defer serversInfo.Unlock()
-	candidate := rand.Intn(len(serversInfo.inner))
-	if candidate == 0 {
-		return
-	}
-	candidateRtt, currentBestRtt := serversInfo.inner[candidate].rtt.Value(), serversInfo.inner[0].rtt.Value()
-	if currentBestRtt < 0 {
-		currentBestRtt = candidateRtt
-		serversInfo.inner[0].rtt.Set(currentBestRtt)
-	}
-	partialSort := false
-	if candidateRtt < currentBestRtt {
-		serversInfo.inner[candidate], serversInfo.inner[0] = serversInfo.inner[0], serversInfo.inner[candidate]
-		partialSort = true
-		dlog.Debugf("preferred candidate: %v (rtt: %d vs previous: %d)", serversInfo.inner[0].Name, int(candidateRtt), int(currentBestRtt))
-	} else if candidateRtt > 0 && candidateRtt >= currentBestRtt*4.0 {
-		if time.Since(serversInfo.inner[candidate].lastActionTS) > time.Duration(1*time.Minute) {
-			serversInfo.inner[candidate].rtt.Add(MinF(MaxF(candidateRtt/2.0, currentBestRtt*2.0), candidateRtt))
-			dlog.Debugf("candidate [%s], lowering its RTT from %d to %d (best: %d)", serversInfo.inner[candidate].Name, int(candidateRtt), int(serversInfo.inner[candidate].rtt.Value()), int(currentBestRtt))
-			partialSort = true
-		}
-	}
-	if partialSort {
-		serversCount := len(serversInfo.inner)
-		for i := 1; i < serversCount; i++ {
-			if serversInfo.inner[i-1].rtt.Value() > serversInfo.inner[i].rtt.Value() {
-				serversInfo.inner[i-1], serversInfo.inner[i] = serversInfo.inner[i], serversInfo.inner[i-1]
-			}
-		}
-	}
-}
 
 func (serversInfo *ServersInfo) getOne(request *dns.Msg, id uint16) *ServerInfo {
 	serversCount := len(serversInfo.inner)
 	if serversCount <= 0 {
 		return nil
-	}
-	if serversInfo.lbEstimator {
-		serversInfo.estimatorUpdate()
 	}
 	var candidate int
 	switch serversInfo.lbStrategy {
@@ -246,9 +207,9 @@ func (serversInfo *ServersInfo) getOne(request *dns.Msg, id uint16) *ServerInfo 
 	}
 	serverInfo := serversInfo.inner[candidate]
 	if request == nil || len(request.Question) < 1 {
-		dlog.Debugf("[%s](%dms)", (*serverInfo).Name, int((*serverInfo).rtt.Value()))
+		dlog.Debugf("[%s](%dms)", serverInfo.Name, int(serverInfo.rtt.Avg()))
 	} else {
-		dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms", id, request.Question[0].Name, (*serverInfo).Name, int((*serverInfo).rtt.Value()))
+		dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms", id, request.Question[0].Name, serverInfo.Name, int(serverInfo.rtt.Avg()))
 	}
 	return serverInfo
 }
@@ -375,9 +336,9 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStam
 		Info:               certInfo,
 		Name:               name,
 		Timeout:            proxy.timeout,
-		rtt:                &ewma.VariableEWMA{},
+		rtt:                mm.Concurrent(mm.New(Windows)),
 	}
-	serverInfo.rtt.Set(float64(rtt))
+	serverInfo.rtt.Add(float64(rtt))
 	certInfo.ServerInfo = &serverInfo
 	return serverInfo, nil
 }
@@ -495,9 +456,9 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 		Info:       info,
 		Name:       name,
 		Timeout:    proxy.timeout,
-		rtt:        &ewma.VariableEWMA{},
+		rtt:        mm.Concurrent(mm.New(Windows)),
 	}
-	serverInfo.rtt.Set(float64(xrtt))
+	serverInfo.rtt.Add(float64(xrtt))
 	info.ServerInfo = &serverInfo
 	return serverInfo, nil
 }
@@ -604,33 +565,9 @@ Retry:
 		Info:       info,
 		Name:       name,
 		Timeout:    proxy.timeout,
-		rtt:        &ewma.VariableEWMA{},
+		rtt:        mm.Concurrent(mm.New(Windows)),
 	}
-	serverInfo.rtt.Set(float64(xrtt))
+	serverInfo.rtt.Add(float64(xrtt))
 	info.ServerInfo = &serverInfo
 	return serverInfo, nil
-}
-
-func (serverInfo *ServerInfo) noticeFailure(proxy *Proxy) {
-	proxy.serversInfo.Lock()
-	defer proxy.serversInfo.Unlock()
-	serverInfo.rtt.Add(float64(proxy.timeout.Nanoseconds() / 1000000))
-}
-
-func (serverInfo *ServerInfo) noticeBegin(proxy *Proxy) {
-	proxy.serversInfo.Lock()
-	defer proxy.serversInfo.Unlock()
-	serverInfo.lastActionTS = time.Now()
-	
-}
-
-func (serverInfo *ServerInfo) noticeSuccess(proxy *Proxy) {
-	proxy.serversInfo.Lock()
-	defer proxy.serversInfo.Unlock()
-	now := time.Now()
-	elapsed := now.Sub(serverInfo.lastActionTS)
-	elapsedMs := elapsed.Nanoseconds() / 1000000
-	if elapsedMs > 0 && elapsed < proxy.timeout {
-		serverInfo.rtt.Add(float64(elapsedMs))
-	}
 }

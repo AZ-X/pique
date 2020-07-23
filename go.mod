@@ -4,7 +4,7 @@ go 1.14
 
 require (
 	github.com/BurntSushi/toml v0.3.1
-	github.com/VividCortex/ewma v1.1.1
+	github.com/RobinUS2/golang-moving-average v1.0.0
 	github.com/hashicorp/go-immutable-radix v1.2.0
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/hashicorp/golang-lru v0.5.4

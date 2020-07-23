@@ -8,6 +8,7 @@ package main
 
 import (
 	"bytes"
+	"container/list"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -288,26 +289,35 @@ func ReadUDPDatagram(r io.Reader) (*UDPDatagram, error) {
 }
 
 func (d *UDPDatagram) Write(w io.Writer) error {
+	buf, err := d.WriteBuf()
+	if err != nil {
+		return err
+	}
+	_, err = buf.WriteTo(w)
+	return err
+}
+
+func (d *UDPDatagram) WriteBuf() (*bytes.Buffer, error) {
 	h := d.Header
 	if h == nil {
 		h = &UDPHeader{}
 	}
-	buf := bytes.Buffer{}
-	if err := h.Write(&buf); err != nil {
-		return err
+	buf := &bytes.Buffer{}
+	if err := h.Write(buf); err != nil {
+		return nil, err
 	}
 	if _, err := buf.Write(d.Data); err != nil {
-		return err
+		return nil, err
 	}
-
-	_, err := buf.WriteTo(w)
-	return err
+	return buf, nil
 }
+
 
 
 type SocksConn struct {
 	conn         net.Conn
 	udp          net.Conn
+	addrs        list.List
 }
 
 func (c *SocksConn) LocalAddr() net.Addr {
@@ -335,6 +345,11 @@ func (c *SocksConn) Close() error {
 }
 
 func (c *SocksConn) Read(b []byte) (n int, err error) {
+if c.udp != nil {
+
+
+}
+
 	return 0, nil
 }
 

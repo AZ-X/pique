@@ -3,10 +3,11 @@ package main
 import (
 	"crypto/sha512"
 	"encoding/binary"
+	"math"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/miekg/dns"
+	"github.com/jedisct1/dlog"
 )
 
 type CachedResponse struct {
@@ -15,7 +16,7 @@ type CachedResponse struct {
 }
 
 type CachedResponses struct {
-	cache *lru.ARCCache
+	cache *Cache
 }
 
 var cachedResponses CachedResponses
@@ -108,11 +109,9 @@ func (plugin *PluginCacheResponse) Description() string {
 
 func (plugin *PluginCacheResponse) Init(proxy *Proxy) error {
 	if cachedResponses.cache == nil {
-		var err error
-		cachedResponses.cache, err = lru.NewARC(proxy.cacheSize)
-		if err != nil {
-			return err
-		}
+		size := 1<<math.Ilogb(float64(proxy.cacheSize))
+		dlog.Debugf("accurate cache size: %d", size)
+		cachedResponses.cache = NewCache(size)
 	}
 	return nil
 }

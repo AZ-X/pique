@@ -64,10 +64,6 @@ func (proxy *Proxy) dropPrivilege(userStr string, fds []*os.File) {
 		dlog.Fatal(err)
 	}
 
-	if err := ServiceManagerReadyNotify(); err != nil {
-		dlog.Fatal(err)
-	}
-
 	args = append(args, "-child")
 
 	dlog.Notice("dropping privileges")

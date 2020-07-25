@@ -74,7 +74,6 @@ type Proxy struct {
 	whitelistNameLogFile          string
 	blockNameFormat               string
 	whitelistNameFormat           string
-	blockIPFile                   string
 	blockIPLogFile                string
 	blockIPFormat                 string
 	cloakFile                     string

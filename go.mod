@@ -5,9 +5,6 @@ go 1.14
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/RobinUS2/golang-moving-average v1.0.0
-	github.com/hashicorp/go-immutable-radix v1.2.0
-	github.com/hashicorp/go-uuid v1.0.2 // indirect
-	github.com/hashicorp/golang-lru v0.5.4
 	github.com/jedisct1/dlog v0.0.0-20190909160351-692385b00b84
 	github.com/jedisct1/go-clocksmith v0.0.0-20190707124905-73e087c7979c
 	github.com/jedisct1/xsecretbox v0.0.0-20190909160646-b731c21297f9

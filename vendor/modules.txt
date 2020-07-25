@@ -4,17 +4,6 @@ github.com/BurntSushi/toml
 # github.com/RobinUS2/golang-moving-average v1.0.0
 ## explicit
 github.com/RobinUS2/golang-moving-average
-# github.com/hashicorp/go-immutable-radix v1.2.0
-## explicit
-github.com/hashicorp/go-immutable-radix
-# github.com/hashicorp/go-syslog v1.0.0
-github.com/hashicorp/go-syslog
-# github.com/hashicorp/go-uuid v1.0.2
-## explicit
-# github.com/hashicorp/golang-lru v0.5.4
-## explicit
-github.com/hashicorp/golang-lru
-github.com/hashicorp/golang-lru/simplelru
 # github.com/jedisct1/dlog v0.0.0-20190909160351-692385b00b84 => ../dboy/
 ## explicit
 github.com/jedisct1/dlog

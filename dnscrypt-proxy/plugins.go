@@ -135,9 +135,6 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 	if len(proxy.blockNameFile) != 0 {
 		*responsePlugins = append(*responsePlugins, Plugin(new(PluginBlockNameResponse)))
 	}
-	if len(proxy.blockIPFile) != 0 {
-		*responsePlugins = append(*responsePlugins, Plugin(new(PluginBlockIP)))
-	}
 	if proxy.cache {
 		*responsePlugins = append(*responsePlugins, Plugin(new(PluginCacheResponse)))
 	}

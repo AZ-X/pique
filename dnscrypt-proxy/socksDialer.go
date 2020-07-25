@@ -357,10 +357,10 @@ func (c *SocksConn) Write(b []byte) (n int, err error) {
 	return 0, nil
 }
 
-//go:linkname connect http.connect
+//go:linkname (*socksDialer).connect http.(*socksDialer).connect
 func (d *socksDialer) connect(ctx context.Context, c net.Conn, address string) (_ net.Addr, ctxErr error)
 
-//go:linkname Authenticate http.Authenticate
+//go:linkname (*socksUsernamePassword).Authenticate http.(*socksUsernamePassword).Authenticate
 func (up *socksUsernamePassword) Authenticate(ctx context.Context, rw io.ReadWriter, auth socksAuthMethod) error
 
 func (d *socksDialer) Connect(ctx context.Context, network, c net.Conn, address string) (net.Conn, error) {

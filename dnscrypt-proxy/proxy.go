@@ -406,7 +406,7 @@ Go:
 	}
 	if err != nil {
 		program_dbg_full_log("exchangeDnScRypt E05")
-		return nil, err
+		goto Error
 	}
 	return proxy.Decrypt(serverInfo, sharedKey, encryptedResponse, clientNonce, serverProto)
 }

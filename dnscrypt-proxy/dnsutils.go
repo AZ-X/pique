@@ -145,7 +145,7 @@ func getMinTTL(msg *dns.Msg, minTTL uint32, maxTTL uint32, cacheNegMinTTL uint32
 			ttl = cacheNegMinTTL
 		}
 	}
-	return time.Duration(ttl) * time.Second
+	return time.Duration(ttl) * time.Minute
 }
 
 func setMaxTTL(msg *dns.Msg, ttl uint32) {

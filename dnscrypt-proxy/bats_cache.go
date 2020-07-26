@@ -63,6 +63,10 @@ func NewCache(size int) *Cache {
 	return cache
 }
 
+func (m *Cache) Size() int {
+	return len(m.entries)
+}
+
 func (m *Cache) Get(key interface{}) (value interface{}, ok bool) {
 	e, ok := m.entries[key]
 	if !ok {

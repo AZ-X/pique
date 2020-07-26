@@ -11,8 +11,8 @@ import (
 )
 
 type CachedResponse struct {
+	*dns.Msg
 	expiration time.Time
-	msg        dns.Msg
 }
 
 type CachedResponses struct {
@@ -73,22 +73,20 @@ func (plugin *PluginCache) Eval(pluginsState *PluginsState, msg *dns.Msg) error 
 	if !ok {
 		return nil
 	}
-	cached := cachedAny.(CachedResponse)
-
-	synth := cached.msg
+	synth := cachedAny.(CachedResponse)
 	synth.Id = msg.Id
 	synth.Response = true
 	synth.Compress = true
-	synth.Question = msg.Question
 
-	if time.Now().After(cached.expiration) {
-		pluginsState.sessionData["stale"] = &synth
+	if time.Now().After(synth.expiration) {
+		dlog.Debugf("cache expired from %v", synth.expiration)
+		pluginsState.sessionData["stale"] = synth.Msg
 		return nil
 	}
 
-	updateTTL(&cached.msg, cached.expiration)
+	updateTTL(synth.Msg, synth.expiration)
 
-	pluginsState.synthResponse = &synth
+	pluginsState.synthResponse = synth.Msg
 	pluginsState.state = PluginsStateSynth
 	pluginsState.cacheHit = true
 	return nil
@@ -135,7 +133,7 @@ func (plugin *PluginCacheResponse) Eval(pluginsState *PluginsState, msg *dns.Msg
 	ttl := getMinTTL(msg, pluginsState.cacheMinTTL, pluginsState.cacheMaxTTL, pluginsState.cacheNegMinTTL, pluginsState.cacheNegMaxTTL)
 	cachedResponse := CachedResponse{
 		expiration: time.Now().Add(ttl),
-		msg:        *msg,
+		Msg:        msg,
 	}
 
 	cachedResponses.cache.Add(cacheKey, cachedResponse)

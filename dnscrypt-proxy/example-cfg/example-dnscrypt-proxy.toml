@@ -312,24 +312,24 @@ cache = false
 cache_size = 128
 
 
-## Minimum TTL for cached entries
+## Minimum TTL for cached entries (in minutes)
 
-cache_min_ttl = 2400
-
-
-## Maximum TTL for cached entries
-
-cache_max_ttl = 86400
+cache_min_ttl = 720
 
 
-## Minimum TTL for negatively cached entries
+## Maximum TTL for cached entries (in minutes)
 
-cache_neg_min_ttl = 60
+cache_max_ttl = 2880
 
 
-## Maximum TTL for negatively cached entries
+## Minimum TTL for negatively cached entries (in minutes)
 
-cache_neg_max_ttl = 600
+cache_neg_min_ttl = 2
+
+
+## Maximum TTL for negatively cached entries (in minutes)
+
+cache_neg_max_ttl = 120
 
 
 

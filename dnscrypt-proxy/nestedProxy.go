@@ -40,7 +40,7 @@ func (np *NestedProxy) HasValue() bool {
 
 func (np *NestedProxy) UDPProxies() bool {
 	if !np.HasValue() {
-		return false
+		return true
 	}
 	for e := np.Front(); e != nil; e = e.Next() {
 		rp := e.Value.(RealProxy)

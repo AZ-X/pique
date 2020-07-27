@@ -9,6 +9,7 @@ import (
 	"os"
 	"io"
 	"time"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	
@@ -38,34 +39,38 @@ func ServerMagic() []byte {
 
 
 type Proxy struct {
-	userName                      string
-	child                         bool
+	*ProxyStartup
 	proxyPublicKey                [32]byte
 	proxySecretKey                [32]byte
-	ephemeralKeys                 bool
 	serversInfo                   ServersInfo
 	timeout                       time.Duration
 	certRefreshDelay              time.Duration
 	certIgnoreTimestamp           bool
 	mainProto                     string
-	listenAddresses               []string
-	daemonize                     bool
-	registeredServers             []RegisteredServer
-	registeredRelays              []RegisteredServer
-	pluginBlockIPv6               bool
-	pluginBlockUnqualified        bool
-	pluginBlockUndelegated        bool
-	cache                         bool
-	cacheSize                     int
 	cacheNegMinTTL                uint32
 	cacheNegMaxTTL                uint32
 	cacheMinTTL                   uint32
 	cacheMaxTTL                   uint32
 	rejectTTL                     uint32
 	cloakTTL                      uint32
+	pluginsGlobals                PluginsGlobals
+	smaxClients                   *semaphore.Weighted
+	isRefreshing                  atomic.Value
+	ctx                           context.Context
+	cancel                        context.CancelFunc
+	wg                            sync.WaitGroup
+	xTransport                    *XTransport
+	blockedQueryResponse          string
+	serversWithBrokenQueryPadding []string
+}
+
+type ProxyStartup struct {
+	sources                       []*Source
+	registeredServers             []RegisteredServer
+	registeredRelays              []RegisteredServer
+	routes                        *map[string][]string
 	queryLogFile                  string
 	queryLogFormat                string
-	queryLogIgnoredQtypes         []string
 	nxLogFile                     string
 	nxLogFormat                   string
 	blockNameFile                 string
@@ -77,24 +82,26 @@ type Proxy struct {
 	blockIPLogFile                string
 	blockIPFormat                 string
 	cloakFile                     string
-	pluginsGlobals                PluginsGlobals
-	sources                       []*Source
-	clientsCount                  uint32
-	maxClients                    uint32
-	smaxClients                   *semaphore.Weighted
-	isRefreshing                  atomic.Value
-	ctx                           context.Context
-	cancel                        context.CancelFunc
-	wg                            sync.WaitGroup
-	xTransport                    *XTransport
+	userName                      string
+	queryLogIgnoredQtypes         []string
+	queryMeta                     []string
+	listenAddresses               []string
+	ephemeralKeys                 bool
+	cache                         bool
+	child                         bool
+	pluginBlockIPv6               bool
+	pluginBlockUnqualified        bool
+	pluginBlockUndelegated        bool
+	cacheSize                     int
 	logMaxSize                    int
 	logMaxAge                     int
 	logMaxBackups                 int
-	blockedQueryResponse          string
-	queryMeta                     []string
-	routes                        *map[string][]string
-	serversWithBrokenQueryPadding []string
 }
+
+
+
+
+
 
 func program_dbg_full_log(args ...interface{}) {
 	if program_dbg_full {
@@ -202,6 +209,7 @@ func (proxy *Proxy) StartProxy() {
 	for _, registeredServer := range proxy.registeredServers {
 		proxy.serversInfo.registerServer(registeredServer.name, registeredServer.stamp)
 	}
+	proxy.ProxyStartup = nil
 	liveServers, err := proxy.serversInfo.refresh(proxy)
 	if liveServers > 0 {
 		proxy.certIgnoreTimestamp = false
@@ -215,6 +223,7 @@ func (proxy *Proxy) StartProxy() {
 	if len(proxy.serversInfo.registeredServers) > 0 {
 		go func() {
 			for {
+				debug.FreeOSMemory()
 				delay := proxy.certRefreshDelay
 				if liveServers <= 1 && len(proxy.serversInfo.registeredServers) != liveServers {
 					delay = 100 * time.Millisecond * time.Duration((len(proxy.serversInfo.registeredServers) - liveServers))
@@ -526,7 +535,7 @@ Go:
 		goto SvrFault
 	}
 	if !proxy.clientsCountInc() {
-		dlog.Warnf("too many outgoing dnscrypt connections (max=%d)", proxy.maxClients)
+		dlog.Warn("too many outgoing dnscrypt connections")
 		goto SvrFault
 	}
 	defer proxy.clientsCountDec()

@@ -26,8 +26,6 @@ const (
 )
 
 type Config struct {
-
-	Daemonize                bool
 	Cache                    bool
 	LogLevel                 int                         `toml:"log_level"`
 	LogFile                  *string                     `toml:"log_file"`
@@ -218,6 +216,7 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		dlog.Fatalf("failed to load the configuration file [%s]", *flags.ConfigFile)
 	}
 	config := newConfig()
+	proxy.ProxyStartup = &ProxyStartup{}
 	md, err := toml.DecodeFile(foundConfigFile, &config)
 	if err != nil {
 		return err
@@ -282,8 +281,7 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 
 	proxy.blockedQueryResponse = config.BlockedQueryResponse
 	proxy.timeout = time.Duration(config.Timeout) * time.Millisecond
-	proxy.maxClients = config.MaxClients
-	proxy.smaxClients = semaphore.NewWeighted(int64(proxy.maxClients))
+	proxy.smaxClients = semaphore.NewWeighted(int64(config.MaxClients))
 	proxy.ctx, proxy.cancel = context.WithCancel(context.Background())
 	proxy.mainProto = "udp"
 	if config.ForceTCP {
@@ -315,7 +313,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	}
 	proxy.serversInfo.lbStrategy = lbStrategy
 
-	proxy.daemonize = config.Daemonize
 	proxy.pluginBlockIPv6 = config.BlockIPv6
 	proxy.pluginBlockUnqualified = config.BlockUnqualified
 	proxy.pluginBlockUndelegated = config.BlockUndelegated

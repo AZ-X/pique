@@ -164,11 +164,38 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	registeredServers := serversInfo.registeredServers
 	liveServers := 0
 	var err error
-	for _, registeredServer := range registeredServers {
-		if err = serversInfo.refreshServer(proxy, registeredServer.name, registeredServer.stamp); err == nil {
-			liveServers++
-		} 
+	var frs = make(map[RegisteredServer]func(RegisteredServer), 0)
+	var total = len(registeredServers) - len(serversInfo.inner)
+	var rts = make(chan *ServerInfo, total)
+	for _, reg := range registeredServers {
+		for _, server := range serversInfo.inner {
+			if server.Name == reg.name {
+				continue
+			}
+		}
+		frs[reg] = func(reg RegisteredServer) {
+				info, err := fetchServerInfo(proxy, reg.name, reg.stamp, true)
+				if err != nil {
+					dlog.Debug(err)
+					rts <- nil
+				} else {
+					rts <- &info
+				}
+			}
 	}
+	for r, f := range frs {
+		go f(r)
+	}
+	for c := 0; c != total; c++ {
+		select {
+			case rt := <- rts:
+			if rt != nil {
+				serversInfo.inner = append(serversInfo.inner, rt)
+				liveServers++
+			}
+		}
+	}
+	
 	sort.SliceStable(serversInfo.inner, func(i, j int) bool {
 		return serversInfo.inner[i].rtt.Avg() < serversInfo.inner[j].rtt.Avg()
 	})

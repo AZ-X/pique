@@ -12,7 +12,7 @@ endif
 
 .PHONY: build
 build:
-	go build -trimpath -mod=vendor -buildmode=exe -ldflags "-s -w -X main.goversion=$(GOVERSION) -X main.AppVersion=$(VERSION)" -o $(OUT_DIR)/$(PROG)$(BIN_SUFFIX) ./dnscrypt-proxy
+	go build -trimpath -mod=vendor -buildmode=exe -ldflags "-buildid= -s -w -X main.goversion=$(GOVERSION) -X main.AppVersion=$(VERSION)" -o $(OUT_DIR)/$(PROG)$(BIN_SUFFIX) ./dnscrypt-proxy
 
 .PHONY: dep
 clean:

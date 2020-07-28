@@ -25,8 +25,8 @@ func computeCacheKey(pluginsState *PluginsState, msg *dns.Msg) [32]byte {
 	question := msg.Question[0]
 	h := sha512.New512_256()
 	var tmp [5]byte
-	binary.LittleEndian.PutUint16(tmp[0:2], question.Qtype)
-	binary.LittleEndian.PutUint16(tmp[2:4], question.Qclass)
+	binary.BigEndian.PutUint16(tmp[0:2], question.Qtype)
+	binary.BigEndian.PutUint16(tmp[2:4], question.Qclass)
 	if pluginsState.dnssec {
 		tmp[4] = 1
 	}

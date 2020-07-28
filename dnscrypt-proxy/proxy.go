@@ -98,11 +98,6 @@ type ProxyStartup struct {
 	logMaxBackups                 int
 }
 
-
-
-
-
-
 func program_dbg_full_log(args ...interface{}) {
 	if program_dbg_full {
 		format := args[0].(string)
@@ -249,7 +244,7 @@ func (proxy *Proxy) udpListener(clientPc *net.UDPConn) {
 		packet := buffer[:length]
 		go func() {
 			start := time.Now()
-			proxy.processIncomingQuery("udp", proxy.mainProto, packet, &clientAddr, clientPc, start)
+			proxy.processIncomingQuery("udp", packet, &clientAddr, clientPc, start)
 		}()
 	}
 }
@@ -282,7 +277,7 @@ func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener) {
 				return
 			}
 			clientAddr := clientPc.RemoteAddr()
-			proxy.processIncomingQuery("tcp", "tcp", packet, &clientAddr, clientPc, start)
+			proxy.processIncomingQuery("tcp", packet, &clientAddr, clientPc, start)
 		}()
 	}
 }
@@ -420,7 +415,7 @@ Go:
 	return proxy.Decrypt(serverInfo, sharedKey, encryptedResponse, clientNonce, serverProto)
 }
 
-func (proxy *Proxy) ExchangeDnScRypt(serverInfo *DNSCryptInfo, request *dns.Msg, serverProto string) (*dns.Msg, error) {
+func (proxy *Proxy) ExchangeDnScRypt(serverInfo *DNSCryptInfo, request *dns.Msg) (*dns.Msg, error) {
 	var err error
 	goto Go
 Error:
@@ -430,7 +425,7 @@ Go:
 	if err != nil {
 		goto Error
 	}
-	bin, err := proxy.exchangeDnScRypt(serverInfo, packet, serverProto)
+	bin, err := proxy.exchangeDnScRypt(serverInfo, packet, proxy.mainProto)
 	if err != nil {
 		goto Error
 	}
@@ -504,7 +499,7 @@ func (proxy *Proxy) clientsCountDec() {
 	proxy.smaxClients.Release(1)
 }
 
-func (proxy *Proxy) processIncomingQuery(clientProto string, serverProto string, query []byte, clientAddr *net.Addr, clientPc net.Conn, start time.Time) {
+func (proxy *Proxy) processIncomingQuery(clientProto string, query []byte, clientAddr *net.Addr, clientPc net.Conn, start time.Time) {
 	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, start)
 	var request *dns.Msg
 	goto Go
@@ -549,24 +544,18 @@ Go:
 	pluginsState.serverName = &(serverInfo.Name)
 	timer = time.Now()
 	switch serverInfo.Info.Proto() {
-		case "DoH":
+		case "DoH", "DoT":
 			pluginsState.ApplyEDNS0PaddingQueryPlugins(request)
-			info := (serverInfo.Info).(*DOHInfo)
-			response, err = proxy.DoHQuery(serverInfo.Name, info, nil, request)
-		case "DoT":
-			pluginsState.ApplyEDNS0PaddingQueryPlugins(request)
-			response, err = proxy.DoTQuery(serverInfo.Name, nil, request)
 		case "DNSCrypt":
 			info := (serverInfo.Info).(*DNSCryptInfo)
 			if info.RelayAddr!= nil {
 				relayIndex = "*" + info.RelayAddr.Order()
 			}
-			response, err = proxy.ExchangeDnScRypt(info, request, serverProto)
 		default:
 			dlog.Fatalf("unsupported server protocol:[%s]", serverInfo.Info.Proto())
 			goto SvrFault
 	}
-	
+	response, err = serverInfo.Info.Query(proxy, request)
 	if err != nil {
 		serverInfo.rtt.Add(float64(proxy.timeout.Nanoseconds() / 1000000))
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout(){

@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/tls"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -31,7 +29,8 @@ type RegisteredServer struct {
 
 
 type ServerInterface interface {
-	Proto() string
+	Proto()         string
+	Query(*Proxy, *dns.Msg, ...interface{}) (*dns.Msg, error)
 }
 
 type CryptoConstruction uint8
@@ -58,8 +57,12 @@ type DNSCryptInfo struct {
 	Proxies            *NestedProxy // individual proxies chain
 }
 
-func (info DNSCryptInfo) Proto() string {
+func (info *DNSCryptInfo) Proto() string {
 	return "DNSCrypt"
+}
+
+func (info *DNSCryptInfo) Query(p *Proxy, r *dns.Msg, args ...interface{}) (*dns.Msg, error) {
+	return p.ExchangeDnScRypt(info, r)
 }
 
 type DOHInfo struct {
@@ -68,16 +71,24 @@ type DOHInfo struct {
 	useGet             bool
 }
 
-func (info DOHInfo) Proto() string {
+func (info *DOHInfo) Proto() string {
 	return "DoH"
+}
+
+func (info *DOHInfo) Query(p *Proxy, r *dns.Msg, args ...interface{}) (*dns.Msg, error) {
+	return p.DoHQuery(info.Name, info, nil, r)
 }
 
 type DOTInfo struct {
 	*ServerInfo
 }
 
-func (info DOTInfo) Proto() string {
+func (info *DOTInfo) Proto() string {
 	return "DoT"
+}
+
+func (info *DOTInfo) Query(p *Proxy, r *dns.Msg, args ...interface{}) (*dns.Msg, error) {
+	return p.DoTQuery(info.Name, nil, r)
 }
 
 type ServerInfo struct {
@@ -120,40 +131,6 @@ func (serversInfo *ServersInfo) registerServer(name string, stamp *stamps.Server
 	serversInfo.registeredServers = append(serversInfo.registeredServers, newRegisteredServer)
 }
 
-func (serversInfo *ServersInfo) refreshServer(proxy *Proxy, name string, stamp *stamps.ServerStamp) error {
-	isNew := true
-	for _, oldServer := range serversInfo.inner {
-		if oldServer.Name == name {
-			isNew = false
-			break
-		}
-	}
-	if !isNew {
-		return nil
-	}
-	newServer, err := fetchServerInfo(proxy, name, stamp, isNew)
-	if err != nil {
-		dlog.Debug(err)
-		return err
-	}
-	if name != newServer.Name {
-		dlog.Fatalf("[%s] != [%s]", name, newServer.Name)
-	}
-	isNew = true
-	for i, oldServer := range serversInfo.inner {
-		if oldServer.Name == name {
-			serversInfo.inner[i] = &newServer
-			isNew = false
-			break
-		}
-	}
-	if isNew {
-		serversInfo.inner = append(serversInfo.inner, &newServer)
-		//serversInfo.registeredServers = append(serversInfo.registeredServers, RegisteredServer{name: name, stamp: stamp})
-	}
-	return nil
-}
-
 func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	proxy.isRefreshing.Store(true)
 	defer proxy.isRefreshing.Store(false)
@@ -170,18 +147,19 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	for _, reg := range registeredServers {
 		for _, server := range serversInfo.inner {
 			if server.Name == reg.name {
+				liveServers++
 				continue
 			}
 		}
 		frs[reg] = func(reg RegisteredServer) {
-				info, err := fetchServerInfo(proxy, reg.name, reg.stamp, true)
-				if err != nil {
-					dlog.Debug(err)
-					rts <- nil
-				} else {
-					rts <- &info
-				}
+			info, err := fetchServerInfo(proxy, reg.name, reg.stamp, true)
+			if err != nil {
+				dlog.Debug(err)
+				rts <- nil
+			} else {
+				rts <- &info
 			}
+		}
 	}
 	for r, f := range frs {
 		go f(r)
@@ -195,7 +173,6 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 			}
 		}
 	}
-	
 	sort.SliceStable(serversInfo.inner, func(i, j int) bool {
 		return serversInfo.inner[i].rtt.Avg() < serversInfo.inner[j].rtt.Avg()
 	})
@@ -247,7 +224,6 @@ func fetchServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, isNew
 		case "DoH":return fetchDoHServerInfo(proxy, name, stamp, isNew)
 		case "DoT":return fetchDoTServerInfo(proxy, name, stamp, isNew)
 		default:return ServerInfo{}, errors.New("unsupported protocol")
-			
 	}
 }
 
@@ -460,14 +436,7 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 			dlog.Debug("[processed request]:" + jsonStr)
 		}
 	}
-	respBody, _ := serverResponse.Pack()
-	var rmsgId uint16
-	revData := respBody[0:2];
-	revData[0], revData[1] = revData[1], revData[0] 
-	buf := bytes.NewReader(revData)
-	err = binary.Read(buf, binary.LittleEndian, &rmsgId)
-	if err != nil || len(respBody) < MinDNSPacketSize || len(respBody) > MaxDNSPacketSize ||
-		msgId != rmsgId || respBody[4] != 0x00 || respBody[5] != 0x01 {
+	if serverResponse.Id != msgId {
 		errMsg := "Webserver returned an unexpected response"
 		dlog.Warn(errMsg)
 		return ServerInfo{}, errors.New(errMsg)
@@ -569,14 +538,7 @@ Retry:
 			dlog.Debug("[processed request]:" + jsonStr)
 		}
 	}
-	respBody, _ := serverResponse.Pack()
-	var rmsgId uint16
-	revData := respBody[0:2];
-	revData[0], revData[1] = revData[1], revData[0] 
-	buf := bytes.NewReader(revData)
-	err = binary.Read(buf, binary.LittleEndian, &rmsgId)
-	if err != nil || len(respBody) < MinDNSPacketSize || len(respBody) > MaxDNSPacketSize ||
-		msgId != rmsgId || respBody[4] != 0x00 || respBody[5] != 0x01 {
+	if serverResponse.Id != msgId {
 		errMsg := "Webserver returned an unexpected response"
 		dlog.Warn(errMsg)
 		return ServerInfo{}, errors.New(errMsg)

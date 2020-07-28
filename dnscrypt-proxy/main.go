@@ -28,7 +28,7 @@ func main() {
 
 	seed := make([]byte, 8)
 	crypto_rand.Read(seed)
-	rand.Seed(int64(binary.LittleEndian.Uint64(seed[:])))
+	rand.Seed(int64(binary.BigEndian.Uint64(seed[:])))
 
 	version := flag.Bool("version", false, "print current proxy version")
 	flags := ConfigFlags{}

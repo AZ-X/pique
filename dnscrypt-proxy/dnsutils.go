@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"net"
 	"time"
 
 	"github.com/miekg/dns"
@@ -60,48 +59,13 @@ func TruncatedResponse(srcMsg *dns.Msg) {
 	srcMsg.Truncated = true
 }
 
-func RefusedResponseFromMessage(srcMsg *dns.Msg, blockedQueryResponse string, ipv4 net.IP, ipv6 net.IP, ttl uint32) *dns.Msg {
+func RefusedResponseFromMessage(srcMsg *dns.Msg, blockedQueryResponse string) *dns.Msg {
 	dstMsg := EmptyResponseFromMessage(srcMsg)
 	switch blockedQueryResponse {
 		case "nxdomain":
 			dstMsg.Rcode = dns.RcodeNameError
 		case "refused":
 			dstMsg.Rcode = dns.RcodeRefused
-		default:
-			dstMsg.Rcode = dns.RcodeSuccess
-			questions := srcMsg.Question
-			if len(questions) == 0 {
-				return dstMsg
-			}
-			question := questions[0]
-			sendHInfoResponse := true
-	
-			if ipv4 != nil && question.Qtype == dns.TypeA {
-				rr := new(dns.A)
-				rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: ttl}
-				rr.A = ipv4.To4()
-				if rr.A != nil {
-					dstMsg.Answer = []dns.RR{rr}
-					sendHInfoResponse = false
-				}
-			} else if ipv6 != nil && question.Qtype == dns.TypeAAAA {
-				rr := new(dns.AAAA)
-				rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: ttl}
-				rr.AAAA = ipv6.To16()
-				if rr.AAAA != nil {
-					dstMsg.Answer = []dns.RR{rr}
-					sendHInfoResponse = false
-				}
-			}
-	
-			if sendHInfoResponse {
-				hinfo := new(dns.HINFO)
-				hinfo.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeHINFO,
-					Class: dns.ClassINET, Ttl: 1}
-				hinfo.Cpu = ""
-				hinfo.Os = ""
-				dstMsg.Answer = []dns.RR{hinfo}
-			}
 	}
 	return dstMsg
 }

@@ -59,7 +59,6 @@ type Config struct {
 	CloakFile                string                      `toml:"cloaking_rules"`
 	StaticsConfig            map[string]StaticConfig     `toml:"static"`
 	SourcesConfig            map[string]SourceConfig     `toml:"sources"`
-	BrokenImplementations    BrokenImplementationsConfig `toml:"broken_implementations"`
 	SourceRequireDNSSEC      bool                        `toml:"require_dnssec"`
 	SourceRequireNoLog       bool                        `toml:"require_nolog"`
 	SourceRequireNoFilter    bool                        `toml:"require_nofilter"`
@@ -117,10 +116,7 @@ func newConfig() Config {
 		TLSCipherSuite:           nil,
 		NetprobeTimeout:          60,
 		OfflineMode:              false,
-		BlockedQueryResponse:     "hinfo",
-		BrokenImplementations: BrokenImplementationsConfig{
-			BrokenQueryPadding: []string{"cisco", "cisco-ipv6", "cisco-familyshield", "quad9-dnscrypt-ip4-filter-alt", "quad9-dnscrypt-ip4-filter-pri", "quad9-dnscrypt-ip4-nofilter-alt", "quad9-dnscrypt-ip4-nofilter-pri", "quad9-dnscrypt-ip6-filter-alt", "quad9-dnscrypt-ip6-filter-pri", "quad9-dnscrypt-ip6-nofilter-alt", "quad9-dnscrypt-ip6-nofilter-pri"},
-		},
+		BlockedQueryResponse:     "refused",
 	}
 }
 
@@ -170,9 +166,6 @@ type AnonymizedDNSConfig struct {
 	Routes []AnonymizedDNSRouteConfig `toml:"routes"`
 }
 
-type BrokenImplementationsConfig struct {
-	BrokenQueryPadding []string `toml:"broken_query_padding"`
-}
 
 type ServerSummary struct {
 	Name        string   `json:"name"`
@@ -311,6 +304,7 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	default:
 		dlog.Warnf("unknown load balancing strategy: [%s]", config.LBStrategy)
 	}
+	proxy.serversInfo = &ServersInfo{}
 	proxy.serversInfo.lbStrategy = lbStrategy
 
 	proxy.pluginBlockIPv6 = config.BlockIPv6
@@ -329,7 +323,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 
 	proxy.cacheMinTTL = config.CacheMinTTL
 	proxy.cacheMaxTTL = config.CacheMaxTTL
-	proxy.rejectTTL = config.RejectTTL
 	proxy.cloakTTL = config.CloakTTL
 
 	proxy.queryMeta = config.QueryMeta
@@ -390,7 +383,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		}
 		proxy.routes = &routes
 	}
-	proxy.serversWithBrokenQueryPadding = config.BrokenImplementations.BrokenQueryPadding
 
 	netprobeTimeout := config.NetprobeTimeout
 	flag.Visit(func(flag *flag.Flag) {

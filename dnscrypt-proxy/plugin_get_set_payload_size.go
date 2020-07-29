@@ -4,14 +4,6 @@ import "github.com/miekg/dns"
 
 type PluginGetSetPayloadSize struct{}
 
-func (plugin *PluginGetSetPayloadSize) Name() string {
-	return "get_set_payload_size"
-}
-
-func (plugin *PluginGetSetPayloadSize) Description() string {
-	return "Adjusts the maximum payload size advertised in queries sent to upstream servers."
-}
-
 func (plugin *PluginGetSetPayloadSize) Init(proxy *Proxy) error {
 	return nil
 }
@@ -34,7 +26,6 @@ func (plugin *PluginGetSetPayloadSize) Eval(pluginsState *PluginsState, msg *dns
 		dnssec = edns0.Do()
 	}
 	var options *[]dns.EDNS0
-	pluginsState.dnssec = dnssec
 	pluginsState.maxPayloadSize = Min(MaxDNSUDPPacketSize-ResponseOverhead, Max(pluginsState.originalMaxPayloadSize, pluginsState.maxPayloadSize))
 	if pluginsState.maxPayloadSize > 512 {
 		extra2 := []dns.RR{}

@@ -18,14 +18,6 @@ type PluginQueryLog struct {
 	ignoredQtypes []string
 }
 
-func (plugin *PluginQueryLog) Name() string {
-	return "query_log"
-}
-
-func (plugin *PluginQueryLog) Description() string {
-	return "Log DNS queries."
-}
-
 func (plugin *PluginQueryLog) Init(proxy *Proxy) error {
 	plugin.logger = &lumberjack.Logger{LocalTime: true, MaxSize: proxy.logMaxSize, MaxAge: proxy.logMaxAge, MaxBackups: proxy.logMaxBackups, Filename: proxy.queryLogFile, Compress: true}
 	plugin.format = proxy.queryLogFormat

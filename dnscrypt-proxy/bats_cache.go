@@ -16,6 +16,11 @@ type Cache struct {
 	keys *poolDequeue
 }
 
+type CloakCache struct {
+	entries map[interface{}]*entry
+}
+
+
 type readOnly struct {
 	m       map[interface{}]*entry
 	amended bool
@@ -61,6 +66,23 @@ func NewCache(size int) *Cache {
 		}
 	}()
 	return cache
+}
+
+func NewCloakCache() *CloakCache {
+	cache := &CloakCache{entries : make(map[interface{}]*entry),}
+	return cache
+}
+
+func (m *CloakCache) Get(key interface{}) (value interface{}, ok bool) {
+	e, ok := m.entries[key]
+	if !ok {
+		return nil, false
+	}
+	return e.load()
+}
+
+func (m *CloakCache) Add(key, value interface{}) {
+	m.entries[key] = newEntry(value)
 }
 
 func (m *Cache) Size() int {

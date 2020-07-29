@@ -1,38 +1,20 @@
 package main
 
 import (
-	"math/rand"
-	"net"
 	"strings"
-	"sync"
-	"time"
 	"unicode"
 
 	"github.com/jedisct1/dlog"
 	"github.com/miekg/dns"
 )
 
-type CloakedName struct {
-	target     string
-	ipv4       []net.IP
-	ipv6       []net.IP
-	lastUpdate *time.Time
-	lineNo     int
-	isIP       bool
+type ClockEntry struct {
+	*EPRing
 }
 
 type PluginCloak struct {
-	sync.RWMutex
-	patternMatcher *PatternMatcher
+	clock_cache    *CloakCache
 	ttl            uint32
-}
-
-func (plugin *PluginCloak) Name() string {
-	return "cloak"
-}
-
-func (plugin *PluginCloak) Description() string {
-	return "Return a synthetic IP address or a flattened CNAME for specific names"
 }
 
 func (plugin *PluginCloak) Init(proxy *Proxy) error {
@@ -42,8 +24,7 @@ func (plugin *PluginCloak) Init(proxy *Proxy) error {
 		return err
 	}
 	plugin.ttl = proxy.cloakTTL
-	plugin.patternMatcher = NewPatternPatcher()
-	cloakedNames := make(map[string]*CloakedName)
+	cloaks := make(map[string]map[string][]*Endpoint)
 	for lineNo, line := range strings.Split(string(bin), "\n") {
 		line = TrimAndStripInlineComments(line)
 		if len(line) == 0 {
@@ -63,29 +44,32 @@ func (plugin *PluginCloak) Init(proxy *Proxy) error {
 			continue
 		}
 		line = strings.ToLower(line)
-		cloakedName, found := cloakedNames[line]
+		cloakedName, found := cloaks[line]
 		if !found {
-			cloakedName = &CloakedName{}
+			cloakedName = make(map[string][]*Endpoint)
 		}
-		if ip := net.ParseIP(target); ip != nil {
-			if ipv4 := ip.To4(); ipv4 != nil {
-				cloakedName.ipv4 = append((*cloakedName).ipv4, ipv4)
-			} else if ipv6 := ip.To16(); ipv6 != nil {
-				cloakedName.ipv6 = append((*cloakedName).ipv6, ipv6)
+		if ip, err := ResolveEndpoint(target); err == nil {
+			if ip.IP.To4() != nil {
+				cloakedName["v4"] = append(cloakedName["v4"], ip)
 			} else {
-				dlog.Errorf("invalid IP address in cloaking rule at line %d", 1+lineNo)
-				continue
+				cloakedName["v6"] = append(cloakedName["v6"], ip)
 			}
-			cloakedName.isIP = true
 		} else {
-			cloakedName.target = target
+			dlog.Errorf("invalid IP address in cloaking rule at line %d", 1+lineNo)
 		}
-		cloakedName.lineNo = lineNo + 1
-		cloakedNames[line] = cloakedName
+		cloaks[line] = cloakedName
 	}
-	for line, cloakedName := range cloakedNames {
-		if err = plugin.patternMatcher.Add(line, cloakedName, cloakedName.lineNo); err != nil {
-			return err
+	plugin.clock_cache = NewCloakCache()
+	for name,r := range cloaks {
+		if len(r["v4"]) > 0 {
+			key := *computeCacheKey(false, dns.TypeA, dns.ClassINET, name + ".")
+			value := ClockEntry{EPRing:LinkEPRing(r["v4"]...),} 
+			plugin.clock_cache.Add(key, value)
+		}
+		if len(r["v6"]) > 0 {
+			key := *computeCacheKey(false, dns.TypeAAAA, dns.ClassINET, name + ".")
+			value := ClockEntry{EPRing:LinkEPRing(r["v6"]...),} 
+			plugin.clock_cache.Add(key, value)
 		}
 	}
 	return nil
@@ -100,78 +84,24 @@ func (plugin *PluginCloak) Reload() error {
 }
 
 func (plugin *PluginCloak) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
-	question := msg.Question[0]
-	if question.Qclass != dns.ClassINET || (question.Qtype != dns.TypeA && question.Qtype != dns.TypeAAAA) {
+	cachedAny, ok := plugin.clock_cache.Get(*pluginsState.hash_key)
+	if !ok {
 		return nil
 	}
-	now := time.Now()
-	plugin.RLock()
-	_, _, xcloakedName := plugin.patternMatcher.Eval(pluginsState.qName)
-	if xcloakedName == nil {
-		plugin.RUnlock()
-		return nil
-	}
-	cloakedName := xcloakedName.(*CloakedName)
-	ttl, expired := plugin.ttl, false
-	if cloakedName.lastUpdate != nil {
-		if elapsed := uint32(now.Sub(*cloakedName.lastUpdate).Seconds()); elapsed < ttl {
-			ttl -= elapsed
-		} else {
-			expired = true
-		}
-	}
-	if !cloakedName.isIP && ((cloakedName.ipv4 == nil && cloakedName.ipv6 == nil) || expired) {
-		target := cloakedName.target
-		plugin.RUnlock()
-		foundIPs, err := net.LookupIP(target)
-		if err != nil {
-			return nil
-		}
-		plugin.Lock()
-		cloakedName.lastUpdate = &now
-		cloakedName.ipv4 = nil
-		cloakedName.ipv6 = nil
-		for _, foundIP := range foundIPs {
-			if ipv4 := foundIP.To4(); ipv4 != nil {
-				cloakedName.ipv4 = append(cloakedName.ipv4, foundIP)
-				if len(cloakedName.ipv4) >= 16 {
-					break
-				}
-			} else {
-				cloakedName.ipv6 = append(cloakedName.ipv6, foundIP)
-				if len(cloakedName.ipv6) >= 16 {
-					break
-				}
-			}
-		}
-		plugin.Unlock()
-		plugin.RLock()
-	}
-	var ip *net.IP
-	if question.Qtype == dns.TypeA {
-		ipLen := len(cloakedName.ipv4)
-		if ipLen > 0 {
-			ip = &cloakedName.ipv4[rand.Intn(ipLen)]
-		}
-	} else {
-		ipLen := len(cloakedName.ipv6)
-		if ipLen > 0 {
-			ip = &cloakedName.ipv6[rand.Intn(ipLen)]
-		}
-	}
-	plugin.RUnlock()
+	ce := cachedAny.(ClockEntry)
+	ip := ce.EPRing.IP
+	ce.EPRing = ce.EPRing.Next()
 	synth := EmptyResponseFromMessage(msg)
-	if ip == nil {
-		synth.Answer = []dns.RR{}
-	} else if question.Qtype == dns.TypeA {
+	question := msg.Question[0]
+	if question.Qtype == dns.TypeA {
 		rr := new(dns.A)
-		rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: ttl}
-		rr.A = *ip
+		rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: plugin.ttl}
+		rr.A = ip
 		synth.Answer = []dns.RR{rr}
 	} else {
 		rr := new(dns.AAAA)
-		rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: ttl}
-		rr.AAAA = *ip
+		rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: plugin.ttl}
+		rr.AAAA = ip
 		synth.Answer = []dns.RR{rr}
 	}
 	pluginsState.synthResponse = synth

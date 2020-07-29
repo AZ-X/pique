@@ -156,14 +156,6 @@ type PluginBlockUndelegated struct {
 	suffixes *critbitgo.Trie
 }
 
-func (plugin *PluginBlockUndelegated) Name() string {
-	return "block_undelegated"
-}
-
-func (plugin *PluginBlockUndelegated) Description() string {
-	return "Block undelegated DNS names"
-}
-
 func (plugin *PluginBlockUndelegated) Init(proxy *Proxy) error {
 	suffixes := critbitgo.NewTrie()
 	for _, line := range undelegatedSet {

@@ -124,23 +124,15 @@ timeout = 5000
 keepalive = 30
 
 
-## Response for blocked queries.  Options are `nxdomain`, `refused`, `hinfo` (default) or
-## an IP response.  To give an IP response, use the format `a:<IPv4>,aaaa:<IPv6>`.
-## Using the `hinfo` option means that some responses will be lies.
-## Unfortunately, the `hinfo` option appears to be required for Android 8+
-
+## Response for blocked queries.  Options are `nxdomain`, `refused`(default)
 ## nxdomain not work with dnssec, you should mod any downstream stub before use
+
 # blocked_query_response = 'nxdomain'
 
 
 ## Load-balancing strategy: 'p2' (default), 'ph', 'first' or 'random'
 
 # lb_strategy = 'p2'
-
-## Set to `true` to constantly try to estimate the latency of all the resolvers
-## and adjust the load-balancing parameters accordingly, or to `false` to disable.
-
-# lb_estimator = true
 
 
 ## Log level (0-6, default: 2 - 0 is very verbose, 6 only contains fatal errors)
@@ -272,13 +264,6 @@ block_unqualified = true
 ## upstream resolvers (always causing errors or timeouts).
 
 block_undelegated = true
-
-
-## TTL for synthetic responses sent when a request has been blocked (due to
-## IPv6 or blacklists).
-
-reject_ttl = 600
-
 
 ###############################
 #        Cloaking rules       #
@@ -482,25 +467,6 @@ cache_neg_max_ttl = 120
   #cache_file = 'relays.md'
   #minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
   #prefix = ''
-
-
-
-#########################################
-#        Servers with known bugs        #
-#########################################
-
-[broken_implementations]
-
-# Cisco servers currently cannot handle queries larger than 1472 bytes, and don't
-# truncate reponses larger than questions as expected by the DNSCrypt protocol.
-# This prevents large responses from being received, and breaks relaying.
-# A workaround for the first issue will be applied to servers in list below.
-# Quad9 (actually dnsdist) appears to currently have a similar issue.
-# Do not change that list until the bugs are fixed server-side.
-
-broken_query_padding = ['cisco', 'cisco-ipv6', 'cisco-familyshield', "quad9-dnscrypt-ip4-filter-alt", "quad9-dnscrypt-ip4-filter-pri", "quad9-dnscrypt-ip4-nofilter-alt", "quad9-dnscrypt-ip4-nofilter-pri", "quad9-dnscrypt-ip6-filter-alt", "quad9-dnscrypt-ip6-filter-pri", "quad9-dnscrypt-ip6-nofilter-alt", "quad9-dnscrypt-ip6-nofilter-pri"]
-
-
 
 
 ################################

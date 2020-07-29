@@ -63,14 +63,6 @@ func (blockedNames *BlockedNames) check(pluginsState *PluginsState, qName *strin
 type PluginBlockName struct {
 }
 
-func (plugin *PluginBlockName) Name() string {
-	return "block_name"
-}
-
-func (plugin *PluginBlockName) Description() string {
-	return "Block DNS queries matching name patterns"
-}
-
 func (plugin *PluginBlockName) Init(proxy *Proxy) error {
 	dlog.Noticef("loading the set of blocking rules from [%s]", proxy.blockNameFile)
 	bin, err := ReadTextFile(proxy.blockNameFile)
@@ -124,14 +116,6 @@ func (plugin *PluginBlockName) Eval(pluginsState *PluginsState, msg *dns.Msg) er
 // ---
 
 type PluginBlockNameResponse struct {
-}
-
-func (plugin *PluginBlockNameResponse) Name() string {
-	return "block_name"
-}
-
-func (plugin *PluginBlockNameResponse) Description() string {
-	return "Block DNS responses matching name patterns"
 }
 
 func (plugin *PluginBlockNameResponse) Init(proxy *Proxy) error {

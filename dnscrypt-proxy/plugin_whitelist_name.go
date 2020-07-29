@@ -18,14 +18,6 @@ type PluginWhitelistName struct {
 	format          string
 }
 
-func (plugin *PluginWhitelistName) Name() string {
-	return "whitelist_name"
-}
-
-func (plugin *PluginWhitelistName) Description() string {
-	return "Whitelists DNS queries matching name patterns"
-}
-
 func (plugin *PluginWhitelistName) Init(proxy *Proxy) error {
 	dlog.Noticef("loading the set of whitelisting rules from [%s]", proxy.whitelistNameFile)
 	bin, err := ReadTextFile(proxy.whitelistNameFile)

@@ -41,20 +41,16 @@ const (
 	XChacha20Poly1305
 )
 
-type ServerBugs struct {
-	incorrectPadding bool
-}
 
 type DNSCryptInfo struct {
 	*ServerInfo
-	IPAddr             *EPRing
-	RelayAddr          *EPRing
 	MagicQuery         [ClientMagicLen]byte
 	ServerPk           [32]byte
 	SharedKey          [32]byte
 	Version            CryptoConstruction
-	knownBugs          ServerBugs
 	Proxies            *NestedProxy // individual proxies chain
+	IPAddr             *EPRing
+	RelayAddr          *EPRing
 }
 
 func (info *DNSCryptInfo) Proto() string {
@@ -116,8 +112,8 @@ type ServersInfo struct {
 	lbStrategy        LBStrategy
 }
 
-func NewServersInfo() ServersInfo {
-	return ServersInfo{lbStrategy: DefaultLBStrategy, registeredServers: make([]RegisteredServer, 0)}
+func NewServersInfo() *ServersInfo {
+	return &ServersInfo{lbStrategy: DefaultLBStrategy, registeredServers: make([]RegisteredServer, 0)}
 }
 
 func (serversInfo *ServersInfo) registerServer(name string, stamp *stamps.ServerStamp) {
@@ -309,19 +305,7 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStam
 		dlog.Warnf("public key [%s] shouldn't be hex-encoded any more", string(stamp.ServerPk))
 		stamp.ServerPk = serverPk
 	}
-	knownBugs := ServerBugs{}
-	for _, buggyServerName := range proxy.serversWithBrokenQueryPadding {
-		if buggyServerName == name {
-			knownBugs.incorrectPadding = true
-			dlog.Infof("known bug in [%v]: padded queries are not correctly parsed", name)
-			break
-		}
-	}
 	relays, err := routes(proxy, name)
-	if knownBugs.incorrectPadding && relays != nil {
-		relays = nil
-		dlog.Warnf("[%v] is incompatible with anonymization", name)
-	}
 	if err != nil {
 		return ServerInfo{}, err
 	}
@@ -334,7 +318,6 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStam
 		return ServerInfo{}, err
 	}
 
-	certInfo.knownBugs = knownBugs
 	serverInfo := ServerInfo{
 		Info:               certInfo,
 		Name:               name,

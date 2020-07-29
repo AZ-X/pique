@@ -8,14 +8,6 @@ import (
 
 type PluginBlockIPv6 struct{}
 
-func (plugin *PluginBlockIPv6) Name() string {
-	return "block_ipv6"
-}
-
-func (plugin *PluginBlockIPv6) Description() string {
-	return "Immediately return a synthetic response to AAAA queries."
-}
-
 func (plugin *PluginBlockIPv6) Init(proxy *Proxy) error {
 	return nil
 }

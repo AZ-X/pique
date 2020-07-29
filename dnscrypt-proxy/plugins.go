@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"net"
-	"strings"
 	"time"
 	"encoding/json"
 	
@@ -24,8 +23,6 @@ type PluginsGlobals struct {
 	queryPlugins           *[]Plugin
 	responsePlugins        *[]Plugin
 	loggingPlugins         *[]Plugin
-	respondWithIPv4        net.IP
-	respondWithIPv6        net.IP
 }
 
 type PluginsReturnCode int
@@ -72,17 +69,17 @@ type PluginsState struct {
 	cacheNegMaxTTL                   uint32
 	cacheMinTTL                      uint32
 	cacheMaxTTL                      uint32
-	rejectTTL                        uint32
 	clientProto                      *string
 	qName                            *string
 	serverName                       *string
+	hash_key                         *[32]byte
 	requestStart                     time.Time
 	requestEnd                       time.Time
 	clientAddr                       *net.Addr
 	synthResponse                    *dns.Msg
 	dnssec                           bool
 	cacheHit                         bool
-	returnCode                       PluginsReturnCode	
+	returnCode                       PluginsReturnCode
 }
 
 func (p PluginsState) ServerName() string {
@@ -100,26 +97,14 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 	}
 
 	queryPlugins := &[]Plugin{}
-
-	if len(proxy.queryMeta) != 0 {
-		*queryPlugins = append(*queryPlugins, Plugin(new(PluginQueryMeta)))
-	}
 	if len(proxy.whitelistNameFile) != 0 {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginWhitelistName)))
 	}
-
 	if len(proxy.blockNameFile) != 0 {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginBlockName)))
 	}
 	if proxy.pluginBlockIPv6 {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginBlockIPv6)))
-	}
-	if len(proxy.cloakFile) != 0 {
-		*queryPlugins = append(*queryPlugins, Plugin(new(PluginCloak)))
-	}
-	*queryPlugins = append(*queryPlugins, Plugin(new(PluginGetSetPayloadSize)))
-	if proxy.cache {
-		*queryPlugins = append(*queryPlugins, Plugin(new(PluginCache)))
 	}
 	if proxy.pluginBlockUnqualified {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginBlockUnqualified)))
@@ -127,7 +112,18 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 	if proxy.pluginBlockUndelegated {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginBlockUndelegated)))
 	}
-
+	if len(proxy.cloakFile) != 0 {
+		proxy.calc_hash_key = true
+		*queryPlugins = append(*queryPlugins, Plugin(new(PluginCloak)))
+	}
+	if proxy.cache {
+		proxy.calc_hash_key = true
+		*queryPlugins = append(*queryPlugins, Plugin(new(PluginCache)))
+	}
+	if len(proxy.queryMeta) != 0 {
+		*queryPlugins = append(*queryPlugins, Plugin(new(PluginQueryMeta)))
+	}
+	*queryPlugins = append(*queryPlugins, Plugin(new(PluginGetSetPayloadSize)))
 	responsePlugins := &[]Plugin{}
 	if len(proxy.nxLogFile) != 0 {
 		*responsePlugins = append(*responsePlugins, Plugin(new(PluginNxLog)))
@@ -159,62 +155,23 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 			return err
 		}
 	}
-
+	proxy.pluginsGlobals = &PluginsGlobals{}
 	proxy.pluginsGlobals.queryPlugins = queryPlugins
 	proxy.pluginsGlobals.responsePlugins = responsePlugins
 	proxy.pluginsGlobals.loggingPlugins = loggingPlugins
 
-	parseBlockedQueryResponse(proxy.blockedQueryResponse, &proxy.pluginsGlobals)
-
 	return nil
 }
 
-// blockedQueryResponse can be 'refused', 'hinfo' or IP responses 'a:IPv4,aaaa:IPv6
-func parseBlockedQueryResponse(blockedResponse string, pluginsGlobals *PluginsGlobals) {
-	blockedResponse = StringStripSpaces(strings.ToLower(blockedResponse))
-
-	if strings.HasPrefix(blockedResponse, "a:") {
-		blockedIPStrings := strings.Split(blockedResponse, ",")
-		(*pluginsGlobals).respondWithIPv4 = net.ParseIP(strings.TrimPrefix(blockedIPStrings[0], "a:"))
-
-		if (*pluginsGlobals).respondWithIPv4 == nil {
-			dlog.Notice("error parsing IPv4 response given in blocked_query_response option, defaulting to `hinfo`")
-			return
-		}
-
-		if len(blockedIPStrings) > 1 {
-			if strings.HasPrefix(blockedIPStrings[1], "aaaa:") {
-				ipv6Response := strings.TrimPrefix(blockedIPStrings[1], "aaaa:")
-				if strings.HasPrefix(ipv6Response, "[") {
-					ipv6Response = strings.Trim(ipv6Response, "[]")
-				}
-				(*pluginsGlobals).respondWithIPv6 = net.ParseIP(ipv6Response)
-
-				if (*pluginsGlobals).respondWithIPv6 == nil {
-					dlog.Notice("error parsing IPv6 response given in blocked_query_response option, defaulting to IPv4")
-				}
-			} else {
-				dlog.Noticef("invalid IPv6 response given in blocked_query_response option [%s], the option should take the form 'a:<IPv4>,aaaa:<IPv6>'", blockedIPStrings[1])
-			}
-		}
-
-		if (*pluginsGlobals).respondWithIPv6 == nil {
-			(*pluginsGlobals).respondWithIPv6 = (*pluginsGlobals).respondWithIPv4
-		}
-	}
-}
-
 type Plugin interface {
-	Name() string
-	Description() string
 	Init(proxy *Proxy) error
 	Drop() error
 	Reload() error
 	Eval(pluginsState *PluginsState, msg *dns.Msg) error
 }
 
-func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, start time.Time) PluginsState {
-	return PluginsState{
+func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, start time.Time)*PluginsState {
+	return &PluginsState{
 		state:                            PluginsStateNone,
 		returnCode:                       PluginsReturnCodePass,
 		maxPayloadSize:                   MaxDNSUDPPacketSize - ResponseOverhead,
@@ -224,7 +181,6 @@ func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, sta
 		cacheNegMaxTTL:                   proxy.cacheNegMaxTTL,
 		cacheMinTTL:                      proxy.cacheMinTTL,
 		cacheMaxTTL:                      proxy.cacheMaxTTL,
-		rejectTTL:                        proxy.rejectTTL,
 		qName:                            nil,
 		requestStart:                     start,
 		maxUnencryptedUDPSafePayloadSize: MaxDNSUDPSafePacketSize,
@@ -233,7 +189,7 @@ func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, sta
 }
 
 func (pluginsState *PluginsState) PreEvalPlugins(proxy *Proxy, packet []byte, serverName *string) (*dns.Msg, uint16) {
-	pluginsGlobals := &proxy.pluginsGlobals
+	pluginsGlobals := proxy.pluginsGlobals
 	pluginsState.serverName = serverName
 	goto Go
 ERROR:
@@ -256,13 +212,19 @@ Go:
 	}
 	
 	pluginsState.qName = &qName
+	if edns0 := msg.IsEdns0(); edns0 != nil && edns0.Do() {
+		pluginsState.dnssec = true
+	}
+	if proxy.calc_hash_key {
+		pluginsState.hash_key = ComputeCacheKey(pluginsState, msg)
+	}
 	for _, plugin := range *pluginsGlobals.queryPlugins {
 		if err := plugin.Eval(pluginsState, msg); err != nil {
 			dlog.Warnf(">>>>>>>>>>>>>>>>>>>>>QueryPlugins return error: %v", err)
 			goto ERROR
 		}
 		if pluginsState.state == PluginsStateReject {
-			pluginsState.synthResponse = RefusedResponseFromMessage(msg, proxy.blockedQueryResponse, pluginsGlobals.respondWithIPv4, pluginsGlobals.respondWithIPv6, pluginsState.rejectTTL)
+			pluginsState.synthResponse = RefusedResponseFromMessage(msg, proxy.blockedQueryResponse)
 		}
 		if pluginsState.state != PluginsStateNone {
 			break
@@ -311,7 +273,7 @@ func (pluginsState *PluginsState) PostEvalPlugins(proxy *Proxy, request *dns.Msg
 	var bin []byte
 	var err error
 	var jsonStr string
-	pluginsGlobals := &proxy.pluginsGlobals
+	pluginsGlobals := proxy.pluginsGlobals
 	if request == nil {
 		return nil
 	}
@@ -357,14 +319,14 @@ func (pluginsState *PluginsState) PostEvalPlugins(proxy *Proxy, request *dns.Msg
 	}
 
 	//removeEDNS0Options(&response)  dnssec gone?
-	
+
 	for _, plugin := range *pluginsGlobals.responsePlugins {
 		if err := plugin.Eval(pluginsState, response); err != nil {
 			dlog.Warnf("===========================>error on Eval(response): %v", err)
 			pluginsState.state = PluginsStateDrop
 		}
 		if pluginsState.state == PluginsStateReject {
-			pluginsState.synthResponse = RefusedResponseFromMessage(response, proxy.blockedQueryResponse, pluginsGlobals.respondWithIPv4, pluginsGlobals.respondWithIPv6, pluginsState.rejectTTL)
+			pluginsState.synthResponse = RefusedResponseFromMessage(response, proxy.blockedQueryResponse)
 			response = pluginsState.synthResponse
 		}
 		if pluginsState.state != PluginsStateNone {

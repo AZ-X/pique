@@ -9,14 +9,6 @@ import (
 type PluginBlockUnqualified struct {
 }
 
-func (plugin *PluginBlockUnqualified) Name() string {
-	return "block_unqualified"
-}
-
-func (plugin *PluginBlockUnqualified) Description() string {
-	return "Block unqualified DNS names"
-}
-
 func (plugin *PluginBlockUnqualified) Init(proxy *Proxy) error {
 	return nil
 }

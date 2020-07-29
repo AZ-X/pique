@@ -42,26 +42,25 @@ type Proxy struct {
 	*ProxyStartup
 	proxyPublicKey                [32]byte
 	proxySecretKey                [32]byte
-	serversInfo                   ServersInfo
 	timeout                       time.Duration
 	certRefreshDelay              time.Duration
 	certIgnoreTimestamp           bool
+	calc_hash_key                 bool
 	mainProto                     string
+	blockedQueryResponse          string
 	cacheNegMinTTL                uint32
 	cacheNegMaxTTL                uint32
 	cacheMinTTL                   uint32
 	cacheMaxTTL                   uint32
-	rejectTTL                     uint32
 	cloakTTL                      uint32
-	pluginsGlobals                PluginsGlobals
+	serversInfo                   *ServersInfo
+	pluginsGlobals                *PluginsGlobals
 	smaxClients                   *semaphore.Weighted
-	isRefreshing                  atomic.Value
+	isRefreshing                  *atomic.Value
+	xTransport                    *XTransport
+	wg                            *sync.WaitGroup
 	ctx                           context.Context
 	cancel                        context.CancelFunc
-	wg                            sync.WaitGroup
-	xTransport                    *XTransport
-	blockedQueryResponse          string
-	serversWithBrokenQueryPadding []string
 }
 
 type ProxyStartup struct {
@@ -180,6 +179,7 @@ func (proxy *Proxy) addDNSListener(listenAddrStr string) {
 }
 
 func (proxy *Proxy) StartProxy() {
+	proxy.isRefreshing = &atomic.Value{}
 	proxy.isRefreshing.Store(false)
 	for _, listenAddrStr := range proxy.listenAddresses {
 		proxy.addDNSListener(listenAddrStr)
@@ -205,6 +205,7 @@ func (proxy *Proxy) StartProxy() {
 		proxy.serversInfo.registerServer(registeredServer.name, registeredServer.stamp)
 	}
 	proxy.ProxyStartup = nil
+	proxy.wg = &sync.WaitGroup{}
 	liveServers, err := proxy.serversInfo.refresh(proxy)
 	if liveServers > 0 {
 		proxy.certIgnoreTimestamp = false
@@ -503,10 +504,11 @@ func (proxy *Proxy) processIncomingQuery(clientProto string, query []byte, clien
 	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, start)
 	var request *dns.Msg
 	goto Go
-Exit:	
-	pluginsState.ApplyLoggingPlugins(&proxy.pluginsGlobals, request)
-	return	
-Go:	
+Exit:
+	pluginsState.ApplyLoggingPlugins(proxy.pluginsGlobals, request)
+	pluginsState = nil
+	return
+Go:
 	var response *dns.Msg
 	var err error
 	var serverInfo *ServerInfo

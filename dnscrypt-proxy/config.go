@@ -43,7 +43,6 @@ type Config struct {
 	LBStrategy               string                      `toml:"lb_strategy"`
 	BlockIPv6                bool                        `toml:"block_ipv6"`
 	BlockUnqualified         bool                        `toml:"block_unqualified"`
-	BlockUndelegated         bool                        `toml:"block_undelegated"`
 	CacheSize                int                         `toml:"cache_size"`
 	CacheNegTTL              uint32                      `toml:"cache_neg_ttl"`
 	CacheNegMinTTL           uint32                      `toml:"cache_neg_min_ttl"`
@@ -302,7 +301,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 
 	proxy.pluginBlockIPv6 = config.BlockIPv6
 	proxy.pluginBlockUnqualified = config.BlockUnqualified
-	proxy.pluginBlockUndelegated = config.BlockUndelegated
 	proxy.cache = config.Cache
 	proxy.cacheSize = config.CacheSize
 

@@ -46,6 +46,7 @@ type Proxy struct {
 	certRefreshDelay              time.Duration
 	certIgnoreTimestamp           bool
 	calc_hash_key                 bool
+	ephemeralKeys                 bool
 	mainProto                     string
 	blockedQueryResponse          string
 	cacheNegMinTTL                uint32
@@ -53,6 +54,8 @@ type Proxy struct {
 	cacheMinTTL                   uint32
 	cacheMaxTTL                   uint32
 	cloakTTL                      uint32
+	routes                        *map[string][]string
+	registeredRelays              []RegisteredServer
 	serversInfo                   *ServersInfo
 	pluginsGlobals                *PluginsGlobals
 	smaxClients                   *semaphore.Weighted
@@ -66,8 +69,6 @@ type Proxy struct {
 type ProxyStartup struct {
 	sources                       []*Source
 	registeredServers             []RegisteredServer
-	registeredRelays              []RegisteredServer
-	routes                        *map[string][]string
 	queryLogFile                  string
 	queryLogFormat                string
 	nxLogFile                     string
@@ -84,12 +85,10 @@ type ProxyStartup struct {
 	queryLogIgnoredQtypes         []string
 	queryMeta                     []string
 	listenAddresses               []string
-	ephemeralKeys                 bool
 	cache                         bool
 	child                         bool
 	pluginBlockIPv6               bool
 	pluginBlockUnqualified        bool
-	pluginBlockUndelegated        bool
 	cacheSize                     int
 	logMaxSize                    int
 	logMaxAge                     int

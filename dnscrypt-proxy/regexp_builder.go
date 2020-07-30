@@ -21,8 +21,8 @@ func CreateRegexBuilder(regexes []string) *regexp_builder {
 			fmt.Fprintf(&reg, "(%s)|", str)
 		}
 	}
-	dlog.Debugf("regex => %v", reg)
 	builder := &regexp_builder{Regexp:regexp.MustCompile(reg.String())}
+	dlog.Debugf("regex => %s", builder.String())
 	return builder
 }
 

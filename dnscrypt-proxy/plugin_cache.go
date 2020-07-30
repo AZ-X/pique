@@ -15,12 +15,6 @@ type CachedResponse struct {
 	expiration time.Time
 }
 
-type CachedResponses struct {
-	cache *Cache
-}
-
-var cachedResponses CachedResponses
-
 func ComputeCacheKey(pluginsState *PluginsState, msg *dns.Msg) *[32]byte {
 	question := msg.Question[0]
 	return computeCacheKey(pluginsState.dnssec, question.Qtype, question.Qclass, question.Name)
@@ -46,22 +40,19 @@ func computeCacheKey(dnssec bool, Qtype, Qclass uint16, Name string) *[32]byte {
 // ---
 
 type PluginCache struct {
+	cache *Cache
 }
 
 func (plugin *PluginCache) Init(proxy *Proxy) error {
-	return nil
-}
-
-func (plugin *PluginCache) Drop() error {
-	return nil
-}
-
-func (plugin *PluginCache) Reload() error {
+	size := 1<<math.Ilogb(float64(proxy.cacheSize))
+	dlog.Debugf("accurate cache size: %d", size)
+	proxy.pluginsGlobals.cache = NewCache(size)
+	plugin.cache = proxy.pluginsGlobals.cache
 	return nil
 }
 
 func (plugin *PluginCache) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
-	cachedAny, ok := cachedResponses.cache.Get(*pluginsState.hash_key)
+	cachedAny, ok := plugin.cache.Get(*pluginsState.hash_key)
 	if !ok {
 		return nil
 	}
@@ -87,30 +78,11 @@ func (plugin *PluginCache) Eval(pluginsState *PluginsState, msg *dns.Msg) error 
 // ---
 
 type PluginCacheResponse struct {
-}
-
-func (plugin *PluginCacheResponse) Name() string {
-	return "cache_response"
-}
-
-func (plugin *PluginCacheResponse) Description() string {
-	return "DNS cache (writer)."
+	cache *Cache
 }
 
 func (plugin *PluginCacheResponse) Init(proxy *Proxy) error {
-	if cachedResponses.cache == nil {
-		size := 1<<math.Ilogb(float64(proxy.cacheSize))
-		dlog.Debugf("accurate cache size: %d", size)
-		cachedResponses.cache = NewCache(size)
-	}
-	return nil
-}
-
-func (plugin *PluginCacheResponse) Drop() error {
-	return nil
-}
-
-func (plugin *PluginCacheResponse) Reload() error {
+	plugin.cache = proxy.pluginsGlobals.cache
 	return nil
 }
 
@@ -127,7 +99,7 @@ func (plugin *PluginCacheResponse) Eval(pluginsState *PluginsState, msg *dns.Msg
 		Msg:        msg,
 	}
 
-	cachedResponses.cache.Add(*pluginsState.hash_key, cachedResponse)
+	plugin.cache.Add(*pluginsState.hash_key, cachedResponse)
 	updateTTL(msg, cachedResponse.expiration)
 
 	return nil

@@ -8,6 +8,7 @@ import (
 	
 	"github.com/jedisct1/dlog"
 	"github.com/miekg/dns"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 type pluginsState int
@@ -20,9 +21,17 @@ const (
 )
 
 type PluginsGlobals struct {
+	*PluginsShareObjects
 	queryPlugins           *[]Plugin
 	responsePlugins        *[]Plugin
 	loggingPlugins         *[]Plugin
+}
+
+type PluginsShareObjects struct {
+	blockmatcher    *regexp_builder
+	block_logger    *lumberjack.Logger
+	block_format    *string
+	cache           *Cache
 }
 
 type PluginsReturnCode int
@@ -95,11 +104,7 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 	if len(proxy.userName) > 0 && !proxy.child {
 		return nil
 	}
-
 	queryPlugins := &[]Plugin{}
-	if len(proxy.whitelistNameFile) != 0 {
-		*queryPlugins = append(*queryPlugins, Plugin(new(PluginWhitelistName)))
-	}
 	if len(proxy.blockNameFile) != 0 {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginBlockName)))
 	}
@@ -108,9 +113,6 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 	}
 	if proxy.pluginBlockUnqualified {
 		*queryPlugins = append(*queryPlugins, Plugin(new(PluginBlockUnqualified)))
-	}
-	if proxy.pluginBlockUndelegated {
-		*queryPlugins = append(*queryPlugins, Plugin(new(PluginBlockUndelegated)))
 	}
 	if len(proxy.cloakFile) != 0 {
 		proxy.calc_hash_key = true
@@ -134,12 +136,11 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 	if proxy.cache {
 		*responsePlugins = append(*responsePlugins, Plugin(new(PluginCacheResponse)))
 	}
-
 	loggingPlugins := &[]Plugin{}
 	if len(proxy.queryLogFile) != 0 {
 		*loggingPlugins = append(*loggingPlugins, Plugin(new(PluginQueryLog)))
 	}
-
+	proxy.pluginsGlobals = &PluginsGlobals{PluginsShareObjects : &PluginsShareObjects{},}
 	for _, plugin := range *queryPlugins {
 		if err := plugin.Init(proxy); err != nil {
 			return err
@@ -155,7 +156,6 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 			return err
 		}
 	}
-	proxy.pluginsGlobals = &PluginsGlobals{}
 	proxy.pluginsGlobals.queryPlugins = queryPlugins
 	proxy.pluginsGlobals.responsePlugins = responsePlugins
 	proxy.pluginsGlobals.loggingPlugins = loggingPlugins
@@ -165,8 +165,6 @@ func (proxy *Proxy) InitPluginsGlobals() error {
 
 type Plugin interface {
 	Init(proxy *Proxy) error
-	Drop() error
-	Reload() error
 	Eval(pluginsState *PluginsState, msg *dns.Msg) error
 }
 

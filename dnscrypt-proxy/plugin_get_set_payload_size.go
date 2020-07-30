@@ -8,14 +8,6 @@ func (plugin *PluginGetSetPayloadSize) Init(proxy *Proxy) error {
 	return nil
 }
 
-func (plugin *PluginGetSetPayloadSize) Drop() error {
-	return nil
-}
-
-func (plugin *PluginGetSetPayloadSize) Reload() error {
-	return nil
-}
-
 func (plugin *PluginGetSetPayloadSize) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
 	pluginsState.originalMaxPayloadSize = 512 - ResponseOverhead
 	edns0 := msg.IsEdns0()

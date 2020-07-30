@@ -17,14 +17,6 @@ func (plugin *PluginQueryMeta) Init(proxy *Proxy) error {
 	return nil
 }
 
-func (plugin *PluginQueryMeta) Drop() error {
-	return nil
-}
-
-func (plugin *PluginQueryMeta) Reload() error {
-	return nil
-}
-
 func (plugin *PluginQueryMeta) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
 	msg.Extra = []dns.RR{plugin.queryMetaRR}
 	return nil

@@ -73,7 +73,6 @@ type ProxyStartup struct {
 	nxLogFile                     string
 	nxLogFormat                   string
 	blockNameFile                 string
-	whitelistNameFile             string
 	blockNameLogFile              string
 	whitelistNameLogFile          string
 	blockNameFormat               string

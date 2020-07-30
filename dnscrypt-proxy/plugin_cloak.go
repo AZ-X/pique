@@ -75,14 +75,6 @@ func (plugin *PluginCloak) Init(proxy *Proxy) error {
 	return nil
 }
 
-func (plugin *PluginCloak) Drop() error {
-	return nil
-}
-
-func (plugin *PluginCloak) Reload() error {
-	return nil
-}
-
 func (plugin *PluginCloak) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
 	cachedAny, ok := plugin.clock_cache.Get(*pluginsState.hash_key)
 	if !ok {

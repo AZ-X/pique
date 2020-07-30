@@ -23,14 +23,6 @@ func (plugin *PluginNxLog) Init(proxy *Proxy) error {
 	return nil
 }
 
-func (plugin *PluginNxLog) Drop() error {
-	return nil
-}
-
-func (plugin *PluginNxLog) Reload() error {
-	return nil
-}
-
 func (plugin *PluginNxLog) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
 	if msg.Rcode != dns.RcodeNameError {
 		return nil

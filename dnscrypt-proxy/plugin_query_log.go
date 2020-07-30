@@ -26,14 +26,6 @@ func (plugin *PluginQueryLog) Init(proxy *Proxy) error {
 	return nil
 }
 
-func (plugin *PluginQueryLog) Drop() error {
-	return nil
-}
-
-func (plugin *PluginQueryLog) Reload() error {
-	return nil
-}
-
 func (plugin *PluginQueryLog) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
 	question := msg.Question[0]
 	qType, ok := dns.TypeToString[question.Qtype]

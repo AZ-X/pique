@@ -13,9 +13,6 @@ github.com/jedisct1/go-clocksmith
 # github.com/jedisct1/xsecretbox v0.0.0-20190909160646-b731c21297f9 => ../xsecretbox/
 ## explicit
 github.com/jedisct1/xsecretbox
-# github.com/k-sone/critbitgo v1.4.0
-## explicit
-github.com/k-sone/critbitgo
 # github.com/miekg/dns v1.1.29 => ../miekg_dns/
 ## explicit
 github.com/miekg/dns

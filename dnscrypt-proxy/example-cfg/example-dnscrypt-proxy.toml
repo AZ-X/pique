@@ -8,8 +8,8 @@
 ## This is an example configuration file.
 ## You should adjust it to your needs, and save it as "dnscrypt-proxy.toml"
 ##
-## Online documentation is available here: https://dnscrypt.info/doc
-
+## Online documentation is not available. This program evolved far from the original dnscrypt proxy (go version)
+## Anybody with a background in computer science and normal IQ can start this program without any 'online documents'
 
 
 ##################################
@@ -18,8 +18,6 @@
 
 ## List of servers to use
 ##
-## Servers from the "public-resolvers" source (see down below) can
-## be viewed here: https://dnscrypt.info/public-servers
 ##
 ## The proxy will automatically pick working servers from this list.
 ## Note that the require_* filters do NOT apply when using this setting.
@@ -260,11 +258,6 @@ block_ipv6 = false
 block_unqualified = true
 
 
-## Immediately respond to queries for local zones instead of leaking them to
-## upstream resolvers (always causing errors or timeouts).
-
-block_undelegated = true
-
 ###############################
 #        Cloaking rules       #
 ###############################
@@ -376,10 +369,7 @@ cache_neg_max_ttl = 120
 ##   ads.*
 ##   ads*.example.*
 ##   ads*.example[0-9]*.com
-##
-## Example blacklist files can be found at https://download.dnscrypt.info/blacklists/
-## A script to build blacklists from public feeds can be found in the
-## `utils/generate-domains-blacklists` directory of the dnscrypt-proxy source code.
+
 
 [blacklist]
 
@@ -391,34 +381,6 @@ cache_neg_max_ttl = 120
   ## Optional path to a file logging blocked queries
 
   # log_file = 'blocked.log'
-
-
-  ## Optional log format: tsv or ltsv (default: tsv)
-
-  # log_format = 'tsv'
-
-
-
-######################################################
-#   Pattern-based whitelisting (blacklists bypass)   #
-######################################################
-
-## Whitelists support the same patterns as blacklists
-## If a name matches a whitelist entry, the corresponding session
-## will bypass names and IP filters.
-##
-## Time-based rules are also supported to make some websites only accessible at specific times of the day.
-
-[whitelist]
-
-  ## Path to the file of whitelisting rules (absolute, or relative to the same directory as the config file)
-
-  # whitelist_file = 'whitelist.txt'
-
-
-  ## Optional path to a file logging whitelisted queries
-
-  # log_file = 'whitelisted.log'
 
 
   ## Optional log format: tsv or ltsv (default: tsv)

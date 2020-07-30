@@ -12,14 +12,6 @@ func (plugin *PluginBlockIPv6) Init(proxy *Proxy) error {
 	return nil
 }
 
-func (plugin *PluginBlockIPv6) Drop() error {
-	return nil
-}
-
-func (plugin *PluginBlockIPv6) Reload() error {
-	return nil
-}
-
 func (plugin *PluginBlockIPv6) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
 	question := msg.Question[0]
 	if question.Qclass != dns.ClassINET || question.Qtype != dns.TypeAAAA {

@@ -112,28 +112,6 @@ func getMinTTL(msg *dns.Msg, minTTL uint32, maxTTL uint32, cacheNegMinTTL uint32
 	return time.Duration(ttl) * time.Minute
 }
 
-func setMaxTTL(msg *dns.Msg, ttl uint32) {
-	for _, rr := range msg.Answer {
-		if ttl < rr.Header().Ttl {
-			rr.Header().Ttl = ttl
-		}
-	}
-	for _, rr := range msg.Ns {
-		if ttl < rr.Header().Ttl {
-			rr.Header().Ttl = ttl
-		}
-	}
-	for _, rr := range msg.Extra {
-		header := rr.Header()
-		if header.Rrtype == dns.TypeOPT {
-			continue
-		}
-		if ttl < rr.Header().Ttl {
-			rr.Header().Ttl = ttl
-		}
-	}
-}
-
 func updateTTL(msg *dns.Msg, expiration time.Time) {
 	until := time.Until(expiration)
 	ttl := uint32(0)
@@ -151,28 +129,4 @@ func updateTTL(msg *dns.Msg, expiration time.Time) {
 			rr.Header().Ttl = ttl
 		}
 	}
-}
-
-func hasEDNS0Padding(packet []byte) (bool, error) {
-	msg := dns.Msg{}
-	if err := msg.Unpack(packet); err != nil {
-		return false, err
-	}
-	if edns0 := msg.IsEdns0(); edns0 != nil {
-		for _, option := range edns0.Option {
-			if option.Option() == dns.EDNS0PADDING {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
-}
-
-func removeEDNS0Options(msg *dns.Msg) bool {
-	edns0 := msg.IsEdns0()
-	if edns0 == nil {
-		return false
-	}
-	edns0.Option = []dns.EDNS0{}
-	return true
 }

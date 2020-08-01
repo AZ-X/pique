@@ -5,13 +5,17 @@
 package main
 
 import (
+	"sync"
 	"unsafe"
 )
 
 type Cache struct {
+	*sync.RWMutex
 	entries map[interface{}]*entry
 	push chan interface{}
 	push2 chan interface{}
+	delete chan interface{}
+	set chan *struct{K interface{}; V *entry}
 	full chan bool
 	keys *poolDequeue
 }
@@ -48,12 +52,15 @@ type eface struct {
 
 const bufsize = 8
 func NewCache(size int) *Cache {
-	cache := &Cache{keys:&poolDequeue{vals: make([]eface, size),}}
+	cache := &Cache{keys:&poolDequeue{vals: make([]eface, size),},RWMutex:&sync.RWMutex{},}
 	cache.entries = make(map[interface{}]*entry, size)
 	cache.keys.headTail = cache.keys.pack(1<<dequeueBits-1, 1<<dequeueBits-1)
 	cache.push = make(chan interface{}, Min(size, bufsize))
 	cache.push2 = make(chan interface{}, Min(size, bufsize))
+	cache.delete = make(chan interface{}, Min(size, bufsize))
+	cache.set = make(chan *struct{K interface{}; V *entry}, Min(size, bufsize))
 	cache.full = make(chan bool, Min(size, bufsize))
+
 	go func() {
 		for {
 			select {
@@ -62,6 +69,14 @@ func NewCache(size int) *Cache {
 			cache.full <- full
 			case key := <-cache.push2:
 			cache.keys.pushHead(key)
+			case key := <-cache.delete:
+			cache.Lock()
+			delete(cache.entries, key)
+			cache.Unlock()
+			case kv := <-cache.set:
+			cache.Lock()
+			cache.entries[kv.K] = kv.V
+			cache.Unlock()
 			}
 		}
 	}()
@@ -90,7 +105,9 @@ func (m *Cache) Size() int {
 }
 
 func (m *Cache) Get(key interface{}) (value interface{}, ok bool) {
+	m.RLock()
 	e, ok := m.entries[key]
+	m.RUnlock()
 	if !ok {
 		return nil, false
 	}
@@ -98,20 +115,27 @@ func (m *Cache) Get(key interface{}) (value interface{}, ok bool) {
 }
 
 func (m *Cache) Add(key, value interface{}) {
+	m.RLock()
 	if e, ok := m.entries[key]; ok && e.tryStore(&value) {
+		m.RUnlock()
 		return
 	}
+	m.RUnlock()
 	m.push <- key
 	if full := <- m.full; full {
 		if evictee_key, ok := m.keys.popTail(); ok {
 			m.push2 <- key
+			m.RLock()
 			if evictee, ok := m.entries[evictee_key]; ok {
-				delete(m.entries, evictee_key)
+				m.RUnlock()
+				m.delete <- evictee_key
 				evictee.delete()
+			} else {
+				m.RUnlock()
 			}
 		}
 	}
-	m.entries[key] = newEntry(value)
+	m.set <- &struct{K interface{}; V *entry}{K:key,V:newEntry(value)}
 }
 
 //go:linkname (*entry).load sync.(*entry).load

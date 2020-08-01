@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	
-	"github.com/jedisct1/dlog"
 )
 
 type regexp_builder struct {
@@ -22,7 +20,7 @@ func CreateRegexBuilder(regexes []string) *regexp_builder {
 		}
 	}
 	builder := &regexp_builder{Regexp:regexp.MustCompile(reg.String())}
-	dlog.Debugf("regex => %s", builder.String())
+	program_dbg_full_log("regex => %s", builder.String())
 	return builder
 }
 

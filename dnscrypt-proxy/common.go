@@ -90,55 +90,9 @@ func Max(a, b int) int {
 	return b
 }
 
-func MinF(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func MaxF(a, b float64) float64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func StringReverse(s string) string {
-	r := []rune(s)
-	for i, j := 0, len(r)-1; i < len(r)/2; i, j = i+1, j-1 {
-		r[i], r[j] = r[j], r[i]
-	}
-	return string(r)
-}
-
-func StringTwoFields(str string) (string, string, bool) {
-	if len(str) < 3 {
-		return "", "", false
-	}
-	pos := strings.IndexFunc(str, unicode.IsSpace)
-	if pos == -1 {
-		return "", "", false
-	}
-	a, b := strings.TrimFunc(str[:pos], unicode.IsSpace), strings.TrimFunc(str[pos+1:], unicode.IsSpace)
-	if len(a) == 0 || len(b) == 0 {
-		return a, b, false
-	}
-	return a, b, true
-}
-
 func StringQuote(str string) string {
 	str = strconv.QuoteToGraphic(str)
 	return str[1 : len(str)-1]
-}
-
-func StringStripSpaces(str string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsSpace(r) {
-			return -1
-		}
-		return r
-	}, str)
 }
 
 func TrimAndStripInlineComments(str string) string {

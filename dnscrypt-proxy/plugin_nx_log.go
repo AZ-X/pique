@@ -17,7 +17,7 @@ type PluginNxLog struct {
 }
 
 func (plugin *PluginNxLog) Init(proxy *Proxy) error {
-	plugin.logger = &lumberjack.Logger{LocalTime: true, MaxSize: proxy.logMaxSize, MaxAge: proxy.logMaxAge, MaxBackups: proxy.logMaxBackups, Filename: proxy.nxLogFile, Compress: true}
+	plugin.logger = &lumberjack.Logger{LocalTime: true, MaxSize: proxy.logMaxSize, MaxAge: proxy.logMaxAge, MaxBackups: proxy.logMaxBackups, Filename: proxy.nxLogFile,}
 	plugin.format = proxy.nxLogFormat
 
 	return nil

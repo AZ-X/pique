@@ -19,7 +19,7 @@ type PluginQueryLog struct {
 }
 
 func (plugin *PluginQueryLog) Init(proxy *Proxy) error {
-	plugin.logger = &lumberjack.Logger{LocalTime: true, MaxSize: proxy.logMaxSize, MaxAge: proxy.logMaxAge, MaxBackups: proxy.logMaxBackups, Filename: proxy.queryLogFile, Compress: true}
+	plugin.logger = &lumberjack.Logger{LocalTime: true, MaxSize: proxy.logMaxSize, MaxAge: proxy.logMaxAge, MaxBackups: proxy.logMaxBackups, Filename: proxy.queryLogFile,}
 	plugin.format = proxy.queryLogFormat
 	plugin.ignoredQtypes = proxy.queryLogIgnoredQtypes
 

@@ -10,7 +10,7 @@
 ## *******The powerful regex filter omits whitelist from this program*******
 ##
 ##
-## Example of valid patterns:
+## Example of both invalid and valid patterns:
 ##
 ##
 ## *.example.com      | warning: program panics because '*' is not quantifiable
@@ -21,7 +21,7 @@
 ## sex                | matches any name containing that substring
 ## ^ads[0-9]*         | matches "ads" followed by zero or more digits
 ## ^ads[0-9]+         | matches "ads" followed by one or more digits
-## ^ads.*.example.*   | hint: using '^' prefix and '\.$' suffix are faster than pattern contains any character literally
+## ^ads.*\.example.*  | hint: using '^' prefix and '\.$' suffix are faster than pattern contains any character literally
 
 ^ad\..*
 ^ads\..*

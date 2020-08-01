@@ -35,7 +35,7 @@ func (plugin *PluginBlockName) Init(proxy *Proxy) error {
 	if len(proxy.blockNameLogFile) == 0 {
 		return nil
 	}
-	proxy.pluginsGlobals.block_logger = &lumberjack.Logger{LocalTime: true, MaxSize: proxy.logMaxSize, MaxAge: proxy.logMaxAge, MaxBackups: proxy.logMaxBackups, Filename: proxy.blockNameLogFile, Compress: true}
+	proxy.pluginsGlobals.block_logger = &lumberjack.Logger{LocalTime: true, MaxSize: proxy.logMaxSize, MaxAge: proxy.logMaxAge, MaxBackups: proxy.logMaxBackups, Filename: proxy.blockNameLogFile,}
 	proxy.pluginsGlobals.block_format = &proxy.blockNameFormat
 	plugin.logger = proxy.pluginsGlobals.block_logger
 	plugin.format = proxy.pluginsGlobals.block_format

@@ -38,10 +38,8 @@ https://libsodium.gitbook.io/doc/public-key_cryptography/sealed_boxes.
 package box // import "golang.org/x/crypto/nacl/box"
 
 import (
-	cryptorand "crypto/rand"
 	"io"
 
-	"golang.org/x/crypto/blake2b"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/nacl/secretbox"
 	"golang.org/x/crypto/salsa20/salsa"
@@ -113,70 +111,3 @@ func OpenAfterPrecomputation(out, box []byte, nonce *[24]byte, sharedKey *[32]by
 	return secretbox.Open(out, box, nonce, sharedKey)
 }
 
-// SealAnonymous appends an encrypted and authenticated copy of message to out,
-// which will be AnonymousOverhead bytes longer than the original and must not
-// overlap it. This differs from Seal in that the sender is not required to
-// provide a private key.
-func SealAnonymous(out, message []byte, recipient *[32]byte, rand io.Reader) ([]byte, error) {
-	if rand == nil {
-		rand = cryptorand.Reader
-	}
-	ephemeralPub, ephemeralPriv, err := GenerateKey(rand)
-	if err != nil {
-		return nil, err
-	}
-
-	var nonce [24]byte
-	if err := sealNonce(ephemeralPub, recipient, &nonce); err != nil {
-		return nil, err
-	}
-
-	if total := len(out) + AnonymousOverhead + len(message); cap(out) < total {
-		original := out
-		out = make([]byte, 0, total)
-		out = append(out, original...)
-	}
-	out = append(out, ephemeralPub[:]...)
-
-	return Seal(out, message, &nonce, recipient, ephemeralPriv), nil
-}
-
-// OpenAnonymous authenticates and decrypts a box produced by SealAnonymous and
-// appends the message to out, which must not overlap box. The output will be
-// AnonymousOverhead bytes smaller than box.
-func OpenAnonymous(out, box []byte, publicKey, privateKey *[32]byte) (message []byte, ok bool) {
-	if len(box) < AnonymousOverhead {
-		return nil, false
-	}
-
-	var ephemeralPub [32]byte
-	copy(ephemeralPub[:], box[:32])
-
-	var nonce [24]byte
-	if err := sealNonce(&ephemeralPub, publicKey, &nonce); err != nil {
-		return nil, false
-	}
-
-	return Open(out, box[32:], &nonce, &ephemeralPub, privateKey)
-}
-
-// sealNonce generates a 24 byte nonce that is a blake2b digest of the
-// ephemeral public key and the receiver's public key.
-func sealNonce(ephemeralPub, peersPublicKey *[32]byte, nonce *[24]byte) error {
-	h, err := blake2b.New(24, nil)
-	if err != nil {
-		return err
-	}
-
-	if _, err = h.Write(ephemeralPub[:]); err != nil {
-		return err
-	}
-
-	if _, err = h.Write(peersPublicKey[:]); err != nil {
-		return err
-	}
-
-	h.Sum(nonce[:0])
-
-	return nil
-}

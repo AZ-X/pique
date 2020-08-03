@@ -13,7 +13,7 @@
 
 
 ##################################
-#         Global settings        #
+#         Primary settings       #
 ##################################
 
 ## List of servers to use
@@ -29,12 +29,76 @@
 
 # server_names = ['google', 'ev-va']
 
+##++++++++++++++++++++++++++++++++++++++++++++++++++++
+## Groups is a powerful concept for dnscrypt-proxy-r2+
+##++++++++++++++++++++++++++++++++++++++++++++++++++++
+## Rules:
+## Field 'name' must represent
+## Field 'servers' can be omitted if Field 'groups' exists
+## Field 'groups' can be omitted if Field 'servers' exists
+## Field 'priority' can be omitted
+## Field 'match' can be omitted
+##========================================================
+## Definition:
+## Field 'name' is a given identity for reference 
+## Field 'servers' is a collection which value should exist in server_names
+## Field 'groups' refers to previous defined field 'name'
+## Field 'priority' is in order of selection base on TCP ACK/ICMP PING result; 
+## --for group 'B' 'server11'>'server12'>'server13'
+## --for group 'A&B`' 'server11'>'server12'>'server13'>'server1'>'server2'>'server3'
+## Field 'match' is an instance of regular expression to match any domain name 
+## --which could be used as a selection from all groups
+## --if no group defined, server_names is a default group which priority=false and match='*'
+##========================================================
+## Below is an example of groups
+
+#groups = [
+#{ name='A', servers=['server1', 'server2', 'server3'] },
+#{ name='B', servers=['server11', 'server12', 'server13'], priority=true },
+#{ name='A&B', groups=['A', 'B']},
+#{ name='A&B`', groups=['B', 'A'], priority=true },
+#{ name='A&B`-regex', groups=['A', 'B'], match='google\.com\.$' },
+#{ name='CA', servers=['serverC'], match='\.ca\.$' },
+#]
+
 
 ## List of local addresses and ports to listen to. Can be IPv4 and/or IPv6.
 ## Example with both IPv4 and IPv6:
 ## listen_addresses = ['127.0.0.1:53', '[::1]:53']
 
 listen_addresses = ['127.0.0.1:53']
+
+
+##++++++++++++++++++++++++++++++++++++++++++++++++++++
+## Group and listener association                    +
+##++++++++++++++++++++++++++++++++++++++++++++++++++++
+## Rules:
+## Field 'position' must represent
+## Field 'group' must be omitted if Field 'regex' exists
+## Field 'regex' must be omitted if Field 'group' exists
+##========================================================
+## Definition:
+## Field 'position' is an integer refering to the order of items in listen_addresses
+## --e.g. listen_addresses = ['127.0.0.1:69', '127.0.0.1:70']
+## --position=1 --> 127.0.0.1:69
+## --position=2 --> 127.0.0.1:70
+## Field 'group' refers to the name field of groups
+## Field 'regex' is a boolean refering to match field of groups
+## --e.g. { position=2, regex=true }
+## --listen address 127.0.0.1 port 70
+## --2 matches found name='A&B`-regex' and name='CA'
+## --this listener will serve all the domain names successfully matched within servers from that group
+## --if groups does NOT contain any item has match field and listener_association has regex=true
+## --the default group server_names will be used which has a default match '*' (all domain name)
+## { position=3 } is equal to { position=3 , group is server_names }
+##========================================================
+## Below is an example of listener_association
+
+#listener_association = [
+#{ position=1, group='A&B' },
+#{ position=2, regex=true },
+#{ position=3 },
+#]
 
 
 ## Maximum number of simultaneous client connections to accept

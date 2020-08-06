@@ -61,6 +61,16 @@
 #{ name='CA', servers=['serverC'], match='\.ca\.$' },
 #]
 
+## Specify an interface for outbound connections 
+## The value can be an interface name or any valid IP address
+## Fill in the name of interface, if its DHCP is enabled
+## If the inferface statically bound to only one IP address, you can use either of the form
+## If using an inferface name, net probe function will wait until it's available
+
+#network_interface = 'Local Area Connection'
+#network_interface = 'wlan'
+#network_interface = '172.16.0.1'
+
 
 ## List of local addresses and ports to listen to. Can be IPv4 and/or IPv6.
 ## Example with both IPv4 and IPv6:

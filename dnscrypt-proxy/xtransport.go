@@ -44,6 +44,7 @@ type XTransport struct {
 	tlsDisableSessionTickets        bool
 	tlsCipherSuite                  []uint16
 	Proxies                         *NestedProxy
+	LocalInterface                  *string
 }
 
 type HTTPSContext struct {
@@ -210,22 +211,21 @@ func (th *TransportHolding) buildTransport(xTransport *XTransport, proxies *Nest
 	alive := xTransport.keepAlive
 	cfg := transport.TLSClientConfig
 
-	getDialContext := func(t *TransportHolding, ctx context.Context, netw, addr string, isTLS bool) (net.Conn, error) {
+	getDialContext := func(t *TransportHolding, ctx context.Context, netw, addr string) (net.Conn, error) {
 		if strings.HasSuffix(addr, t.DomainName) {
 			dlog.Criticalf("mismatch addr for TransportHolding(%s): [%s]", t.Name, addr)
 			return nil, errors.New("mismatch TransportHolding")
 		}
 		addr = t.EPRing.String()
 		t.EPRing = t.EPRing.Next()
-		dialer := &net.Dialer{Timeout: 2000 * time.Millisecond, KeepAlive: alive, FallbackDelay: -1}
-		if isTLS {
-			return tls.DialWithDialer(dialer, netw, addr, cfg)
+		if dialer, err := GetDialer("tcp", xTransport.LocalInterface, 2000*time.Millisecond, alive); err != nil {
+			return nil, err
 		} else {
-			return dialer.DialContext(ctx, netw, addr)
+			return tls.DialWithDialer(dialer, netw, addr, cfg)
 		}
 	}
 	transport.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
-		c, err := getDialContext(th, ctx, netw, addr, true)
+		c, err := getDialContext(th, ctx, netw, addr)
 		if err != nil {
 			if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
 				dlog.Debugf("DialTLSContext encountered: [%v]", err)
@@ -251,6 +251,7 @@ func (xTransport *XTransport) fetchDoT(th *TransportHolding, _ string, ctx *TLSC
 	var err error
 	var conn net.Conn
 	var response []byte
+	proto := "tcp"
 	goto Go
 Error:
 	return nil, err
@@ -260,12 +261,7 @@ Go:
 	}
 	proxies := xTransport.Proxies.Merge(th.Proxies)
 	if proxies == nil {
-		dialer := &net.Dialer{Deadline: time.Now().Add(timeout), KeepAlive: xTransport.keepAlive, FallbackDelay: -1}
-		if ctx == nil {
-			conn, err = net.Dial("tcp", th.EPRing.String())
-		} else {
-			conn, err = dialer.DialContext(ctx, "tcp", th.EPRing.String())
-		}
+		conn, err = Dial(proto, th.EPRing.String(), xTransport.LocalInterface, timeout, xTransport.keepAlive, ctx)
 	} else {
 		conn, err = xTransport.Proxies.GetDialContext()(ctx, "tcp", th.EPRing.String())
 	}
@@ -273,6 +269,9 @@ Go:
 		goto Error
 	}
 	defer conn.Close()
+	if err = conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		goto Error
+	}
 	tlsConn := tls.Client(conn, th.Config)
 	err = tlsConn.Handshake()
 	if err != nil {

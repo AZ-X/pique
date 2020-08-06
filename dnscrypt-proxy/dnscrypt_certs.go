@@ -244,7 +244,7 @@ func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endp
 	var pc net.Conn
 	proxies := proxy.xTransport.Proxies
 	if proxies == nil {
-		pc, err = net.Dial(proto, upstreamAddr.String())
+		pc, err = Dial(proto, upstreamAddr.String(), proxy.LocalInterface, proxy.timeout, -1)
 	} else {
 		pc, err = proxies.GetDialContext()(nil, proto, upstreamAddr.String())
 	}

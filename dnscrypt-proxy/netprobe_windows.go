@@ -7,11 +7,12 @@ import (
 	"github.com/jedisct1/dlog"
 )
 
-func NetProbe(address string, timeout int) error {
+func NetProbe(address string, ifi *string, timeout int) error {
 	if len(address) <= 0 || timeout == 0 {
 		return nil
 	}
-	remoteUDPAddr, err := net.ResolveUDPAddr("udp", address)
+	var err error
+	endpoint, err := ResolveEndpoint(address)
 	if err != nil {
 		return err
 	}
@@ -21,8 +22,20 @@ func NetProbe(address string, timeout int) error {
 	} else {
 		timeout = Min(MaxTimeout, timeout)
 	}
+	var localAddr net.Addr
+	if ifi != nil {
+		for tries := timeout; tries > 0; tries-- {
+			if localAddr, err = GetInferfaceDefaultAddr(*ifi, "udp"); err != nil {
+				dlog.Debug(err)
+				time.Sleep(1 * time.Second)
+			} else {
+				break
+			}
+		}
+	}
+	d := &net.Dialer{LocalAddr:localAddr, KeepAlive:-1, FallbackDelay:-1,}
 	for tries := timeout; tries > 0; tries-- {
-		pc, err := net.DialUDP("udp", nil, remoteUDPAddr)
+		pc, err := d.Dial("udp", endpoint.String())
 		if err == nil {
 			// Write at least 1 byte. This ensures that sockets are ready to use for writing.
 			// Windows specific: during the system startup, sockets can be created but the underlying buffers may not be setup yet. If this is the case

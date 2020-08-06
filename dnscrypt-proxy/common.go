@@ -3,14 +3,16 @@ package main
 import (
 	"bytes"
 	"container/ring"
+	"context"
 	"errors"
 	"io/ioutil"
 	"net"
-	"os"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	_ "unsafe"
+
 	"github.com/miekg/dns"
 )
 //only if raw msg dumping
@@ -24,6 +26,12 @@ const (
 	MaxDNSUDPPacketSize     = dns.DefaultMsgSize
 	MaxDNSUDPSafePacketSize = 1252
 )
+
+/*---------------------------------------------------------------------------------------
+
+    Network related
+
+/*--------------------------------------------------------------------------------------*/
 
 type Endpoint struct {
 	*net.IPAddr
@@ -64,49 +72,6 @@ func (e *Endpoint) String() string {
 	return net.JoinHostPort(e.IPAddr.String(), strconv.Itoa(e.Port))
 }
 
-var (
-	FileDescriptors   = make([]*os.File, 0)
-	FileDescriptorNum = 0
-)
-
-func Min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func Min64(x, y int64) int64 {
- if x < y {
-   return x
- }
- return y
-}
-
-func Max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func StringQuote(str string) string {
-	str = strconv.QuoteToGraphic(str)
-	return str[1 : len(str)-1]
-}
-
-func TrimAndStripInlineComments(str string) string {
-	if idx := strings.LastIndexByte(str, '#'); idx >= 0 {
-		if idx == 0 || str[0] == '#' {
-			return ""
-		}
-		if prev := str[idx-1]; prev == ' ' || prev == '\t' {
-			str = str[:idx-1]
-		}
-	}
-	return strings.TrimFunc(str, unicode.IsSpace)
-}
-
 //go:linkname ParseIPZone net.parseIPZone
 func ParseIPZone(s string) (net.IP, string)
 
@@ -144,6 +109,128 @@ func ExtractHostAndPort(hostport string, defaultPort int) (string, int, error) {
 		}
 	}
 	return host, port, err
+}
+
+var ErrInferfaceIsDown error = errors.New("specified inferface is down")
+
+func GetInferfaceDefaultAddr(name, network string) (ip net.Addr, err error) {
+	var ipAddr *net.IPAddr
+	goto Go
+Error:
+	return ip, err
+Wrap:
+	switch network {
+	case "tcp": ip = &net.TCPAddr{IP:ipAddr.IP, Zone:ipAddr.Zone, }
+	case "udp": ip = &net.UDPAddr{IP:ipAddr.IP, Zone:ipAddr.Zone, }
+	case "ip":  ip = ipAddr
+	default:err = errors.New("network of address is not a compatible type so called in dial.go"); goto Error
+	}
+	return
+Go:
+	if endpoint, err := ResolveEndpoint(name); err == nil {
+		ipAddr = endpoint.IPAddr
+		goto Wrap
+	}
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		goto Error
+	}
+	for _, ifi := range interfaces {
+		if ifi.Flags&net.FlagUp == 0 || ifi.Name != name {
+			continue
+		}
+		addrs, _ := ifi.Addrs()
+		for _, addr1 := range addrs {
+			switch v := addr1.(type) {
+			case *net.IPAddr:
+				ipAddr = v
+				goto Wrap
+			case *net.IPNet:
+				ipAddr = &net.IPAddr{IP:v.IP}
+				goto Wrap
+			}
+		}
+	}
+	err = ErrInferfaceIsDown
+	goto Error
+}
+
+func GetDialer(network string, ifi *string, timeout time.Duration, keepAlive time.Duration) (*net.Dialer, error) {
+	var addr net.Addr
+	var err error
+	if ifi != nil {
+		if addr, err = GetInferfaceDefaultAddr(*ifi, network); err != nil {
+			return nil, err
+		}
+	}
+	return &net.Dialer{Timeout: timeout, LocalAddr:addr, KeepAlive:keepAlive, FallbackDelay:-1,}, nil
+}
+
+var ErrUnknownOptType error = errors.New("unsupported opts for Dial")
+
+func Dial(network, address string, ifi *string, timeout time.Duration, keepAlive time.Duration, opts ...interface{}) (net.Conn, error) {
+	var ctx context.Context
+	for _, opt := range opts {
+		switch opt := opt.(type) {
+			case *TLSContext: 
+			if opt != nil {
+				ctx = opt
+			}
+			default: return nil, ErrUnknownOptType
+		}
+	}
+	if d, err := GetDialer(network, ifi, timeout, keepAlive); err == nil {
+		if ctx == nil {
+			return d.Dial(network, address)
+		}
+		return d.DialContext(ctx, network, address)
+	} else {
+		return nil, err
+	}
+}
+
+/*---------------------------------------------------------------------------------------
+
+    Others
+
+/*--------------------------------------------------------------------------------------*/
+
+func Min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func Min64(x, y int64) int64 {
+ if x < y {
+   return x
+ }
+ return y
+}
+
+func Max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func StringQuote(str string) string {
+	str = strconv.QuoteToGraphic(str)
+	return str[1 : len(str)-1]
+}
+
+func TrimAndStripInlineComments(str string) string {
+	if idx := strings.LastIndexByte(str, '#'); idx >= 0 {
+		if idx == 0 || str[0] == '#' {
+			return ""
+		}
+		if prev := str[idx-1]; prev == ' ' || prev == '\t' {
+			str = str[:idx-1]
+		}
+	}
+	return strings.TrimFunc(str, unicode.IsSpace)
 }
 
 func ReadTextFile(filename string) (string, error) {

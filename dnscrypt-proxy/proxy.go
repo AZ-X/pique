@@ -25,6 +25,11 @@ const (
 	NonSvrName                  = EMPTY
 )
 
+var (
+	FileDescriptors   = make([]*os.File, 0)
+	FileDescriptorNum = 0
+)
+
 func AnonymizedDNSHeader() []byte {
 	return []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
 }
@@ -54,6 +59,7 @@ type Proxy struct {
 	cacheMinTTL                   uint32
 	cacheMaxTTL                   uint32
 	cloakTTL                      uint32
+	LocalInterface                *string
 	routes                        *map[string][]string
 	registeredRelays              []RegisteredServer
 	serversInfo                   *ServersInfo
@@ -109,14 +115,13 @@ func program_dbg_full_log(args ...interface{}) {
 }
 
 func (proxy *Proxy) addDNSListener(listenAddrStr string) {
-	listenUDPAddr, err := net.ResolveUDPAddr("udp", listenAddrStr)
+	
+	listenAddr, err := ResolveEndpoint(listenAddrStr)
 	if err != nil {
 		dlog.Fatal(err)
 	}
-	listenTCPAddr, err := net.ResolveTCPAddr("tcp", listenAddrStr)
-	if err != nil {
-		dlog.Fatal(err)
-	}
+	listenUDPAddr := &net.UDPAddr{IP:listenAddr.IP, Port:listenAddr.Port, Zone:listenAddr.Zone,}
+	listenTCPAddr := &net.TCPAddr{IP:listenAddr.IP, Port:listenAddr.Port, Zone:listenAddr.Zone,}
 
 	// if 'userName' is not set, continue as before
 	if len(proxy.userName) <= 0 {
@@ -380,7 +385,7 @@ Go:
 	}
 	var pc net.Conn
 	if !proxies.HasValue() {
-		pc, err = net.Dial(serverProto, upstreamAddr.String())
+		pc, err = Dial(serverProto, upstreamAddr.String(), proxy.LocalInterface, proxy.timeout, -1)
 	} else {
 		pc, err = proxies.GetDialContext()(nil, serverProto, upstreamAddr.String())
 	}

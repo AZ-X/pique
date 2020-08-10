@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 	
 
@@ -33,26 +34,22 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 	var rtt time.Duration
 	var err error
 	var working_relays []*Endpoint
-	var relay_f bool
 	if len(relays) > 0 {
 		for i , relayAddr := range relays {
-			in, rtt, err, relay_f = dnsExchange(proxy, proto, &query, upstreamAddr, relayAddr, serverName)
+			in, rtt, err = _dnsExchange(proxy, proto, &query, upstreamAddr, relayAddr)
 			if err != nil {
 				dlog.Debug(err)
+				dlog.Noticef("relay [%d] failed for [%s]", i + 1, *serverName)
 				continue
 			}
-			if !relay_f {
-				working_relays = append(working_relays, relayAddr)
-			} else {
-				dlog.Noticef("relay [%d] failed for [%s]", i + 1, *serverName)
-			}
+			working_relays = append(working_relays, relayAddr)
 		}
 		if len(working_relays) < 1 {
 			dlog.Noticef("all relays failed for [%s]", *serverName)
 			return nil, 0, errors.New("all relays failed")
 		}
 	} else {
-		in, rtt, err, _ = dnsExchange(proxy, proto, &query, upstreamAddr, nil, serverName)
+		in, rtt, err = _dnsExchange(proxy, proto, &query, upstreamAddr, nil)
 	}
 	if err != nil {
 		dlog.Debug(err)
@@ -155,10 +152,14 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 	if certInfo.Version == UndefinedConstruction {
 		return nil, 0, errors.New("No useable certificate found")
 	}
-	certInfo.RelayAddr = LinkEPRing(working_relays...)
-	certInfo.IPAddr	   = LinkEPRing(upstreamAddr)
+	if epring := LinkEPRing(working_relays...); epring != nil {
+		certInfo.RelayAddr = &atomic.Value{}
+		certInfo.RelayAddr.Store(epring)
+	}
+	certInfo.IPAddr = &atomic.Value{}
+	certInfo.IPAddr.Store(LinkEPRing(upstreamAddr))
 	if certInfo.RelayAddr != nil {
-		certInfo.RelayAddr.Do(
+		certInfo.RelayAddr.Load().(*EPRing).Do(
 		func(v interface{}){
 		dlog.Infof("relay [%s*%s]=%s", *serverName, v.(*EPRing).Order(), v.(*EPRing).String())
 		})
@@ -201,19 +202,20 @@ func packTxtString(s string) []byte {
 	return msg
 }
 
-func dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endpoint, relayAddr *Endpoint, serverName *string) (*dns.Msg, time.Duration, error, bool) {
-	relay_f := relayAddr == nil
-	response, ttl, err := _dnsExchange(proxy, proto, query, upstreamAddr, relayAddr)
-	if err != nil && relayAddr != nil {
-		dlog.Debugf("failed to get a certificate for [%v] via relay [%v], retrying over a direct connection", *serverName, relayAddr.IP)
-		relay_f = true
-		response, ttl, err = _dnsExchange(proxy, proto, query, upstreamAddr, nil)
-		if err == nil {
-			dlog.Infof("direct certificate retrieval for [%v] succeeded", *serverName)
-		}
-	}
-	return response, ttl, err, relay_f
-}
+//This function sucks so that set forth in museum
+//func dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endpoint, relayAddr *Endpoint, serverName *string) (*dns.Msg, time.Duration, error, bool) {
+//	relay_f := relayAddr == nil
+//	response, ttl, err := _dnsExchange(proxy, proto, query, upstreamAddr, relayAddr)
+//	if err != nil && relayAddr != nil {
+//		dlog.Debugf("failed to get a certificate for [%v] via relay [%v], retrying over a direct connection", *serverName, relayAddr.IP)
+//		relay_f = true
+//		response, ttl, err = _dnsExchange(proxy, proto, query, upstreamAddr, nil)
+//		if err == nil {
+//			dlog.Infof("direct certificate retrieval for [%v] succeeded", *serverName)
+//		}
+//	}
+//	return response, ttl, err, relay_f
+//}
 
 func _dnsExchange(proxy *Proxy, proto string, query *dns.Msg, upstreamAddr *Endpoint, relayAddr *Endpoint) (*dns.Msg, time.Duration, error) {
 	var packet []byte

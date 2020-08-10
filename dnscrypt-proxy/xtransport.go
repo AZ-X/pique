@@ -13,7 +13,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
+	
 	"github.com/jedisct1/dlog"
 	stamps "stammel"
 )
@@ -28,13 +30,12 @@ const (
 type TransportHolding struct {
 	*http.Transport
 	*tls.Config
-	*EPRing
+	IPs                             *atomic.Value //*EPRing
 	Name                            *string //redundant key: name of stamp for now
 	DomainName                      string
 	SNIShadow                       string
 	SNIBlotUp                       stamps.SNIBlotUpType
 	Proxies                         *NestedProxy // individual proxies chain
-
 }
 
 type XTransport struct {
@@ -109,7 +110,8 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer, _ *NestedP
 		SNIBlotUp:  stamp.SNIBlotUp,
 	}
 	th.Transport = transport
-	th.EPRing = epring
+	th.IPs = &atomic.Value{}
+	th.IPs.Store(epring)
 	transport.TLSClientConfig = th.buildTLS(xTransport)
 	if err := th.buildTransport(xTransport, xTransport.Proxies); err != nil {
 		return err
@@ -140,7 +142,8 @@ func (xTransport *XTransport) buildTLS(server RegisteredServer) error {
 		SNIShadow:  stamp.SNIShadow,
 		SNIBlotUp:  stamp.SNIBlotUp,
 	}
-	th.EPRing = epring
+	th.IPs = &atomic.Value{}
+	th.IPs.Store(epring)
 	th.Config = th.buildTLS(xTransport)
 	xTransport.transports[server.name] = th
 	return nil
@@ -166,7 +169,7 @@ func (th *TransportHolding) buildTLS(xTransport *XTransport) (cfg *tls.Config) {
 		dlog.Debugf("SNI setup for [%s]", *th.Name)
 		switch th.SNIBlotUp {
 			case stamps.SNIBlotUpTypeOmit:    cfg.ServerName = ""
-			case stamps.SNIBlotUpTypeIPAddr:  cfg.ServerName = th.EPRing.IP.String()
+			case stamps.SNIBlotUpTypeIPAddr:  cfg.ServerName = th.IPs.Load().(*EPRing).IP.String()
 			case stamps.SNIBlotUpTypeMoniker: cfg.ServerName = th.SNIShadow
 		}
 		cfg.VerifyPeerCertificate = func(certificates [][]byte, _ [][]*x509.Certificate) error {
@@ -216,8 +219,9 @@ func (th *TransportHolding) buildTransport(xTransport *XTransport, proxies *Nest
 			dlog.Criticalf("mismatch addr for TransportHolding(%s): [%s]", t.Name, addr)
 			return nil, errors.New("mismatch TransportHolding")
 		}
-		addr = t.EPRing.String()
-		t.EPRing = t.EPRing.Next()
+		epring := t.IPs.Load().(*EPRing)
+		addr = epring.String()
+		t.IPs.Store(epring.Next())
 		if dialer, err := GetDialer("tcp", xTransport.LocalInterface, 2000*time.Millisecond, alive); err != nil {
 			return nil, err
 		} else {
@@ -261,9 +265,9 @@ Go:
 	}
 	proxies := xTransport.Proxies.Merge(th.Proxies)
 	if proxies == nil {
-		conn, err = Dial(proto, th.EPRing.String(), xTransport.LocalInterface, timeout, xTransport.keepAlive, ctx)
+		conn, err = Dial(proto, th.IPs.Load().(*EPRing).String(), xTransport.LocalInterface, timeout, xTransport.keepAlive, ctx)
 	} else {
-		conn, err = xTransport.Proxies.GetDialContext()(ctx, "tcp", th.EPRing.String())
+		conn, err = xTransport.Proxies.GetDialContext()(ctx, "tcp", th.IPs.Load().(*EPRing).String())
 	}
 	if err != nil {
 		goto Error

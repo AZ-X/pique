@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/tls"
@@ -12,7 +13,7 @@ import (
 	"net"
 	"sort"
 	"strings"
-	"context"
+	"sync/atomic"
 	"time"
 	
 	"github.com/jedisct1/dlog"
@@ -48,9 +49,9 @@ type DNSCryptInfo struct {
 	ServerPk           [32]byte
 	SharedKey          [32]byte
 	Version            CryptoConstruction
-	Proxies            *NestedProxy // individual proxies chain
-	IPAddr             *EPRing
-	RelayAddr          *EPRing
+	Proxies            *NestedProxy  // individual proxies chain
+	IPAddr             *atomic.Value //*EPRing
+	RelayAddr          *atomic.Value //*EPRing
 }
 
 func (info *DNSCryptInfo) Proto() string {
@@ -110,6 +111,13 @@ type ServersInfo struct {
 	inner             []*ServerInfo
 	registeredServers []RegisteredServer
 	lbStrategy        LBStrategy
+}
+
+type ServerGroup struct {
+	name              string
+	groups            []*ServerGroup
+	servers           []*string
+	priority          int
 }
 
 func NewServersInfo() *ServersInfo {

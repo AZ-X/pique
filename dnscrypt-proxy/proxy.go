@@ -378,10 +378,11 @@ Go:
 		program_dbg_full_log("exchangeDnScRypt E01")
 		goto Error
 	}
-	upstreamAddr := serverInfo.IPAddr
+	upstreamAddr := serverInfo.IPAddr.Load().(*EPRing)
+	serverInfo.IPAddr.Store(upstreamAddr.Next())
 	if serverInfo.RelayAddr != nil {
-		upstreamAddr = serverInfo.RelayAddr
-		serverInfo.RelayAddr = serverInfo.RelayAddr.Next()
+		upstreamAddr = serverInfo.RelayAddr.Load().(*EPRing)
+		serverInfo.RelayAddr.Store(upstreamAddr.Next())
 	}
 	var pc net.Conn
 	if !proxies.HasValue() {
@@ -399,7 +400,7 @@ Go:
 		goto Error
 	}
 	if serverInfo.RelayAddr != nil {
-		proxy.prepareForRelay(serverInfo.IPAddr.Endpoint, &encryptedQuery)
+		proxy.prepareForRelay(serverInfo.IPAddr.Load().(*EPRing).Endpoint, &encryptedQuery)
 	}
 	var encryptedResponse []byte
 	for tries := 2; tries > 0; tries-- {
@@ -554,7 +555,7 @@ Go:
 		case "DNSCrypt":
 			info := (serverInfo.Info).(*DNSCryptInfo)
 			if info.RelayAddr!= nil {
-				relayIndex = "*" + info.RelayAddr.Order()
+				relayIndex = "*" + info.RelayAddr.Load().(*EPRing).Order()
 			}
 		default:
 			dlog.Fatalf("unsupported server protocol:[%s]", serverInfo.Info.Proto())

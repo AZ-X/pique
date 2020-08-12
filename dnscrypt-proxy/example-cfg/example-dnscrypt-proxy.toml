@@ -35,6 +35,8 @@
 ## Rules:
 ## Field 'name' must represent
 ## Field 'servers' can be omitted if Field 'groups' exists
+## Field 'servers' must be omitted if Field 'tag' exists
+## Field 'tag' must be omitted if Field 'servers' exists
 ## Field 'groups' can be omitted if Field 'servers' exists
 ## Field 'priority' can be omitted
 ## Field 'match' can be omitted
@@ -42,6 +44,10 @@
 ## Definition:
 ## Field 'name' is a given identity for reference 
 ## Field 'servers' is a collection which value should exist in server_names
+## Field 'tag' is an attribute which value should exist for each entity of server_names
+## --tag is valid only if you are using https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
+## --tag is one of values of an instance of tags defined for StampProtoTypeDoTEx, StampProtoTypeDoHEx
+## --or StampProtoTypeDNSCryptEx as extended type of DoT,DoH,DNSCrypt stamps
 ## Field 'groups' refers to previous defined field 'name'
 ## Field 'priority' is in order of selection base on TCP ACK/ICMP PING result; 
 ## --for group 'B' 'server11'>'server12'>'server13'
@@ -59,6 +65,9 @@
 #{ name='A&B`', groups=['B', 'A'], priority=true },
 #{ name='A&B`-regex', groups=['A', 'B'], match='google\.com\.$' },
 #{ name='CA', servers=['serverC'], match='\.ca\.$' },
+#{ name='DE', tag='de', match='\.de\.$' },
+#{ name='Swiss', tag='ch', match='\.(ch|swiss)\.$' },
+#{ name='foo', tag='foo', match='porn' },
 #]
 
 ## Specify an interface for outbound connections 
@@ -247,9 +256,12 @@ cert_refresh_delay = 240
 ##  4865 = TLS_AES_128_GCM_SHA256
 ##  4867 = TLS_CHACHA20_POLY1305_SHA256
 ##
-## On non-Intel CPUs such as MIPS routers and ARM systems (Android, Raspberry Pi...),
+##
+## On non-amd64 CPUs such as some antique MIPS and ARM systems
+## except Cavium Octeon MIPS, ARMv8-A and processors support Cryptographic Hardware Accelerator and
+## Hardware-based PRNG e.g. Hardware Crypto Engine in Qualcomm SoCs
 ## the following suite improves performance.
-## This may also help on Intel CPUs running 32-bit operating systems.
+## This may also help on amd64 CPUs running 32-bit operating systems.
 ##
 ## Keep tls_cipher_suite empty if you have issues fetching sources or
 ## connecting to some DoH servers. Google and Cloudflare are fine with it.

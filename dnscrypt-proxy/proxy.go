@@ -114,7 +114,7 @@ func program_dbg_full_log(args ...interface{}) {
 	}
 }
 
-func (proxy *Proxy) addDNSListener(listenAddrStr string) {
+func (proxy *Proxy) addDNSListener(listenAddrStr string, idx int) {
 	
 	listenAddr, err := ResolveEndpoint(listenAddrStr)
 	if err != nil {
@@ -125,10 +125,10 @@ func (proxy *Proxy) addDNSListener(listenAddrStr string) {
 
 	// if 'userName' is not set, continue as before
 	if len(proxy.userName) <= 0 {
-		if err := proxy.udpListenerFromAddr(listenUDPAddr); err != nil {
+		if err := proxy.udpListenerFromAddr(listenUDPAddr, idx); err != nil {
 			dlog.Fatal(err)
 		}
-		if err := proxy.tcpListenerFromAddr(listenTCPAddr); err != nil {
+		if err := proxy.tcpListenerFromAddr(listenTCPAddr, idx); err != nil {
 			dlog.Fatal(err)
 		}
 		return
@@ -175,17 +175,17 @@ func (proxy *Proxy) addDNSListener(listenAddrStr string) {
 	FileDescriptorNum++
 
 	dlog.Noticef("listening to %v [UDP]", listenUDPAddr)
-	go proxy.udpListener(listenerUDP.(*net.UDPConn))
+	go proxy.udpListener(listenerUDP.(*net.UDPConn), idx)
 
 	dlog.Noticef("listening to %v [TCP]", listenAddrStr)
-	go proxy.tcpListener(listenerTCP.(*net.TCPListener))
+	go proxy.tcpListener(listenerTCP.(*net.TCPListener), idx)
 }
 
 func (proxy *Proxy) StartProxy() {
 	proxy.isRefreshing = &atomic.Value{}
 	proxy.isRefreshing.Store(false)
-	for _, listenAddrStr := range proxy.listenAddresses {
-		proxy.addDNSListener(listenAddrStr)
+	for idx, listenAddrStr := range proxy.listenAddresses {
+		proxy.addDNSListener(listenAddrStr, idx+1)
 	}
 	
 	// if 'userName' is set and we are the parent process drop privilege and exit
@@ -237,7 +237,7 @@ func (proxy *Proxy) StartProxy() {
 	}
 }
 
-func (proxy *Proxy) udpListener(clientPc *net.UDPConn) {
+func (proxy *Proxy) udpListener(clientPc *net.UDPConn, idx int) {
 	defer clientPc.Close()
 	for {
 		buffer := make([]byte, MaxDNSUDPPacketSize-1)
@@ -248,22 +248,22 @@ func (proxy *Proxy) udpListener(clientPc *net.UDPConn) {
 		packet := buffer[:length]
 		go func() {
 			start := time.Now()
-			proxy.processIncomingQuery("udp", packet, &clientAddr, clientPc, start)
+			proxy.processIncomingQuery("udp", packet, &clientAddr, clientPc, start, idx)
 		}()
 	}
 }
 
-func (proxy *Proxy) udpListenerFromAddr(listenAddr *net.UDPAddr) error {
+func (proxy *Proxy) udpListenerFromAddr(listenAddr *net.UDPAddr, idx int) error {
 	clientPc, err := net.ListenUDP("udp", listenAddr)
 	if err != nil {
 		return err
 	}
 	dlog.Noticef("listening to %v [UDP]", listenAddr)
-	go proxy.udpListener(clientPc)
+	go proxy.udpListener(clientPc, idx)
 	return nil
 }
 
-func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener) {
+func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener, idx int) {
 	defer acceptPc.Close()
 	for {
 		clientPc, err := acceptPc.Accept()
@@ -281,18 +281,18 @@ func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener) {
 				return
 			}
 			clientAddr := clientPc.RemoteAddr()
-			proxy.processIncomingQuery("tcp", packet, &clientAddr, clientPc, start)
+			proxy.processIncomingQuery("tcp", packet, &clientAddr, clientPc, start, idx)
 		}()
 	}
 }
 
-func (proxy *Proxy) tcpListenerFromAddr(listenAddr *net.TCPAddr) error {
+func (proxy *Proxy) tcpListenerFromAddr(listenAddr *net.TCPAddr, idx int) error {
 	acceptPc, err := net.ListenTCP("tcp", listenAddr)
 	if err != nil {
 		return err
 	}
 	dlog.Noticef("listening to %v [TCP]", listenAddr)
-	go proxy.tcpListener(acceptPc)
+	go proxy.tcpListener(acceptPc, idx)
 	return nil
 }
 
@@ -504,7 +504,8 @@ func (proxy *Proxy) clientsCountDec() {
 	proxy.smaxClients.Release(1)
 }
 
-func (proxy *Proxy) processIncomingQuery(clientProto string, query []byte, clientAddr *net.Addr, clientPc net.Conn, start time.Time) {
+func (proxy *Proxy) processIncomingQuery(clientProto string, query []byte, clientAddr *net.Addr,
+ clientPc net.Conn, start time.Time, idx int) {
 	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, start)
 	var request *dns.Msg
 	goto Go

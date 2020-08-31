@@ -27,18 +27,23 @@ const (
 	DoTDefaultPort                  = 853
 )
 
+//to reduce memory payload, shift http's Transport and ensure single instance of it
+//now give up calling CloseIdleConnections method which has side effect on burst connections with different cm
+//since we use custom dial on Transport with variant of tls config, have to cover all the proxies usage
 type TransportHolding struct {
-	*http.Transport
 	*tls.Config
 	IPs                             *atomic.Value //*EPRing
 	Name                            *string //redundant key: name of stamp for now
 	DomainName                      string
 	SNIShadow                       string
 	SNIBlotUp                       stamps.SNIBlotUpType
+	Context                         *HTTPSContext
 	Proxies                         *NestedProxy // individual proxies chain
 }
 
+//upon TLS
 type XTransport struct {
+	*http.Transport
 	transports                      map[string]*TransportHolding //key: name of stamp for now
 	keepAlive                       time.Duration
 	timeout                         time.Duration
@@ -48,14 +53,21 @@ type XTransport struct {
 	LocalInterface                  *string
 }
 
+type TLSContextDial func(ctx context.Context, network, addr string) (net.Conn, error)
+
+//soul of HTTPS
 type HTTPSContext struct {
 	context.Context
+	TLSContextDial
+}
+
+func (c *HTTPSContext) Value(key interface{}) interface{} {
+	return c.TLSContextDial
 }
 
 type TLSContext struct {
 	context.Context
 }
-
 
 func NewXTransport() *XTransport {
 	xTransport := XTransport{
@@ -65,10 +77,6 @@ func NewXTransport() *XTransport {
 		tlsCipherSuite:           	nil,
 	}
 	return &xTransport
-}
-
-func (xTransport *XTransport) closeIdleConnections() {
-
 }
 
 
@@ -90,29 +98,40 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer, _ *NestedP
 	}
 	endpoint.Port = port
 	epring := LinkEPRing(endpoint)
-	transport := &http.Transport{
-	ForceAttemptHTTP2:      true,//formal servers (DOH, DOT, https-gits, etc.) should provide H>1.1 infrastructure with tls>1.2
-	DisableKeepAlives:      xTransport.keepAlive <= 0,
-	DisableCompression:     true,
-	MaxIdleConns:           5,
-	MaxConnsPerHost:        0,
-	TLSHandshakeTimeout:    1500 * time.Millisecond,
-	IdleConnTimeout:        xTransport.keepAlive,
-	ResponseHeaderTimeout:  timeout,
-	ExpectContinueTimeout:  timeout,
-	MaxResponseHeaderBytes: 4096,
+	if xTransport.Transport == nil {
+		transport := &http.Transport{
+		ForceAttemptHTTP2:      true,//formal servers (DOH, DOT, https-gits, etc.) should provide H>1.1 infrastructure with tls>1.2
+		DisableKeepAlives:      xTransport.keepAlive <= 0,
+		DisableCompression:     true,
+		MaxIdleConns:           5,
+		MaxConnsPerHost:        0,
+		TLSHandshakeTimeout:    1500 * time.Millisecond,
+		IdleConnTimeout:        xTransport.keepAlive,
+		ResponseHeaderTimeout:  timeout,
+		ExpectContinueTimeout:  timeout,
+		MaxResponseHeaderBytes: 4096,
+		}
+		transport.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
+			c, err := ctx.Value(nil).(TLSContextDial)(ctx, netw, addr)
+			if err != nil {
+				if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
+					dlog.Debugf("DialTLSContext encountered: [%v]", err)
+				}
+				return nil, err
+			}
+			return c, c.(*tls.Conn).Handshake()
+		}
+		xTransport.Transport = transport
 	}
-
 	th := &TransportHolding{
 		Name:       &server.name,
 		DomainName: domain,
 		SNIShadow:  stamp.SNIShadow,
 		SNIBlotUp:  stamp.SNIBlotUp,
 	}
-	th.Transport = transport
 	th.IPs = &atomic.Value{}
 	th.IPs.Store(epring)
-	transport.TLSClientConfig = th.buildTLS(xTransport)
+	th.Config = th.buildTLS(xTransport)
 	if err := th.buildTransport(xTransport, xTransport.Proxies); err != nil {
 		return err
 	}
@@ -156,6 +175,7 @@ func (th *TransportHolding) buildTLS(xTransport *XTransport) (cfg *tls.Config) {
 		CurvePreferences: []tls.CurveID{tls.X25519},
 		DynamicRecordSizingDisabled: true,
 		InsecureSkipVerify: th.SNIBlotUp != stamps.SNIBlotUpTypeDefault,
+		NextProtos: []string{"h2"},
 	}
 	if !xTransport.tlsDisableSessionTickets {
 		cfg.ClientSessionCache = tls.NewLRUClientSessionCache(10)
@@ -204,39 +224,29 @@ func (th *TransportHolding) buildTLS(xTransport *XTransport) (cfg *tls.Config) {
 }
 
 func (th *TransportHolding) buildTransport(xTransport *XTransport, proxies *NestedProxy) error {
-	transport := th.Transport
-	if proxies != nil {
-		dc, pf := proxies.GetTransportProxy()
-		transport.Proxy = pf
-		transport.DialTLSContext = dc
-		return nil
-	}
 	alive := xTransport.keepAlive
-	cfg := transport.TLSClientConfig
-
-	getDialContext := func(t *TransportHolding, ctx context.Context, netw, addr string) (net.Conn, error) {
-		if strings.HasSuffix(addr, t.DomainName) {
-			dlog.Criticalf("mismatch addr for TransportHolding(%s): [%s]", t.Name, addr)
+	cfg := th.Config
+	th.Context = &HTTPSContext{Context:context.Background(),}
+	th.Context.TLSContextDial = func(ctx context.Context, netw, addr string) (net.Conn, error) {
+		if xTransport.Proxies != nil {
+			if plainConn, err := xTransport.Proxies.GetDialContext()(ctx, netw, addr); err == nil {
+				return tls.Client(plainConn, cfg), nil
+			} else {
+				return nil, err
+			}
+		}
+		if strings.HasSuffix(addr, th.DomainName) {
+			dlog.Criticalf("mismatch addr for TransportHolding(%s): [%s]", th.Name, addr)
 			return nil, errors.New("mismatch TransportHolding")
 		}
-		epring := t.IPs.Load().(*EPRing)
+		epring := th.IPs.Load().(*EPRing)
 		addr = epring.String()
-		t.IPs.Store(epring.Next())
+		th.IPs.Store(epring.Next())
 		if dialer, err := GetDialer("tcp", xTransport.LocalInterface, 2000*time.Millisecond, alive); err != nil {
 			return nil, err
 		} else {
 			return tls.DialWithDialer(dialer, netw, addr, cfg)
 		}
-	}
-	transport.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
-		c, err := getDialContext(th, ctx, netw, addr)
-		if err != nil {
-			if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
-				dlog.Debugf("DialTLSContext encountered: [%v]", err)
-			}
-			return nil, err
-		}
-		return c, c.(*tls.Conn).Handshake()
 	}
 	return nil
 }
@@ -277,6 +287,7 @@ Go:
 		goto Error
 	}
 	tlsConn := tls.Client(conn, th.Config)
+	
 	err = tlsConn.Handshake()
 	if err != nil {
 		goto Error
@@ -329,7 +340,10 @@ Go:
 	if timeout <= 0 {
 		timeout = xTransport.timeout
 	}
-	client := http.Client{Transport: th.Transport, Timeout: timeout}
+	client := http.Client{Transport: xTransport.Transport, Timeout: timeout,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	},}
 	// User-Agent. If set to nil or empty string, then omit it. Otherwise if not mentioned, include the default.
 	header := map[string][]string{"User-Agent": {""}}
 	url := &url.URL{
@@ -367,9 +381,10 @@ Go:
 		Header: header,
 		Close:  xTransport.keepAlive <= 0,
 	}
-	if ctx != nil {
-		req.WithContext(ctx)
+	if ctx == nil {
+		ctx = th.Context
 	}
+	req = req.WithContext(ctx)
 	if method == "POST" && body != nil {
 		req.ContentLength = int64(len(*body))
 		req.Body = ioutil.NopCloser(bytes.NewReader(*body))
@@ -381,13 +396,11 @@ Go:
 		} else if resp.StatusCode < 200 || resp.StatusCode > 299 {
 			err = errors.New(resp.Status)
 		}
-	} else {
-		th.Transport.CloseIdleConnections()
 	}
 	if err != nil {
 		dlog.Debugf("request error-[%s]", err)
 		if xTransport.tlsCipherSuite != nil && strings.Contains(err.Error(), "handshake failure") {
-			dlog.Error("TLS handshake failure - Try changing or deleting the tls_cipher_suite value in the configuration file")
+			dlog.Error("HTTPS handshake failure")
 		}
 		goto Error
 	}

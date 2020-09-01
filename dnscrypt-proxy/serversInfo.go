@@ -109,6 +109,7 @@ const DefaultLBStrategy = LBStrategyP2
 
 type ServersInfo struct {
 	inner             []*ServerInfo
+	groups            []*ServerGroup
 	registeredServers []RegisteredServer
 	lbStrategy        LBStrategy
 }
@@ -117,7 +118,8 @@ type ServerGroup struct {
 	name              string
 	groups            []*ServerGroup
 	servers           []*string
-	priority          int
+	tag               *string
+	priority          bool
 }
 
 func NewServersInfo() *ServersInfo {
@@ -148,11 +150,12 @@ func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
 	var frs = make(map[RegisteredServer]func(RegisteredServer), 0)
 	var total = len(registeredServers) - len(serversInfo.inner)
 	var rts = make(chan *ServerInfo, total)
+RowLoop:
 	for _, reg := range registeredServers {
 		for _, server := range serversInfo.inner {
 			if server.Name == reg.name {
 				liveServers++
-				continue
+				continue RowLoop
 			}
 		}
 		frs[reg] = func(reg RegisteredServer) {
@@ -406,7 +409,7 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 		return nil
 	}
 	info := &DOTInfo{}
-	retry := 3
+	const retry = 3
 	for tries := retry; tries > 0; tries-- {
 		now := time.Now()
 		if serverResponse, err = proxy.DoTQuery(name, nil, body, matchCert); err != nil {
@@ -454,7 +457,6 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	dnssec := stamp.Props&stamps.ServerInformalPropertyDNSSEC != 0
 	body, msgId := dohTestPacket(dnssec)
 	//body := dohTestPacket(0xcafe) english tea??? 
-	useGet := false
 	var rtt time.Duration
 	var serverResponse *dns.Msg
 	var err error
@@ -496,28 +498,16 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	}
 	info := &DOHInfo{
 		Path:       stamp.Path,
-		useGet:     useGet,
+		useGet:     false,
 	}
-	retry := 3
-Retry:
+	const retry = 3
 	for tries := retry; tries > 0; tries-- {
 		now := time.Now()
 		if serverResponse, err = proxy.DoHQuery(name, info, nil, body, matchCert); err != nil {
-		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
 			continue
-		}
 		}
 		rtt = time.Since(now)
 		break
-	}
-	if !useGet && err != nil {
-	if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
-	if !strings.Contains(err.Error(), "tls: use of closed connection") && !strings.Contains(err.Error(), "tls: protocol is shutdown") {
-		useGet = true
-		dlog.Debugf("server [%s] doesn't appear to support POST; falling back to GET requests", name)
-		goto Retry
-	}
-	}
 	}
 	if err != nil {
 		return ServerInfo{}, err

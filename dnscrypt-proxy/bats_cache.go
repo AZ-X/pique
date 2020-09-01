@@ -24,14 +24,6 @@ type CloakCache struct {
 	entries map[interface{}]*entry
 }
 
-
-type readOnly struct {
-	m       map[interface{}]*entry
-	amended bool
-}
-
-var expunged = unsafe.Pointer(new(interface{}))
-
 type entry struct {
 	p unsafe.Pointer
 }

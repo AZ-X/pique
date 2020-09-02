@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -387,8 +388,11 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 		for _, cert := range state.PeerCertificates {
 			l := len(cert.RawTBSCertificate)
 			h := sha256.Sum256(cert.RawTBSCertificate)
+			h1 := sha256.Sum256(cert.Raw)
+			h2 := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
 
 			dlog.Debugf("advertised cert: [%s] [%x] [%d]", cert.Subject, h, l)
+			dlog.Debugf("Fingerprint/Pin: [%s] [%s] [%x] [%s]", cert.Subject, strings.Join(cert.DNSNames, ","), h1, base64.StdEncoding.EncodeToString(h2[:]))
 
 			for _, hash := range stamp.Hashes {
 				if len(hash) == len(wantedHash) {
@@ -475,9 +479,10 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 		for _, cert := range state.PeerCertificates {
 			l := len(cert.RawTBSCertificate)
 			h := sha256.Sum256(cert.RawTBSCertificate)
-
+			h1 := sha256.Sum256(cert.Raw)
+			h2 := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
 			dlog.Debugf("advertised cert: [%s] [%x] [%d]", cert.Subject, h, l)
-
+			dlog.Debugf("Fingerprint/Pin: [%s] [%s] [%x] [%s]", cert.Subject, strings.Join(cert.DNSNames, ","), h1, base64.StdEncoding.EncodeToString(h2[:]))
 			for _, hash := range stamp.Hashes {
 				if len(hash) == len(wantedHash) {
 					copy(wantedHash[:], hash)

@@ -1,5 +1,8 @@
 # ![dnscrypt-proxy-r2](https://github.com/AZ-X/MEDIA/blob/master/PNG/RD.png?raw=true)
 
+# ![dnscrypt-proxy-r2](https://github.com/AZ-X/MEDIA/blob/master/PNG/dnscrypt-proxy-r2-mips.png?raw=true)
+
+
 ## Autobiography
 
 This project started from [#issues/932](https://github.com/DNSCrypt/dnscrypt-proxy/issues/932) when I went through full issues list (Not just opened)

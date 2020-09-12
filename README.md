@@ -2,7 +2,7 @@
 
 # ![dnscrypt-proxy-r2](https://github.com/AZ-X/MEDIA/blob/master/PNG/dnscrypt-proxy-r2-mips.png?raw=true)
 
-@FiloSottile I won't use the `golang.org/x/net/ipv4` in order to leave this program along with unnecessaries. [#issues/1433](https://github.com/DNSCrypt/dnscrypt-proxy/issues/1433#issue-672344900)
+@[FiloSottile](https://github.com/FiloSottile) I won't use the `golang.org/x/net/ipv4` in order to leave this program along with unnecessaries. [#issues/1433](https://github.com/DNSCrypt/dnscrypt-proxy/issues/1433#issue-672344900)
 
 ## Autobiography
 

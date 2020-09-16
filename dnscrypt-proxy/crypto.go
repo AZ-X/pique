@@ -9,8 +9,8 @@ import (
 	"github.com/jedisct1/dlog"
 	"github.com/jedisct1/xsecretbox"
 	"golang.org/x/crypto/curve25519"
-	"golang.org/x/crypto/nacl/box"
 	"golang.org/x/crypto/nacl/secretbox"
+	"golang.org/x/crypto/salsa20/salsa"
 )
 
 const (
@@ -44,17 +44,26 @@ func unpad(packet []byte) ([]byte, error) {
 	}
 }
 
-func ComputeSharedKey(cryptoConstruction CryptoConstruction, secretKey *[32]byte, serverPk *[32]byte, providerName string) (sharedKey [32]byte) {
+func ComputeSharedKey(cryptoConstruction CryptoConstruction, secretKey *[32]byte, serverPk *[32]byte, providerName string) (sharedKey *[32]byte) {
+	var err error
 	if cryptoConstruction == XChacha20Poly1305 {
-		var err error
-		sharedKey, err = xsecretbox.SharedKey(*secretKey, *serverPk)
-		if err != nil {
-			dlog.Criticalf("[%v] weak public key", providerName)
+		if sharedKey, err = xsecretbox.SharedKey(*secretKey, *serverPk); err != nil {
+			goto Fault
 		}
+		
 	} else {
-		box.Precompute(&sharedKey, serverPk, secretKey)
+		var zeros [16]byte
+		if xKey, err := curve25519.X25519(serverPk[:], secretKey[:]); err != nil {
+			goto Fault
+		} else {
+			copy(sharedKey[:], xKey)
+			salsa.HSalsa20(sharedKey, &zeros, sharedKey, &salsa.Sigma)
+		}
 	}
 	return
+Fault:
+	dlog.Debugf("[%s] weak public key", providerName)
+	panic(providerName + " weak public key")
 }
 
 func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto string) (sharedKey *[32]byte, encrypted []byte, clientNonce []byte, err error) {
@@ -63,22 +72,17 @@ func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto strin
 	crypto_rand.Read(clientNonce)
 	copy(nonce, clientNonce)
 	if proxy.ephemeralKeys {
-		//h := sha512.New512_256()
-		//h.Write(clientNonce)
-		//h.Write(proxy.proxySecretKey[:])
 		var ephSk [32]byte
-		//h.Sum(ephSk[:0])
 		crypto_rand.Read(ephSk[:])
 		var xPublicKey [PublicKeySize]byte
-		x, err1 := curve25519.X25519(ephSk[:],curve25519.Basepoint)
+		x, err1 := curve25519.X25519(ephSk[:], curve25519.Basepoint)
 		if err1 != nil {
 			err = err1
 			return
 		}
 		copy(xPublicKey[:], x)
 		publicKey = &xPublicKey
-		xsharedKey := ComputeSharedKey(serverInfo.Version, &ephSk, &serverInfo.ServerPk, serverInfo.Name)
-		sharedKey = &xsharedKey
+		sharedKey = ComputeSharedKey(serverInfo.Version, &ephSk, &serverInfo.ServerPk, serverInfo.Name)
 	} else {
 		sharedKey = &serverInfo.SharedKey
 		publicKey = &proxy.proxyPublicKey

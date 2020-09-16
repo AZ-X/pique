@@ -137,7 +137,7 @@ func FetchCurrentDNSCryptCert(proxy *Proxy, serverName *string, proto string, pk
 		var resolverPk [32]byte
 		copy(resolverPk[:], binCert[72:104])
 		sharedKey := ComputeSharedKey(cryptoConstruction, &proxy.proxySecretKey, &resolverPk, providerName)
-		certInfo.SharedKey = sharedKey
+		certInfo.SharedKey = *sharedKey
 		highestSerial = serial
 		certInfo.Version = cryptoConstruction
 		copy(certInfo.ServerPk[:], resolverPk[:])

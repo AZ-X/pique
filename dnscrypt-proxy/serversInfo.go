@@ -48,7 +48,6 @@ type DNSCryptInfo struct {
 	*ServerInfo
 	MagicQuery         [ClientMagicLen]byte
 	ServerPk           [32]byte
-	SharedKey          [32]byte
 	Version            CryptoConstruction
 	Proxies            *NestedProxy  // individual proxies chain
 	IPAddr             *atomic.Value //*EPRing

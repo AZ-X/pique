@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	crypto_rand "crypto/rand"
 	"encoding/binary"
 	"errors"
 	"net"
@@ -16,7 +15,6 @@ import (
 	clocksmith "github.com/jedisct1/go-clocksmith"
 	"github.com/jedisct1/dlog"
 	"github.com/miekg/dns"
-	"golang.org/x/crypto/curve25519"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -45,13 +43,10 @@ func ServerMagic() []byte {
 
 type Proxy struct {
 	*ProxyStartup
-	proxyPublicKey                [32]byte
-	proxySecretKey                [32]byte
 	timeout                       time.Duration
 	certRefreshDelay              time.Duration
 	certIgnoreTimestamp           bool
 	calc_hash_key                 bool
-	ephemeralKeys                 bool
 	mainProto                     string
 	blockedQueryResponse          string
 	cacheNegMinTTL                uint32
@@ -191,18 +186,6 @@ func (proxy *Proxy) StartProxy() {
 	// if 'userName' is set and we are the parent process drop privilege and exit
 	if len(proxy.userName) > 0 && !proxy.child {
 		proxy.dropPrivilege(proxy.userName, FileDescriptors)
-	}
-	if !proxy.ephemeralKeys {
-		if _, err := crypto_rand.Read(proxy.proxySecretKey[:]); err != nil {
-			dlog.Fatal(err)
-			os.Exit(1)
-		}
-		if x, err1 := curve25519.X25519(proxy.proxySecretKey[:],curve25519.Basepoint); err1 != nil {
-			dlog.Fatal(err1)
-			os.Exit(1)
-		}else {
-			copy(proxy.proxyPublicKey[:], x)
-		}
 	}
 	for _, registeredServer := range proxy.registeredServers {
 		proxy.serversInfo.registerServer(registeredServer.name, registeredServer.stamp)
@@ -373,7 +356,7 @@ Go:
 	if serverProto == "udp" && !proxies.UDPProxies() {
 		serverProto = "tcp"
 	}
-	sharedKey , encryptedQuery , clientNonce, err := proxy.Encrypt(serverInfo, packet, serverProto)
+	sharedKey , clientNonce, encryptedQuery, err := proxy.Encrypt(serverInfo, packet, serverProto)
 	if err != nil {
 		program_dbg_full_log("exchangeDnScRypt E01")
 		goto Error

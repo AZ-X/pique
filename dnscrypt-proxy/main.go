@@ -64,7 +64,7 @@ func (app *App) AppMain() {
 	}
 	pid, err := NewPidFile()
 	if err != nil {
-		dlog.Fatal(err)
+		dlog.Error(err)
 	}
 	sig := make(chan os.Signal, 10)
 	done := make(chan bool, 1)

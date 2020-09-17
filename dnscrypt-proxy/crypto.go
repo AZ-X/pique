@@ -8,6 +8,7 @@ import (
 
 	"github.com/jedisct1/dlog"
 	"github.com/jedisct1/xsecretbox"
+	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/nacl/secretbox"
 	"golang.org/x/crypto/salsa20/salsa"
@@ -44,50 +45,45 @@ func unpad(packet []byte) ([]byte, error) {
 	}
 }
 
-func ComputeSharedKey(cryptoConstruction CryptoConstruction, secretKey *[32]byte, serverPk *[32]byte, providerName string) (sharedKey *[32]byte) {
-	var err error
-	if cryptoConstruction == XChacha20Poly1305 {
-		if sharedKey, err = xsecretbox.SharedKey(*secretKey, *serverPk); err != nil {
-			goto Fault
-		}
-		
+func ComputeSharedKey(cryptoConstruction CryptoConstruction, scalar, serverPk *[PublicKeySize]byte, providerName string) (sharedKey *[PublicKeySize]byte) {
+	goto Go
+Fault:
+	dlog.Debugf("[%s] is using weak public key, the program will be panicked", providerName)
+	panic(providerName + " weak public key")
+Go:
+	if xKey, err := curve25519.X25519(scalar[:], serverPk[:]); err != nil {
+		goto Fault
 	} else {
-		var zeros [16]byte
-		if xKey, err := curve25519.X25519(serverPk[:], secretKey[:]); err != nil {
+		sharedKey = new([PublicKeySize]byte)
+		copy(sharedKey[:], xKey)
+	}
+	var zeros [16]byte
+	if cryptoConstruction == XChacha20Poly1305 {
+		if ccKey, err := chacha20.HChaCha20(sharedKey[:], zeros[:]); err != nil {
 			goto Fault
 		} else {
-			copy(sharedKey[:], xKey)
-			salsa.HSalsa20(sharedKey, &zeros, sharedKey, &salsa.Sigma)
+			copy(sharedKey[:], ccKey)
 		}
+	} else {
+		salsa.HSalsa20(sharedKey, &zeros, sharedKey, &salsa.Sigma)
 	}
 	return
-Fault:
-	dlog.Debugf("[%s] weak public key", providerName)
-	panic(providerName + " weak public key")
 }
 
-func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto string) (sharedKey *[32]byte, encrypted []byte, clientNonce []byte, err error) {
-	var publicKey *[PublicKeySize]byte
-	nonce, clientNonce := make([]byte, NonceSize), make([]byte, HalfNonceSize)
-	crypto_rand.Read(clientNonce)
-	copy(nonce, clientNonce)
-	if proxy.ephemeralKeys {
-		var ephSk [32]byte
-		crypto_rand.Read(ephSk[:])
-		var xPublicKey [PublicKeySize]byte
-		x, err1 := curve25519.X25519(ephSk[:], curve25519.Basepoint)
-		if err1 != nil {
-			err = err1
-			return
-		}
-		copy(xPublicKey[:], x)
-		publicKey = &xPublicKey
-		sharedKey = ComputeSharedKey(serverInfo.Version, &ephSk, &serverInfo.ServerPk, serverInfo.Name)
+func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto string) (sharedKey *[PublicKeySize]byte, nonce *[NonceSize]byte, encrypted []byte, err error) {
+	var publicKey *[PublicKeySize]byte = new([PublicKeySize]byte)
+	nonce = new([NonceSize]byte)
+	crypto_rand.Read(nonce[:HalfNonceSize])
+	var scalar [PublicKeySize]byte
+	crypto_rand.Read(scalar[:])
+	var x []byte
+	if x, err = curve25519.X25519(scalar[:], curve25519.Basepoint); err != nil {
+		return
 	} else {
-		sharedKey = &serverInfo.SharedKey
-		publicKey = &proxy.proxyPublicKey
+		copy(publicKey[:], x)
 	}
-	
+	sharedKey = ComputeSharedKey(serverInfo.Version, &scalar, &serverInfo.ServerPk, serverInfo.Name)
+
 	minQuestionSize := QueryOverhead + len(packet)
 	if minQuestionSize+1 > MaxDNSUDPPacketSize -64 {
 		err = errors.New("Question too large; cannot be padded")
@@ -111,16 +107,14 @@ func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto strin
 	encrypted = append(encrypted, nonce[:HalfNonceSize]...)
 	padded := pad(packet, paddedLength - len(packet))
 	if serverInfo.Version == XChacha20Poly1305 {
-		encrypted = xsecretbox.Seal(encrypted, nonce, padded, sharedKey[:])
+		encrypted = xsecretbox.Seal(encrypted, nonce[:], padded, sharedKey[:])
 	} else {
-		var xsalsaNonce [24]byte
-		copy(xsalsaNonce[:], nonce)
-		encrypted = secretbox.Seal(encrypted, padded, &xsalsaNonce, sharedKey)
+		encrypted = secretbox.Seal(encrypted, padded, nonce, sharedKey)
 	}
 	return
 }
 
-func (proxy *Proxy) Decrypt(serverInfo *DNSCryptInfo, sharedKey *[32]byte, encrypted []byte, nonce []byte, proto string) ([]byte, error) {
+func (proxy *Proxy) Decrypt(serverInfo *DNSCryptInfo, sharedKey *[32]byte, encrypted []byte, nonce *[NonceSize]byte, proto string) ([]byte, error) {
 	responseHeaderLen := ServerMagicLen + NonceSize
 	var maxDNSPacketSize int64
 	if proto == "udp" {

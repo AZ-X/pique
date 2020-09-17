@@ -46,7 +46,6 @@ type Config struct {
 	UseSyslog                bool                        `toml:"use_syslog"`
 	ForceTCP                 bool                        `toml:"force_tcp"`
 	CertIgnoreTimestamp      bool                        `toml:"cert_ignore_timestamp"`
-	EphemeralKeys            bool                        `toml:"dnscrypt_ephemeral_keys"`
 	BlockIPv6                bool                        `toml:"block_ipv6"`
 	BlockUnqualified         bool                        `toml:"block_unqualified"`
 	SourceRequireDNSSEC      bool                        `toml:"require_dnssec"`
@@ -81,7 +80,8 @@ type Config struct {
 	NxLog                    NxLogConfig                 `toml:"nx_log"`
 	BlockName                BlockNameConfig             `toml:"blacklist"`
 	AnonymizedDNS            AnonymizedDNSConfig         `toml:"anonymized_dns"`
-	Groups                   GroupsConfig                `toml:"groups"`
+	Groups                   []GroupsConfig              `toml:"groups"`
+	GroupsListener           []ListenerAssociation       `toml:"listener_association"`
 }
 
 func newConfig() Config {
@@ -92,7 +92,6 @@ func newConfig() Config {
 		KeepAlive:                5,
 		CertRefreshDelay:         240,
 		CertIgnoreTimestamp:      false,
-		EphemeralKeys:            false,
 		Cache:                    true,
 		CacheSize:                512,
 		CacheNegTTL:              0,
@@ -171,8 +170,16 @@ type ConfigFlags struct {
 type GroupsConfig struct {
 	Name           string   `toml:"name"`
 	Servers        []string `toml:"servers"`
+	Tag            string   `toml:"tag"`
 	Groups         []string `toml:"groups"`
 	Priority       bool     `toml:"priority"`
+	Match          string   `toml:"match"`
+}
+
+type ListenerAssociation struct {
+	Position       uint     `toml:"position"`
+	Group          string   `toml:"group"`
+	Regex          bool     `toml:"regex"`
 }
 
 
@@ -239,8 +246,9 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	if len(config.LocalInterface) > 0 {
 		proxy.LocalInterface = &config.LocalInterface
 	}
-	
-	PrintInferfaceInfo(proxy.LocalInterface)
+	if config.LogLevel == int(dlog.SeverityDebug) {
+		PrintInferfaceInfo(proxy.LocalInterface)
+	}
 
 	proxy.logMaxSize = config.LogMaxSize
 	proxy.logMaxAge = config.LogMaxAge
@@ -280,7 +288,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	dlog.Noticef("dnscrypt-protocol bind to %s", proxy.mainProto)
 	proxy.certRefreshDelay = time.Duration(Max(60, config.CertRefreshDelay)) * time.Minute
 	proxy.certIgnoreTimestamp = config.CertIgnoreTimestamp
-	proxy.ephemeralKeys = config.EphemeralKeys
 	if len(config.ListenAddresses) == 0 {
 		dlog.Debug("check local IP/port configuration")
 	}
@@ -389,6 +396,7 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		if len(proxy.registeredServers) == 0 {
 			return errors.New("No servers configured")
 		}
+		config.loadGroups(proxy)
 	}
 	
 	if proxy.routes != nil && len(*proxy.routes) > 0 {
@@ -416,6 +424,10 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		os.Exit(0)
 	}
 	return nil
+}
+
+// panic if any group is empty
+func (config *Config) loadGroups(proxy *Proxy) {
 }
 
 func (config *Config) loadSources(proxy *Proxy) error {
@@ -461,12 +473,10 @@ func (config *Config) loadSources(proxy *Proxy) error {
 }
 
 func (config *Config) loadSource(proxy *Proxy, requiredProps stamps.ServerInformalProperties, cfgSourceName string, cfgSource *SourceConfig) error {
-	if len(cfgSource.URLs) == 0 {
-		if len(cfgSource.URL) == 0 {
-			dlog.Debugf("missing URLs for source [%s]", cfgSourceName)
-		} else {
-			cfgSource.URLs = []string{cfgSource.URL}
-		}
+	if len(cfgSource.URL) == 0 {
+		dlog.Debugf("missing URLs for source [%s]", cfgSourceName)
+	} else {
+		dlog.Debugf("URLs are not working in this program [%s], however keep it for fun", cfgSourceName)
 	}
 	if cfgSource.MinisignKeyStr == "" {
 		return fmt.Errorf("missing Minisign key for source [%s]", cfgSourceName)

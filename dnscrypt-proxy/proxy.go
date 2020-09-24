@@ -28,6 +28,7 @@ var (
 	FileDescriptorNum = 0
 )
 
+//these are the fingerprint of the dnscrypt protocols, keep in mind
 func AnonymizedDNSHeader() []byte {
 	return []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
 }
@@ -39,7 +40,6 @@ func CertMagic() []byte {
 func ServerMagic() []byte {
 	return []byte{0x72, 0x36, 0x66, 0x6e, 0x76, 0x57, 0x6a, 0x38}
 }
-
 
 type Proxy struct {
 	*ProxyStartup
@@ -473,20 +473,6 @@ Go:
 	return response, nil
 }
 
-func (proxy *Proxy) clientsCountInc() (success bool) {
-	if success := proxy.smaxClients.TryAcquire(1); success {
-		//DO NOT CARE
-		//dlog.Debugf("clients count: %d", proxy.smaxClients.Cur())
-		//dlog.Debug("clients CountInc succeeded")
-		return true
-	}
-	return false
-}
-
-func (proxy *Proxy) clientsCountDec() {
-	proxy.smaxClients.Release(1)
-}
-
 func (proxy *Proxy) processIncomingQuery(clientProto string, query []byte, clientAddr *net.Addr,
  clientPc net.Conn, start time.Time, idx int) {
 	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, start)
@@ -519,11 +505,11 @@ Go:
 		dlog.Warn("mute dnscrypt connections while refreshing")
 		goto SvrFault
 	}
-	if !proxy.clientsCountInc() {
+	if !proxy.smaxClients.TryAcquire(1) {
 		dlog.Warn("too many outgoing dnscrypt connections")
 		goto SvrFault
 	}
-	defer proxy.clientsCountDec()
+	defer proxy.smaxClients.Release(1)
 	proxy.wg.Add(1)
 	defer proxy.wg.Done()
 	

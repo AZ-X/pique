@@ -57,7 +57,6 @@ type Config struct {
 	SourceIPv4               bool                        `toml:"ipv4_servers"`
 	SourceIPv6               bool                        `toml:"ipv6_servers"`
 	TLSDisableSessionTickets bool                        `toml:"tls_disable_session_tickets"`
-	TLSCipherSuite           []uint16                    `toml:"tls_cipher_suite"`
 	CacheNegTTL              uint32                      `toml:"cache_neg_ttl"`
 	CacheNegMinTTL           uint32                      `toml:"cache_neg_min_ttl"`
 	CacheNegMaxTTL           uint32                      `toml:"cache_neg_max_ttl"`
@@ -113,7 +112,6 @@ func newConfig() Config {
 		LogMaxAge:                7,
 		LogMaxBackups:            1,
 		TLSDisableSessionTickets: false,
-		TLSCipherSuite:           nil,
 		NetprobeTimeout:          60,
 		OfflineMode:              false,
 		BlockedQueryResponse:     "refused",
@@ -169,7 +167,7 @@ type ConfigFlags struct {
 
 type GroupsConfig struct {
 	Name           string   `toml:"name"`
-	Servers        []string `toml:"servers"`
+	Servers        []*string `toml:"servers"`
 	Tag            string   `toml:"tag"`
 	Groups         []string `toml:"groups"`
 	Priority       bool     `toml:"priority"`
@@ -257,7 +255,6 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 
 	proxy.xTransport = NewXTransport()
 	proxy.xTransport.tlsDisableSessionTickets = config.TLSDisableSessionTickets
-	proxy.xTransport.tlsCipherSuite = config.TLSCipherSuite
 	proxy.xTransport.keepAlive = time.Duration(config.KeepAlive) * time.Second
 	proxy.xTransport.transports = make(map[string]*TransportHolding)
 	proxy.xTransport.LocalInterface = proxy.LocalInterface

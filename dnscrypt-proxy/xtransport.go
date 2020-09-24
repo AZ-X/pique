@@ -15,17 +15,29 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	
+	_ "unsafe"
+
 	"github.com/jedisct1/dlog"
 	stamps "stammel"
 )
 
 const (
-	DOHMediaType                    = "application/dns-message"
-	DefaultKeepAlive                = 0 * time.Second
-	DefaultTimeout                  = 30 * time.Second
-	DoTDefaultPort                  = 853
+	DOHMediaType                 = "application/dns-message"
+	DefaultKeepAlive             = 0 * time.Second
+	DefaultTimeout               = 30 * time.Second
+	DoTDefaultPort               = 853
+	TLS_AES_128_GCM_SHA256       = 0x1301 // 16bit key
+	TLS_AES_256_GCM_SHA384       = 0x1302 // 1st not pq ready
+	TLS_CHACHA20_POLY1305_SHA256 = 0x1303 // 2nd not pq ready
 )
+
+var (
+//go:linkname varDefaultCipherSuitesTLS13 crypto/tls.varDefaultCipherSuitesTLS13
+varDefaultCipherSuitesTLS13 []uint16
+)
+
+//go:linkname defaultCipherSuitesTLS13 crypto/tls.defaultCipherSuitesTLS13
+func defaultCipherSuitesTLS13() []uint16
 
 //to reduce memory payload, shift http's Transport and ensure single instance of it
 //now give up calling CloseIdleConnections method which has side effect on burst connections with different cm
@@ -48,7 +60,6 @@ type XTransport struct {
 	keepAlive                       time.Duration
 	timeout                         time.Duration
 	tlsDisableSessionTickets        bool
-	tlsCipherSuite                  []uint16
 	Proxies                         *NestedProxy
 	LocalInterface                  *string
 }
@@ -74,8 +85,11 @@ func NewXTransport() *XTransport {
 		keepAlive:                	DefaultKeepAlive,
 		timeout:                  	DefaultTimeout,
 		tlsDisableSessionTickets: 	false,
-		tlsCipherSuite:           	nil,
 	}
+	defaultCipherSuitesTLS13()
+	dlog.Debugf("default CipherSuites=%v", varDefaultCipherSuitesTLS13)
+	varDefaultCipherSuitesTLS13 = []uint16{TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256}
+	dlog.Debugf("init CipherSuites=%v", varDefaultCipherSuitesTLS13)
 	return &xTransport
 }
 
@@ -180,10 +194,8 @@ func (th *TransportHolding) buildTLS(xTransport *XTransport) (cfg *tls.Config) {
 	if !xTransport.tlsDisableSessionTickets {
 		cfg.ClientSessionCache = tls.NewLRUClientSessionCache(10)
 	}
-	if xTransport.tlsCipherSuite != nil {
-		cfg.PreferServerCipherSuites = false
-		cfg.CipherSuites = xTransport.tlsCipherSuite
-	}
+	cfg.PreferServerCipherSuites = false
+	cfg.CipherSuites = varDefaultCipherSuitesTLS13
 	cfg.ServerName = th.DomainName
 	if cfg.InsecureSkipVerify {
 		dlog.Debugf("SNI setup for [%s]", *th.Name)
@@ -399,7 +411,7 @@ Go:
 	}
 	if err != nil {
 		dlog.Debugf("request error-[%s]", err)
-		if xTransport.tlsCipherSuite != nil && strings.Contains(err.Error(), "handshake failure") {
+		if strings.Contains(err.Error(), "handshake failure") {
 			dlog.Error("HTTPS handshake failure")
 		}
 		goto Error

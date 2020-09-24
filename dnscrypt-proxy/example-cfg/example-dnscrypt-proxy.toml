@@ -240,30 +240,17 @@ cert_refresh_delay = 240
 
 tls_disable_session_tickets = true
 
-
-## DoH: Use a specific cipher suite instead of the server preference
-## 49199 = TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-## 49195 = TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-## 52392 = TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
-## 52393 = TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
-##  4865 = TLS_AES_128_GCM_SHA256
-##  4867 = TLS_CHACHA20_POLY1305_SHA256
-##
-##
+## Notice: this program only uses TLS1.3 so that tls_cipher_suite was deprecated
+## DNS over HTTPS, and DNS over TLS: Use fixed cipher suite instead of the server preference
+## We use TLS_AES_256_GCM_SHA384 and TLS_CHACHA20_POLY1305_SHA256
 ## On non-amd64 CPUs such as some antique MIPS and ARM systems
 ## except Cavium Octeon MIPS, ARMv8-A and processors support Cryptographic Hardware Accelerator and
 ## Hardware-based PRNG e.g. Hardware Crypto Engine in Qualcomm SoCs
-## the following suite improves performance.
-## This may also help on amd64 CPUs running 32-bit operating systems.
-##
-## Keep tls_cipher_suite empty if you have issues fetching sources or
-## connecting to some DoH servers. Google and Cloudflare are fine with it.
-
-# tls_cipher_suite = [52392, 49199]
+## Even very old amd64 CPUs running 32-bit operating systems can enable TLS1.3 on the fly.
 
 
+## Notice: fallback resolvers were deprecated
 ## Always exclude UNSAFE 'fallback resolvers' and sys dns loops
-
 
 
 ## Maximum time (in seconds) to wait for network connectivity before

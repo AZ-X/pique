@@ -84,7 +84,7 @@ func NewSource(name string, xTransport *XTransport, urls []string, minisignKeySt
 	if formatStr == "v2" {
 		source.format = SourceFormatV2
 	} else {
-		return source, fmt.Errorf("Unsupported source format: [%s]", formatStr)
+		return source, dlog.Errorf("Unsupported source format: [%s]", formatStr)
 	}
 	if minisignKey, err := stammel.NewPublicKey(minisignKeyStr); err == nil {
 		source.minisignKey = &minisignKey
@@ -115,7 +115,7 @@ func (source *Source) parseV2to3(prefix string) ([]RegisteredServer, error) {
 	in := string(source_in)
 	parts := strings.Split(in, "## ")
 	if len(parts) < 2 {
-		return registeredServers, fmt.Errorf("Invalid format for source [%s]", source.name)
+		return registeredServers, dlog.Errorf("Invalid format for source [%s]", source.name)
 	}
 	parts = parts[1:]
 PartsLoop:
@@ -123,11 +123,11 @@ PartsLoop:
 		part = strings.TrimFunc(part, unicode.IsSpace)
 		subparts := strings.Split(part, "\n")
 		if len(subparts) < 2 {
-			return registeredServers, fmt.Errorf("Invalid format for source at [%s]", source.name)
+			return registeredServers, dlog.Errorf("Invalid format for source at [%s]", source.name)
 		}
 		name := strings.TrimFunc(subparts[0], unicode.IsSpace)
 		if len(name) == 0 {
-			return registeredServers, fmt.Errorf("Invalid format for source at [%s]", source.name)
+			return registeredServers, dlog.Errorf("Invalid format for source at [%s]", source.name)
 		}
 		subparts = subparts[1:]
 		name = prefix + name
@@ -159,7 +159,7 @@ PartsLoop:
 		registeredServers = append(registeredServers, registeredServer)
 	}
 	if len(stampErrs) > 0 {
-		return registeredServers, fmt.Errorf("%s", strings.Join(stampErrs, ", "))
+		return registeredServers, dlog.Errorf("%s", strings.Join(stampErrs, ", "))
 	}
 	return registeredServers, nil
 }

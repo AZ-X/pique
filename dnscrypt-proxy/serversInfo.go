@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/rand"
 	"net"
 	"sort"
@@ -264,7 +263,7 @@ func routes(proxy *Proxy, name string) ([]*Endpoint, error) {
 	for i, relayName := range relayNames {
 		var relayCandidateStamp *stamps.ServerStamp
 		if len(relayName) == 0 {
-			return nil, fmt.Errorf("Route declared for [%v] but an empty relay list", name)
+			return nil, dlog.Errorf("Route declared for [%v] but an empty relay list", name)
 		} else if relayStamp, err := stamps.NewServerStampFromString(relayName); err == nil {
 			relayCandidateStamp = &relayStamp
 		} else if _, err := ResolveEndpoint(relayName); err == nil {
@@ -287,7 +286,7 @@ func routes(proxy *Proxy, name string) ([]*Endpoint, error) {
 			}
 		}
 		if relayCandidateStamp == nil {
-			err := fmt.Errorf("Undefined relay [%v] for server [%v]", relayName, name)
+			err := dlog.Errorf("Undefined relay [%v] for server [%v]", relayName, name)
 			dlog.Fatal(err) //os.Exit(255)
 			return nil, err
 		}
@@ -301,7 +300,7 @@ func routes(proxy *Proxy, name string) ([]*Endpoint, error) {
 			dlog.Infof("%s=>%s",relayName, relayAddr.String())
 			continue
 		}
-		return nil, fmt.Errorf("Invalid relay [%v] for server [%v]", relayName, name)
+		return nil, dlog.Errorf("Invalid relay [%v] for server [%v]", relayName, name)
 	}
 	return relays, nil
 
@@ -407,7 +406,7 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 			}
 		}
 		if !found && len(stamp.Hashes) > 0 {
-			return fmt.Errorf("Certificate hash [%x] not found for [%s]", wantedHash, name)
+			return dlog.Errorf("Certificate hash [%x] not found for [%s]", wantedHash, name)
 		}
 		return nil
 	}
@@ -496,7 +495,7 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 			}
 		}
 		if !found && len(stamp.Hashes) > 0 {
-			return fmt.Errorf("Certificate hash [%x] not found for [%s]", wantedHash, name)
+			return dlog.Errorf("Certificate hash [%x] not found for [%s]", wantedHash, name)
 		}
 		return nil
 	}

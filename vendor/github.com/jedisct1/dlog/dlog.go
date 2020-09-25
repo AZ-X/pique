@@ -79,8 +79,14 @@ func Warnf(format string, args ...interface{}) {
 	logf(SeverityWarning, format, args...)
 }
 
-func Errorf(format string, args ...interface{}) {
-	logf(SeverityError, format, args...)
+type errorString string
+func (e errorString) Error() string {
+	return string(e)
+}
+
+func Errorf(format string, args ...interface{}) error {
+	msg := errorString(*logf(SeverityError, format, args...))
+	return msg
 }
 
 func Criticalf(format string, args ...interface{}) {
@@ -202,9 +208,9 @@ func createFileDescriptor() {
 	}
 }
 
-func logf(severity Severity, format string, args ...interface{}) {
+func logf(severity Severity, format string, args ...interface{}) *string {
 	if severity < _globals.logLevel.get() {
-		return
+		return nil
 	}
 	now := time.Now().Local()
 	year, month, day := now.Date()
@@ -212,7 +218,7 @@ func logf(severity Severity, format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
 	message = strings.TrimSpace(strings.TrimSuffix(message, "\n"))
 	if len(message) <= 0 {
-		return
+		return nil
 	}
 	_globals.Lock()
 	defer _globals.Unlock()
@@ -220,7 +226,7 @@ func logf(severity Severity, format string, args ...interface{}) {
 		if time.Since(_globals.lastOccurrence) < floodDelay {
 			_globals.occurrences++
 			if _globals.occurrences > floodMinRepeats {
-				return
+				return nil
 			}
 		}
 	} else {
@@ -245,10 +251,12 @@ func logf(severity Severity, format string, args ...interface{}) {
 		} else {
 			os.Stderr.WriteString(line)
 		}
+		return &line
 	}
 	if severity >= SeverityFatal {
 		os.Exit(255)
 	}
+	return nil
 }
 
 func log(severity Severity, args interface{}) {

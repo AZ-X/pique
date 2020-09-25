@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/url"
@@ -211,7 +210,7 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	}
 	undecoded := md.Undecoded()
 	if len(undecoded) > 0 {
-		return fmt.Errorf("Unsupported key in configuration file: [%s]", undecoded[0])
+		return dlog.Errorf("Unsupported key in configuration file: [%s]", undecoded[0])
 	}
 	if err := cdFileDir(foundConfigFile); err != nil {
 		return err
@@ -476,10 +475,10 @@ func (config *Config) loadSource(proxy *Proxy, requiredProps stamps.ServerInform
 		dlog.Debugf("URLs are not working in this program [%s], however keep it for fun", cfgSourceName)
 	}
 	if cfgSource.MinisignKeyStr == "" {
-		return fmt.Errorf("missing Minisign key for source [%s]", cfgSourceName)
+		return dlog.Errorf("missing Minisign key for source [%s]", cfgSourceName)
 	}
 	if cfgSource.CacheFile == "" {
-		return fmt.Errorf("missing cache file for source [%s]", cfgSourceName)
+		return dlog.Errorf("missing cache file for source [%s]", cfgSourceName)
 	}
 	if cfgSource.FormatStr == "" {
 		cfgSource.FormatStr = "v2"

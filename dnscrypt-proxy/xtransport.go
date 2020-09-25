@@ -64,7 +64,8 @@ type XTransport struct {
 	LocalInterface                  *string
 }
 
-type TLSContextDial func(ctx context.Context, network, addr string) (net.Conn, error)
+//name, conn, err
+type TLSContextDial func(ctx context.Context, network, addr string) (*string, net.Conn, error)
 
 //soul of HTTPS
 type HTTPSContext struct {
@@ -126,10 +127,24 @@ func (xTransport *XTransport) buildTransport(server RegisteredServer, _ *NestedP
 		MaxResponseHeaderBytes: 4096,
 		}
 		transport.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
-			c, err := ctx.Value(nil).(TLSContextDial)(ctx, netw, addr)
+		fCounter := 0
+		Dial:
+			name, c, err := ctx.Value(nil).(TLSContextDial)(ctx, netw, addr)
 			if err != nil {
 				if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
-					dlog.Debugf("DialTLSContext encountered: [%v]", err)
+					if strings.Contains(err.Error(), "forcibly") {
+						if fCounter == 0 {
+							dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
+							dlog.Debugf("[%s] retry on forcible block", *name)
+						}
+						fCounter++
+						if fCounter < 1000 {
+							goto Dial
+						} else {
+							dlog.Warnf("[%s] forcible block is willfully activated, see next debug log for last error", *name)
+						}
+					}
+					dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
 				}
 				return nil, err
 			}
@@ -239,25 +254,26 @@ func (th *TransportHolding) buildTransport(xTransport *XTransport, proxies *Nest
 	alive := xTransport.keepAlive
 	cfg := th.Config
 	th.Context = &HTTPSContext{Context:context.Background(),}
-	th.Context.TLSContextDial = func(ctx context.Context, netw, addr string) (net.Conn, error) {
+	th.Context.TLSContextDial = func(ctx context.Context, netw, addr string) (*string, net.Conn, error) {
 		if xTransport.Proxies != nil {
 			if plainConn, err := xTransport.Proxies.GetDialContext()(ctx, netw, addr); err == nil {
-				return tls.Client(plainConn, cfg), nil
+				return th.Name, tls.Client(plainConn, cfg), nil
 			} else {
-				return nil, err
+				return th.Name, nil, err
 			}
 		}
 		if strings.HasSuffix(addr, th.DomainName) {
 			dlog.Criticalf("mismatch addr for TransportHolding(%s): [%s]", th.Name, addr)
-			return nil, errors.New("mismatch TransportHolding")
+			return th.Name, nil, errors.New("mismatch TransportHolding")
 		}
 		epring := th.IPs.Load().(*EPRing)
 		addr = epring.String()
 		th.IPs.Store(epring.Next())
 		if dialer, err := GetDialer("tcp", xTransport.LocalInterface, 2000*time.Millisecond, alive); err != nil {
-			return nil, err
+			return th.Name, nil, err
 		} else {
-			return tls.DialWithDialer(dialer, netw, addr, cfg)
+			conn, err := tls.DialWithDialer(dialer, netw, addr, cfg)
+			return th.Name, conn, err
 		}
 	}
 	return nil

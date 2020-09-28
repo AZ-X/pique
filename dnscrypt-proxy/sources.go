@@ -155,7 +155,7 @@ PartsLoop:
 			continue
 		}
 		registeredServer := RegisteredServer{name: name, stamp: &stamp,}
-		dlog.Debugf("registered [%s] with stamp [%s]", name, stamp.String())
+		dlog.Debugf("registered [%s] with stamp [%s]", name, stampStr)
 		registeredServers = append(registeredServers, registeredServer)
 	}
 	if len(stampErrs) > 0 {

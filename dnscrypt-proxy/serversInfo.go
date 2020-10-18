@@ -108,17 +108,10 @@ const DefaultLBStrategy = LBStrategyP2
 
 type ServersInfo struct {
 	inner             []*ServerInfo
-	groups            []*ServerGroup
+	innerFuncs        *map[int]func(qName *string)[]*ServerInfo
+	innerGroups       *map[int]map[int][]*ServerInfo
 	registeredServers []RegisteredServer
 	lbStrategy        LBStrategy
-}
-
-type ServerGroup struct {
-	name              string
-	groups            []*ServerGroup
-	servers           []*string
-	tag               *string
-	priority          bool
 }
 
 func NewServersInfo() *ServersInfo {
@@ -185,6 +178,66 @@ RowLoop:
 	if(liveServers > 0) {
 		inner := serversInfo.inner
 		innerLen := len(inner)
+		if proxy.listenerCfg != nil {
+			inners := make(map[int]map[int][]*ServerInfo)
+			innerfs := make(map[int]func(qName *string)[]*ServerInfo)
+			for idx, lc := range *proxy.listenerCfg {
+				svrs := make(map[int][]*ServerInfo)
+				if lc.regex != nil {
+					for name, group := range *lc.groups {
+						servers := make([]*ServerInfo, 0)
+						for _, server := range serversInfo.inner {
+							for _, name := range group.servers {
+								if *name == server.Name {
+									servers = append(servers, server)
+								}
+							}
+						}
+						svrs[lc.regex.SubexpIndex(name)] = servers
+					}
+					f := func(qName *string)[]*ServerInfo {
+						idxes := lc.regex.FindStringSubmatchIndex(*qName)
+						if idxes == nil {
+							return nil
+						}
+						//union all operation
+						l := 0
+						for k, v := range (*serversInfo.innerGroups)[idx] {
+							if idxes[2*k] != -1 { //[2*n:2*n+1]
+								l += len(v)
+							}
+						}
+						ret := make([]*ServerInfo, l)
+						pos := 0
+						for k, v := range (*serversInfo.innerGroups)[idx] {
+							if idxes[2*k] != -1 {
+								copy(ret[pos:], v)
+								pos += len(v)
+							}
+						}
+						return ret
+					}
+					innerfs[idx] = f
+				} else {
+					servers := make([]*ServerInfo, 0)
+					for _, server := range serversInfo.inner {
+						for _, name := range lc.servers.servers {
+							if *name == server.Name {
+								servers = append(servers, server)
+							}
+						}
+					}
+					svrs[0] = servers
+					f := func(qName *string)[]*ServerInfo {
+						return (*serversInfo.innerGroups)[idx][0]
+					}
+					innerfs[idx] = f
+				}
+				inners[idx] = svrs
+			}
+			serversInfo.innerFuncs = &innerfs
+			serversInfo.innerGroups = &inners
+		}
 		if innerLen > 1 {
 			dlog.Notice("sorted latencies:")
 			for i := 0; i < innerLen; i++ {
@@ -199,8 +252,14 @@ RowLoop:
 }
 
 
-func (serversInfo *ServersInfo) getOne(request *dns.Msg, id uint16) *ServerInfo {
-	serversCount := len(serversInfo.inner)
+func (serversInfo *ServersInfo) getOne(state *PluginsState, id uint16) *ServerInfo {
+	var servers = serversInfo.inner
+	if serversInfo.innerFuncs != nil {
+		if f, ok := (*serversInfo.innerFuncs)[state.idx]; ok {
+			servers = f(state.qName)
+		}
+	}
+	serversCount := len(servers)
 	if serversCount <= 0 {
 		return nil
 	}
@@ -215,12 +274,8 @@ func (serversInfo *ServersInfo) getOne(request *dns.Msg, id uint16) *ServerInfo 
 	default:
 		candidate = rand.Intn(Min(serversCount, 2))
 	}
-	serverInfo := serversInfo.inner[candidate]
-	if request == nil || len(request.Question) < 1 {
-		dlog.Debugf("[%s](%dms)", serverInfo.Name, int(serverInfo.rtt.Avg()))
-	} else {
-		dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms", id, request.Question[0].Name, serverInfo.Name, int(serverInfo.rtt.Avg()))
-	}
+	serverInfo := servers[candidate]
+	dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms", id, *state.qName, serverInfo.Name, int(serverInfo.rtt.Avg()))
 	return serverInfo
 }
 
@@ -241,13 +296,13 @@ func routes(proxy *Proxy, name string) ([]*Endpoint, error) {
 	}
 	relayNames, ok := (*routes)[name]
 	if !ok {
-		relayNames, ok = (*routes)["*"]
+		relayNames, ok = (*routes)[STAR]
 	}
 	if !ok {
 		return relays0, nil
 	}
 	dlog.Infof("select relays for %s", name)
-	if len(relayNames) > 0 && relayNames[0] == "*" {
+	if len(relayNames) > 0 && relayNames[0] == STAR {
 		var relays_all = make([]*Endpoint, len(proxy.registeredRelays))
 		for i, registeredServer := range proxy.registeredRelays {
 			relayAddr, err := ResolveEndpoint(registeredServer.stamp.ServerAddrStr)

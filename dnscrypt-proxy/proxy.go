@@ -56,6 +56,8 @@ type Proxy struct {
 	cloakTTL                      uint32
 	LocalInterface                *string
 	routes                        *map[string][]string
+	tags                          *map[string]map[string]interface{} //key:tag values:servers
+	listenerCfg                   *map[int]*ListenerConfiguration
 	registeredRelays              []RegisteredServer
 	serversInfo                   *ServersInfo
 	pluginsGlobals                *PluginsGlobals
@@ -65,6 +67,17 @@ type Proxy struct {
 	wg                            *sync.WaitGroup
 	ctx                           context.Context
 	cancel                        context.CancelFunc
+}
+
+type ListenerConfiguration struct {
+	regex                         *regexp_builder
+	groups                        *map[string]*Servers
+	servers                       *Servers
+}
+
+type Servers struct {
+	priority                      bool
+	servers                       []*string
 }
 
 type ProxyStartup struct {
@@ -475,7 +488,7 @@ Go:
 
 func (proxy *Proxy) processIncomingQuery(clientProto string, query []byte, clientAddr *net.Addr,
  clientPc net.Conn, start time.Time, idx int) {
-	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, start)
+	pluginsState := NewPluginsState(proxy, clientProto, clientAddr, start, idx)
 	var request *dns.Msg
 	goto Go
 Exit:
@@ -513,7 +526,7 @@ Go:
 	proxy.wg.Add(1)
 	defer proxy.wg.Done()
 	
-	serverInfo = proxy.serversInfo.getOne(request, id)
+	serverInfo = proxy.serversInfo.getOne(pluginsState, id)
 	if serverInfo == nil {
 		goto SvrFault
 	}
@@ -525,7 +538,7 @@ Go:
 		case "DNSCrypt":
 			info := (serverInfo.Info).(*DNSCryptInfo)
 			if info.RelayAddr!= nil {
-				relayIndex = "*" + info.RelayAddr.Load().(*EPRing).Order()
+				relayIndex = STAR + info.RelayAddr.Load().(*EPRing).Order()
 			}
 		default:
 			dlog.Fatalf("unsupported server protocol:[%s]", serverInfo.Info.Proto())

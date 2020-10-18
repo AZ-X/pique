@@ -48,7 +48,7 @@ func TestMyMiniDAG_general(t *testing.T) {
 	g.AddVertex("c", 3, []string{"d"})
 	g.AddVertex("d", 4, []string{"f", "f"})
 	g.AddVertex("f", 5, nil)
-	if err := g.Finalize(false); err != nil {
+	if err := g.Finalize(true); err != nil {
 		t.Errorf("%v", err)
 	} else {
 		for k,v := range g.scc {

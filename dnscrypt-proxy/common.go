@@ -25,6 +25,7 @@ const (
 	MaxDNSPacketSize        = dns.MaxMsgSize
 	MaxDNSUDPPacketSize     = dns.DefaultMsgSize
 	MaxDNSUDPSafePacketSize = 1252
+	STAR                    = "*"
 )
 
 /*---------------------------------------------------------------------------------------
@@ -32,6 +33,10 @@ const (
     Network related
 
 /*--------------------------------------------------------------------------------------*/
+
+type TLSContext struct {
+	context.Context
+}
 
 type Endpoint struct {
 	*net.IPAddr
@@ -172,7 +177,7 @@ func Dial(network, address string, ifi *string, timeout time.Duration, keepAlive
 	var ctx context.Context
 	for _, opt := range opts {
 		switch opt := opt.(type) {
-			case *TLSContext: 
+			case *TLSContext:
 			if opt != nil {
 				ctx = opt
 			}

@@ -43,13 +43,14 @@
 ##========================================================
 ## Definition:
 ## Field 'name' is a given identity for reference 
-## Field 'servers' is a collection which value should exist in server_names
+## Field 'servers' is a collection which value should exist in server_names; special * means all
 ## Field 'tag' is an attribute which value should exist for each entity of server_names
 ## --tag is valid only if you are using https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
 ## --tag is one of values of an instance of tags defined for StampProtoTypeDoTEx, StampProtoTypeDoHEx
 ## --or StampProtoTypeDNSCryptEx as extended type of DoT,DoH,DNSCrypt stamps
 ## Field 'groups' refers to previous defined field 'name'
-## Field 'priority' is in order of selection base on TCP ACK/ICMP PING result; 
+## Field 'priority' is in order of selection base on TCP ACK/ICMP PING result;
+## Field 'priority' will be worked with future version as how choosing a preferred server on throttle of tryouts
 ## --for group 'B' 'server11'>'server12'>'server13'
 ## --for group 'A&B`' 'server11'>'server12'>'server13'>'server1'>'server2'>'server3'
 ## Field 'match' is an instance of regular expression to match any domain name 
@@ -68,6 +69,7 @@
 #{ name='DE', tag='de', match='\.de\.$' },
 #{ name='Swiss', tag='ch', match='\.(ch|swiss)\.$' },
 #{ name='foo', tag='foo', match='porn' },
+#{ name='all', servers=['*'] },
 #]
 
 ## Specify an interface for outbound connections 

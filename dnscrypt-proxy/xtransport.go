@@ -77,10 +77,6 @@ func (c *HTTPSContext) Value(key interface{}) interface{} {
 	return c.TLSContextDial
 }
 
-type TLSContext struct {
-	context.Context
-}
-
 func NewXTransport() *XTransport {
 	xTransport := XTransport{
 		keepAlive:                	DefaultKeepAlive,

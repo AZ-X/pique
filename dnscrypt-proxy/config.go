@@ -23,6 +23,7 @@ import (
 const (
 	MaxTimeout             = 43200
 	DefaultNetprobeAddress = "127.0.0.1:53"
+	delimiter              = ";"
 )
 
 type Config struct {
@@ -166,7 +167,7 @@ type ConfigFlags struct {
 
 type GroupsConfig struct {
 	Name           string   `toml:"name"`
-	Servers        []*string `toml:"servers"`
+	Servers        []string `toml:"servers"`
 	Tag            string   `toml:"tag"`
 	Groups         []string `toml:"groups"`
 	Priority       bool     `toml:"priority"`
@@ -174,7 +175,7 @@ type GroupsConfig struct {
 }
 
 type ListenerAssociation struct {
-	Position       uint     `toml:"position"`
+	Position       int     `toml:"position"`
 	Group          string   `toml:"group"`
 	Regex          bool     `toml:"regex"`
 }
@@ -392,7 +393,8 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 		if len(proxy.registeredServers) == 0 {
 			return errors.New("No servers configured")
 		}
-		config.loadGroups(proxy)
+		config.loadTags(proxy)
+		config.loadGroupsAssociation(proxy)
 	}
 	
 	if proxy.routes != nil && len(*proxy.routes) > 0 {
@@ -407,7 +409,7 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 				hasSpecificRoutes = true
 			}
 		}
-		if via, ok := (*proxy.routes)["*"]; ok {
+		if via, ok := (*proxy.routes)[STAR]; ok {
 			if hasSpecificRoutes {
 				dlog.Noticef("anonymized DNS: routing everything else via %v", via)
 			} else {
@@ -422,8 +424,145 @@ func ConfigLoad(proxy *Proxy, flags *ConfigFlags) error {
 	return nil
 }
 
-// panic if any group is empty
-func (config *Config) loadGroups(proxy *Proxy) {
+
+func (config *Config) loadTags(proxy *Proxy) {
+	tags := make(map[string]map[string]interface{})
+	for _, server := range proxy.registeredServers {
+		for _, tag := range strings.Split(server.stamp.Tags, delimiter) {
+			if servers, ok := tags[tag]; !ok {
+				servers = make(map[string]interface{})
+				servers[server.name] = nil
+				tags[tag] = servers
+			} else {
+				servers[server.name] = nil
+			}
+		}
+	}
+	if len(tags) != 0 {
+		proxy.tags = &tags
+	}
+}
+
+// Simplicity, Beauty, Complex, as Original Repurification
+// panic if error, will migrate all critical cfg error to panic
+func (config *Config) loadGroupsAssociation(proxy *Proxy) {
+	if len(config.Groups) == 0 || len(config.GroupsListener) == 0 {
+		return
+	}
+	names := make(map[string]interface{})
+	for _, server := range proxy.registeredServers {
+		names[server.name] = nil
+	}
+	var g = &Graph{}
+	regexNames := make([]string, 0)
+	for _, group := range config.Groups {
+		if len(group.Name) == 0 {
+			panic("name of group must represent")
+		}
+		if len(group.Tag) != 0 {
+			if len(group.Servers) != 0 {
+				panic("tag or servers of " + group.Name + " group must be omitted")
+			}
+			hasTag := false
+			if proxy.tags != nil {
+				if _, ok := (*proxy.tags)[group.Tag]; ok {
+					hasTag = true
+				}
+			}
+			if !hasTag {
+				panic("group tag " + group.Tag + " not found")
+			}
+		}
+		if err := g.AddVertex(group.Name, group, group.Groups); err != nil {
+			panic("group cfg has error:" + err.Error())
+		}
+		if len(group.Match) != 0 {
+			regexNames = append(regexNames, group.Name)
+		}
+	}
+	if err := g.Finalize(false); err != nil {
+		panic("group cfg has error:" + err.Error())
+	}
+	positionLimit := len(proxy.listenAddresses)
+	listenerCfg := make(map[int]*ListenerConfiguration)
+	for _, gl := range config.GroupsListener {
+		if gl.Position < 1 || gl.Position > positionLimit {
+			panic("position of listener_association out of range, check listen_addresses")
+		}
+		if _, ok := listenerCfg[gl.Position]; ok {
+			panic("duplicate position of listener_association")
+		}
+		
+		if gl.Regex && len(gl.Group) != 0 {
+			panic("group or regex is mutually exclusive in listener_association")
+		}
+		lc := ListenerConfiguration{}
+		getSvrs := func(groups []interface{}) *Servers {
+			svrs := Servers{priority:groups[0].(GroupsConfig).Priority}
+			serverList := make(map[string]interface{})
+			for _, group := range groups {
+				gc := group.(GroupsConfig)
+				for _, server := range gc.Servers {
+					if server == STAR {
+						for k, _ := range names {
+							serverList[k] = nil
+						}
+						break
+					}
+					if _, ok := names[server]; !ok {
+						panic("unknown server inside group:" + server)
+					}
+					if _, ok := serverList[server]; ok {
+						continue
+					}
+					serverList[server] = nil
+				}
+				if len(gc.Tag) != 0 {
+					for server, _ := range (*proxy.tags)[gc.Tag] {
+						if _, ok := serverList[server]; ok {
+							continue
+						}
+						serverList[server] = nil
+					}
+				}
+			}
+			servers := make([]*string, 0)
+			for server, _ := range serverList {
+				svr := server
+				servers = append(servers, &svr)
+			}
+			svrs.servers = servers
+			return &svrs
+		}
+		if !gl.Regex {
+			if groups := g.Tags(gl.Group); groups != nil {
+				svrs := getSvrs(groups)
+				lc.servers = svrs
+				dlog.Debugf("group mode actived for %s, root group is assigned to %s", proxy.listenAddresses[gl.Position-1], gl.Group)
+			} else {
+				panic("group " + gl.Group + " not found in groups")
+			}
+		} else if len(regexNames) > 0 {
+			gs := make(map[string]*Servers)
+			regexes := make([]string, len(regexNames))
+			for i, name := range regexNames {
+				groups := g.Tags(name);
+				svrs := getSvrs(groups)
+				regexes[i] = groups[0].(GroupsConfig).Match
+				gs[name] = svrs
+			}
+			lc.groups = &gs
+			lc.regex = CreateRegexBuilder(regexes, regexNames)
+			dlog.Debugf("regex mode actived for %s, group count:%d", proxy.listenAddresses[gl.Position-1], len(regexNames))
+
+		} else {
+			dlog.Warnf("position=%d, regex=true while zero match group found", gl.Position)
+			continue
+		}
+		listenerCfg[gl.Position] = &lc
+		
+	}
+	proxy.listenerCfg = &listenerCfg
 }
 
 func (config *Config) loadSources(proxy *Proxy) error {
@@ -498,7 +637,7 @@ func (config *Config) loadSource(proxy *Proxy, requiredProps stamps.ServerInform
 			dlog.Criticalf("failed to use source [%s]: [%s]", cfgSourceName, err)
 			return err
 		}
-		dlog.Warnf("error in source [%s]: [%s] -- Continuing with reduced server count [%d]", cfgSourceName, err, len(registeredServers))
+		dlog.Warnf("error in source [%s]: [%s] -- continuing with reduced server count [%d]", cfgSourceName, err, len(registeredServers))
 	}
 	for _, registeredServer := range registeredServers {
 		if registeredServer.stamp.Proto != stamps.StampProtoTypeDNSCryptRelay {

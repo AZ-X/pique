@@ -176,6 +176,8 @@ Go:
 		index++
 		stack.Push(v)
 		v.onStack = true
+		paths := make([]*string, 0)
+		keyList := make(map[string]interface{})
 		// below contains a collection of borrowing comments of THE algorithm, in case you need read it ???
 		// Consider successors of v
 		for _, e := range v.descendant {
@@ -196,6 +198,27 @@ Go:
 				// It says w.index not w.lowlink; that is deliberate and from the original paper
 				v.lowlink = min(v.lowlink, w.index)
 			}
+			addToPath := true
+			if !duplicateTag {
+				if _, ok := keyList[key]; ok {
+					addToPath = false
+				} else {
+					keyList[key] = nil
+				}
+			}
+			if addToPath {
+				paths = append(paths, &key)
+				for _, path := range g.v[key].paths {
+					key := *path
+					if !duplicateTag {
+						if _, ok := keyList[key]; ok {
+							continue
+						}
+						keyList[key] = nil
+					}
+					paths = append(paths, &key)
+				}
+			}
 		}
 		// If v is a root node, pop the stack and generate an SCC
 		if v.lowlink == v.index {
@@ -215,29 +238,14 @@ Go:
 				err = &CycleError{cycle:set}
 				goto Error
 			} else {
-				paths := make([]*string, 0)
-				keyList := make(map[string]interface{})
-				for _, e := range v.descendant {
-					key := *e.head
-					if !duplicateTag {
-						if _, ok := keyList[key]; ok {
-							continue
-						}
-						keyList[key] = nil
-					}
-					paths = append(paths, &key)
-					for _, path := range g.v[key].paths {
-						key := *path
-						if !duplicateTag {
-							if _, ok := keyList[key]; ok {
-								continue
-							}
-							keyList[key] = nil
-						}
-						paths = append(paths, &key)
-					}
-				}
 				v.paths = paths
+				tags := make([]interface{}, 0)
+				tags = append(tags, v.tag)
+				for _, path := range v.paths {
+					key := *path
+					tags = append(tags, g.v[key].tag)
+				}
+				g.scc[*v.key] = tags
 			}
 		}
 	}
@@ -247,13 +255,6 @@ Go:
 				goto Error
 			}
 		}
-		tags := make([]interface{}, 0)
-		tags = append(tags, v.tag)
-		for _, path := range v.paths {
-			key := *path
-			tags = append(tags, g.v[key].tag)
-		}
-		g.scc[*v.key] = tags
 	}
 	g.finalized = true
 	g.v = nil
@@ -266,4 +267,3 @@ func (g *Graph) Tags(name string) []interface{} {
 	}
 	return g.scc[name]
 }
-

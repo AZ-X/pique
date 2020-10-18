@@ -30,7 +30,7 @@ func (plugin *PluginBlockName) Init(proxy *Proxy) error {
 		}
 		exps = append(exps, line)
 	}
-	proxy.pluginsGlobals.blockmatcher = CreateRegexBuilder(exps)
+	proxy.pluginsGlobals.blockmatcher = CreateRegexBuilder(exps, nil)
 	plugin.matcher = proxy.pluginsGlobals.blockmatcher
 	if len(proxy.blockNameLogFile) == 0 {
 		return nil

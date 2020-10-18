@@ -68,12 +68,14 @@ var PluginsReturnCodeToString = map[PluginsReturnCode]string{
 
 // should rename to SessionState
 // seems no reason to keep too much fields other than weak typed sessionData
+// should clean toilet before use, next time ...
 type PluginsState struct {
 	sessionData                      map[string]interface{}
 	state                            pluginsState
 	maxUnencryptedUDPSafePayloadSize int
 	originalMaxPayloadSize           int
 	maxPayloadSize                   int
+	idx                              int
 	cacheNegMinTTL                   uint32
 	cacheNegMaxTTL                   uint32
 	cacheMinTTL                      uint32
@@ -168,7 +170,7 @@ type Plugin interface {
 	Eval(pluginsState *PluginsState, msg *dns.Msg) error
 }
 
-func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, start time.Time)*PluginsState {
+func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, start time.Time, idx int)*PluginsState {
 	return &PluginsState{
 		state:                            PluginsStateNone,
 		returnCode:                       PluginsReturnCodePass,
@@ -183,6 +185,7 @@ func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, sta
 		requestStart:                     start,
 		maxUnencryptedUDPSafePayloadSize: MaxDNSUDPSafePacketSize,
 		sessionData:                      make(map[string]interface{}),
+		idx:                              idx,
 	}
 }
 

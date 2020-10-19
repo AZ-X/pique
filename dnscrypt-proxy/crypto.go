@@ -7,17 +7,15 @@ import (
 	"math/big"
 
 	"github.com/jedisct1/dlog"
-	"github.com/jedisct1/xsecretbox"
-	"golang.org/x/crypto/chacha20"
-	"golang.org/x/crypto/curve25519"
-	"golang.org/x/crypto/nacl/secretbox"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/unclassified"
+	
 	"golang.org/x/crypto/salsa20/salsa"
 )
 
 const (
-	NonceSize        = xsecretbox.NonceSize
-	HalfNonceSize    = xsecretbox.NonceSize / 2
-	TagSize          = xsecretbox.TagSize
+	NonceSize        = unclassified.NonceSize
+	HalfNonceSize    = unclassified.NonceSize / 2
+	TagSize          = unclassified.TagSize
 	PublicKeySize    = 32
 	ServerMagicLen   = 8
 	QueryOverhead    = ClientMagicLen + PublicKeySize + HalfNonceSize + TagSize
@@ -51,7 +49,7 @@ Fault:
 	dlog.Debugf("[%s] is using weak public key, the program will be panicked", providerName)
 	panic(providerName + " weak public key")
 Go:
-	if xKey, err := curve25519.X25519(scalar[:], serverPk[:]); err != nil {
+	if xKey, err := curve25519_X25519(scalar[:], serverPk[:]); err != nil {
 		goto Fault
 	} else {
 		sharedKey = new([PublicKeySize]byte)
@@ -59,7 +57,7 @@ Go:
 	}
 	var zeros [16]byte
 	if cryptoConstruction == XChacha20Poly1305 {
-		if ccKey, err := chacha20.HChaCha20(sharedKey[:], zeros[:]); err != nil {
+		if ccKey, err := chacha20_HChaCha20(sharedKey[:], zeros[:]); err != nil {
 			goto Fault
 		} else {
 			copy(sharedKey[:], ccKey)
@@ -77,7 +75,7 @@ func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto strin
 	var scalar [PublicKeySize]byte
 	crypto_rand.Read(scalar[:])
 	var x []byte
-	if x, err = curve25519.X25519(scalar[:], curve25519.Basepoint); err != nil {
+	if x, err = curve25519_X25519(scalar[:], curve25519_Basepoint); err != nil {
 		return
 	} else {
 		copy(publicKey[:], x)
@@ -107,9 +105,9 @@ func (proxy *Proxy) Encrypt(serverInfo *DNSCryptInfo, packet []byte, proto strin
 	encrypted = append(encrypted, nonce[:HalfNonceSize]...)
 	padded := pad(packet, paddedLength - len(packet))
 	if serverInfo.Version == XChacha20Poly1305 {
-		encrypted = xsecretbox.Seal(encrypted, nonce[:], padded, sharedKey[:])
+		encrypted = unclassified.SealX(encrypted, nonce[:], padded, sharedKey[:])
 	} else {
-		encrypted = secretbox.Seal(encrypted, padded, nonce, sharedKey)
+		encrypted = unclassified.Seal(encrypted, padded, nonce, sharedKey)
 	}
 	return
 }
@@ -134,12 +132,12 @@ func (proxy *Proxy) Decrypt(serverInfo *DNSCryptInfo, sharedKey *[32]byte, encry
 	var packet []byte
 	var err error
 	if serverInfo.Version == XChacha20Poly1305 {
-		packet, err = xsecretbox.Open(nil, serverNonce, encrypted[responseHeaderLen:], sharedKey[:])
+		packet, err = unclassified.OpenX(nil, serverNonce, encrypted[responseHeaderLen:], sharedKey[:])
 	} else {
 		var xsalsaServerNonce [24]byte
 		copy(xsalsaServerNonce[:], serverNonce)
 		var ok bool
-		packet, ok = secretbox.Open(nil, encrypted[responseHeaderLen:], &xsalsaServerNonce, sharedKey)
+		packet, ok = unclassified.Open(nil, encrypted[responseHeaderLen:], &xsalsaServerNonce, sharedKey)
 		if !ok {
 			err = errors.New("Incorrect tag")
 		}

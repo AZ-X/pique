@@ -199,6 +199,14 @@ func Dial(network, address string, ifi *string, timeout time.Duration, keepAlive
     Others
 
 /*--------------------------------------------------------------------------------------*/
+//go:linkname curve25519_Basepoint vendor/golang.org/x/crypto/curve25519.Basepoint
+var curve25519_Basepoint []byte
+
+//go:linkname curve25519_X25519 vendor/golang.org/x/crypto/curve25519.X25519
+func curve25519_X25519(scalar, point []byte) ([]byte, error)
+
+//go:linkname chacha20_HChaCha20 vendor/golang.org/x/crypto/chacha20.HChaCha20
+func chacha20_HChaCha20(key, nonce []byte) ([]byte, error)
 
 func Min(a, b int) int {
 	if a < b {

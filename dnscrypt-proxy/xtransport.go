@@ -26,7 +26,7 @@ const (
 	DefaultKeepAlive             = 0 * time.Second
 	DefaultTimeout               = 30 * time.Second
 	DoTDefaultPort               = 853
-	TLS_AES_128_GCM_SHA256       = 0x1301 // 16bit key
+	TLS_AES_128_GCM_SHA256       = 0x1301 // 16bytes key
 	TLS_AES_256_GCM_SHA384       = 0x1302 // 1st not pq ready
 	TLS_CHACHA20_POLY1305_SHA256 = 0x1303 // 2nd not pq ready
 )

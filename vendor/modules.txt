@@ -10,35 +10,24 @@ github.com/jedisct1/dlog
 # github.com/jedisct1/go-clocksmith v0.0.0-20190707124905-73e087c7979c
 ## explicit
 github.com/jedisct1/go-clocksmith
-# github.com/jedisct1/xsecretbox v0.0.0-20190909160646-b731c21297f9 => ../xsecretbox/
 ## explicit
 github.com/jedisct1/xsecretbox
-# github.com/miekg/dns v1.1.31 => ../miekg_dns/
+# github.com/miekg/dns v1.1.33 => ../miekg_dns/
 ## explicit
 github.com/miekg/dns
 # golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9
 ## explicit
-golang.org/x/crypto/blake2b
-golang.org/x/crypto/chacha20
-golang.org/x/crypto/curve25519
-golang.org/x/crypto/internal/subtle
-golang.org/x/crypto/nacl/box
-golang.org/x/crypto/nacl/secretbox
-golang.org/x/crypto/poly1305
 golang.org/x/crypto/salsa20/salsa
 # golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
 ## explicit
 golang.org/x/sync/semaphore
 # golang.org/x/sys v0.0.0-20200620081246-981b61492c35
-## explicit
-golang.org/x/sys/cpu
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0 => ../lumberjack.v2/
 ## explicit
 gopkg.in/natefinch/lumberjack.v2
 # stammel v0.0.0-00010101000000-000000000000 => ../stammel/stammel
 ## explicit
 stammel
-# github.com/jedisct1/xsecretbox => ../xsecretbox/
 # gopkg.in/natefinch/lumberjack.v2 => ../lumberjack.v2/
 # github.com/jedisct1/dlog => ../dboy/
 # github.com/miekg/dns => ../miekg_dns/

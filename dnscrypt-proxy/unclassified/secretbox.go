@@ -32,16 +32,15 @@ chunk size.
 
 This package is interoperable with NaCl: https://nacl.cr.yp.to/secretbox.html.
 */
-package secretbox // import "golang.org/x/crypto/nacl/secretbox"
+package unclassified // import "golang.org/x/crypto/nacl/secretbox"
 
 import (
-	"golang.org/x/crypto/internal/subtle"
-	"golang.org/x/crypto/poly1305"
 	"golang.org/x/crypto/salsa20/salsa"
+	"unsafe"
 )
 
 // Overhead is the number of bytes of overhead when boxing a message.
-const Overhead = poly1305.TagSize
+const Overhead = poly1305_TagSize
 
 // setup produces a sub-key and Salsa20 counter given a nonce and key.
 func setup(subKey *[32]byte, counter *[16]byte, nonce *[24]byte, key *[32]byte) {
@@ -87,8 +86,8 @@ func Seal(out, message []byte, nonce *[24]byte, key *[32]byte) []byte {
 	var poly1305Key [32]byte
 	copy(poly1305Key[:], firstBlock[:])
 
-	ret, out := sliceForAppend(out, len(message)+poly1305.TagSize)
-	if subtle.AnyOverlap(out, message) {
+	ret, out := sliceForAppend(out, len(message)+poly1305_TagSize)
+	if AnyOverlap(out, message) {
 		panic("nacl: invalid buffer overlap")
 	}
 
@@ -100,7 +99,7 @@ func Seal(out, message []byte, nonce *[24]byte, key *[32]byte) []byte {
 	}
 
 	tagOut := out
-	out = out[poly1305.TagSize:]
+	out = out[poly1305_TagSize:]
 	for i, x := range firstMessageBlock {
 		out[i] = firstBlock[32+i] ^ x
 	}
@@ -112,8 +111,8 @@ func Seal(out, message []byte, nonce *[24]byte, key *[32]byte) []byte {
 	counter[8] = 1
 	salsa.XORKeyStream(out, message, &counter, &subKey)
 
-	var tag [poly1305.TagSize]byte
-	poly1305.Sum(&tag, ciphertext, &poly1305Key)
+	var tag [poly1305_TagSize]byte
+	poly1305_Sum(&tag, ciphertext, &poly1305Key)
 	copy(tagOut, tag[:])
 
 	return ret
@@ -139,15 +138,15 @@ func Open(out, box []byte, nonce *[24]byte, key *[32]byte) ([]byte, bool) {
 
 	var poly1305Key [32]byte
 	copy(poly1305Key[:], firstBlock[:])
-	var tag [poly1305.TagSize]byte
+	var tag [poly1305_TagSize]byte
 	copy(tag[:], box)
 
-	if !poly1305.Verify(&tag, box[poly1305.TagSize:], &poly1305Key) {
+	if !poly1305_Verify(&tag, box[poly1305_TagSize:], &poly1305Key) {
 		return nil, false
 	}
 
 	ret, out := sliceForAppend(out, len(box)-Overhead)
-	if subtle.AnyOverlap(out, box) {
+	if AnyOverlap(out, box) {
 		panic("nacl: invalid buffer overlap")
 	}
 
@@ -170,4 +169,10 @@ func Open(out, box []byte, nonce *[24]byte, key *[32]byte) ([]byte, bool) {
 	salsa.XORKeyStream(out, box, &counter, &subKey)
 
 	return ret, true
+}
+
+func AnyOverlap(x, y []byte) bool {
+	return len(x) > 0 && len(y) > 0 &&
+		uintptr(unsafe.Pointer(&x[0])) <= uintptr(unsafe.Pointer(&y[len(y)-1])) &&
+		uintptr(unsafe.Pointer(&y[0])) <= uintptr(unsafe.Pointer(&x[len(x)-1]))
 }

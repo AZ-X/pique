@@ -177,7 +177,6 @@ RowLoop:
 	})
 	if(liveServers > 0) {
 		inner := serversInfo.inner
-		innerLen := len(inner)
 		if proxy.listenerCfg != nil {
 			inners := make(map[int]map[int][]*ServerInfo)
 			innerfs := make(map[int]func(qName *string)[]*ServerInfo)
@@ -238,15 +237,13 @@ RowLoop:
 			serversInfo.innerFuncs = &innerfs
 			serversInfo.innerGroups = &inners
 		}
-		if innerLen > 1 {
+		if len(inner) > 1 {
 			dlog.Notice("sorted latencies:")
 			for i := 0; i < innerLen; i++ {
 				dlog.Noticef("- %5.fms %s", inner[i].rtt.Avg(), inner[i].Name)
 			}
 		}
-		if innerLen > 0 {
-			dlog.Noticef("serve with the lowest initial latency: %s (rtt: %.fms)", inner[0].Name, inner[0].rtt.Avg())
-		}
+		dlog.Noticef("serve with the lowest initial latency: %s (rtt: %.fms)", inner[0].Name, inner[0].rtt.Avg())
 	}
 	return liveServers, err
 }

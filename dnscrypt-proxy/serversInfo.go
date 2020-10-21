@@ -239,8 +239,8 @@ RowLoop:
 		}
 		if len(inner) > 1 {
 			dlog.Notice("sorted latencies:")
-			for i := 0; i < innerLen; i++ {
-				dlog.Noticef("- %5.fms %s", inner[i].rtt.Avg(), inner[i].Name)
+			for _, server := range inner {
+				dlog.Noticef("- %5.fms %s", server.rtt.Avg(), server.Name)
 			}
 		}
 		dlog.Noticef("serve with the lowest initial latency: %s (rtt: %.fms)", inner[0].Name, inner[0].rtt.Avg())

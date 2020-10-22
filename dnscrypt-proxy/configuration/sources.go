@@ -31,8 +31,8 @@ type Source struct {
 	name                    string
 	format                  SourceFormat
 	minisignKey             *stammel.PublicKey
-	CacheFile               string
-	CacheTTL, prefetchDelay time.Duration
+	cacheFile               string
+	cacheTTL, prefetchDelay time.Duration
 	refresh                 time.Time
 }
 
@@ -49,10 +49,10 @@ var timeNow = time.Now
 
 func (source *Source) fetchFromCache(now time.Time) (delay time.Duration, err error, in []byte) {
 	var bin, sig []byte
-	if bin, err = ioutil.ReadFile(source.CacheFile); err != nil {
+	if bin, err = ioutil.ReadFile(source.cacheFile); err != nil {
 		return
 	}
-	if sig, err = ioutil.ReadFile(source.CacheFile + ".minisig"); err != nil {
+	if sig, err = ioutil.ReadFile(source.cacheFile + ".minisig"); err != nil {
 		return
 	}
 	if err = source.checkSignature(bin, sig); err != nil {
@@ -60,14 +60,14 @@ func (source *Source) fetchFromCache(now time.Time) (delay time.Duration, err er
 	}
 	in = bin
 	var fi os.FileInfo
-	if fi, err = os.Stat(source.CacheFile); err != nil {
+	if fi, err = os.Stat(source.cacheFile); err != nil {
 		return
 	}
-	if elapsed := now.Sub(fi.ModTime()); elapsed < source.CacheTTL {
+	if elapsed := now.Sub(fi.ModTime()); elapsed < source.cacheTTL {
 		delay = source.prefetchDelay - elapsed
-		dlog.Debugf("joking^^ source [%s] Cache file [%s] is still fresh, next update: %v", source.name, source.CacheFile, delay)
+		dlog.Debugf("joking^^ source [%s] Cache file [%s] is still fresh, next update: %v", source.name, source.cacheFile, delay)
 	} else {
-		dlog.Debugf("source [%s] Cache file [%s] needs to be refreshed", source.name, source.CacheFile)
+		dlog.Debugf("source [%s] Cache file [%s] needs to be refreshed", source.name, source.cacheFile)
 	}
 	return
 }
@@ -77,12 +77,12 @@ func fetchFromURL(XTransport *protocols.XTransport, u *url.URL) (bin []byte, err
 	return nil, errors.New("Not supported yet")
 }
 
-// NewSource loads a new source using the given CacheFile and urls, ensuring it has a valid signature
-func NewSource(name string, XTransport *protocols.XTransport, urls []string, minisignKeyStr string, CacheFile string, formatStr string, refreshDelay time.Duration) (source *Source, err error) {
+// NewSource loads a new source using the given cacheFile and urls, ensuring it has a valid signature
+func NewSource(name string, XTransport *protocols.XTransport, urls []string, minisignKeyStr string, cacheFile string, formatStr string, refreshDelay time.Duration) (source *Source, err error) {
 	if refreshDelay < DefaultPrefetchDelay {
 		refreshDelay = DefaultPrefetchDelay
 	}
-	source = &Source{name: name, CacheFile: CacheFile, CacheTTL: refreshDelay, prefetchDelay: DefaultPrefetchDelay}
+	source = &Source{name: name, cacheFile: cacheFile, cacheTTL: refreshDelay, prefetchDelay: DefaultPrefetchDelay}
 	if formatStr == "v2" {
 		source.format = SourceFormatV2
 	} else {

@@ -41,14 +41,14 @@ func computeCacheKey(dnssec bool, Qtype, Qclass uint16, Name string) *[32]byte {
 // ---
 
 type PluginCache struct {
-	Cache *conceptions.Cache
+	cache *conceptions.Cache
 }
 
 func (plugin *PluginCache) Init(proxy *Proxy) error {
 	size := 1<<math.Ilogb(float64(proxy.CacheSize))
-	dlog.Debugf("accurate Cache size: %d", size)
-	proxy.pluginsGlobals.Cache = conceptions.NewCache(size)
-	plugin.Cache = proxy.pluginsGlobals.Cache
+	dlog.Debugf("accurate cache size: %d", size)
+	proxy.pluginsGlobals.cache = conceptions.NewCache(size)
+	plugin.cache = proxy.pluginsGlobals.cache
 	return nil
 }
 
@@ -74,17 +74,17 @@ func updateTTL(msg *dns.Msg, expiration time.Time) {
 
 
 func (plugin *PluginCache) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
-	CachedAny, ok := plugin.Cache.Get(*pluginsState.hash_key)
+	cachedAny, ok := plugin.cache.Get(*pluginsState.hash_key)
 	if !ok {
 		return nil
 	}
-	synth := CachedAny.(CachedResponse)
+	synth := cachedAny.(CachedResponse)
 	synth.Id = msg.Id
 	synth.Response = true
 	synth.Compress = true
 
 	if time.Now().After(synth.expiration) {
-		dlog.Debugf("Cache expired from %v", synth.expiration)
+		dlog.Debugf("cache expired from %v", synth.expiration)
 		pluginsState.sessionData["stale"] = synth.Msg
 		return nil
 	}
@@ -93,30 +93,30 @@ func (plugin *PluginCache) Eval(pluginsState *PluginsState, msg *dns.Msg) error 
 
 	pluginsState.synthResponse = synth.Msg
 	pluginsState.state = PluginsStateSynth
-	pluginsState.CacheHit = true
+	pluginsState.cacheHit = true
 	return nil
 }
 
 // ---
 
 type PluginCacheResponse struct {
-	Cache *conceptions.Cache
+	cache *conceptions.Cache
 }
 
 func (plugin *PluginCacheResponse) Init(proxy *Proxy) error {
-	plugin.Cache = proxy.pluginsGlobals.Cache
+	plugin.cache = proxy.pluginsGlobals.cache
 	return nil
 }
 
-func getMinTTL(msg *dns.Msg, minTTL uint32, maxTTL uint32, CacheNegMinTTL uint32, CacheNegMaxTTL uint32) time.Duration {
+func getMinTTL(msg *dns.Msg, minTTL uint32, maxTTL uint32, cacheNegMinTTL uint32, cacheNegMaxTTL uint32) time.Duration {
 	if (msg.Rcode != dns.RcodeSuccess && msg.Rcode != dns.RcodeNameError) || (len(msg.Answer) <= 0 && len(msg.Ns) <= 0) {
-		return time.Duration(CacheNegMinTTL) * time.Second
+		return time.Duration(cacheNegMinTTL) * time.Second
 	}
 	var ttl uint32
 	if msg.Rcode == dns.RcodeSuccess {
 		ttl = uint32(maxTTL)
 	} else {
-		ttl = uint32(CacheNegMaxTTL)
+		ttl = uint32(cacheNegMaxTTL)
 	}
 	if len(msg.Answer) > 0 {
 		for _, rr := range msg.Answer {
@@ -136,8 +136,8 @@ func getMinTTL(msg *dns.Msg, minTTL uint32, maxTTL uint32, CacheNegMinTTL uint32
 			ttl = minTTL
 		}
 	} else {
-		if ttl < CacheNegMinTTL {
-			ttl = CacheNegMinTTL
+		if ttl < cacheNegMinTTL {
+			ttl = cacheNegMinTTL
 		}
 	}
 	return time.Duration(ttl) * time.Minute
@@ -151,14 +151,14 @@ func (plugin *PluginCacheResponse) Eval(pluginsState *PluginsState, msg *dns.Msg
 	if msg.Truncated {
 		return nil
 	}
-	ttl := getMinTTL(msg, pluginsState.CacheMinTTL, pluginsState.CacheMaxTTL, pluginsState.CacheNegMinTTL, pluginsState.CacheNegMaxTTL)
-	CachedResponse := CachedResponse{
+	ttl := getMinTTL(msg, pluginsState.cacheMinTTL, pluginsState.cacheMaxTTL, pluginsState.cacheNegMinTTL, pluginsState.cacheNegMaxTTL)
+	cachedResponse := CachedResponse{
 		expiration: time.Now().Add(ttl),
 		Msg:        msg,
 	}
 
-	plugin.Cache.Add(*pluginsState.hash_key, CachedResponse)
-	updateTTL(msg, CachedResponse.expiration)
+	plugin.cache.Add(*pluginsState.hash_key, cachedResponse)
+	updateTTL(msg, cachedResponse.expiration)
 
 	return nil
 }

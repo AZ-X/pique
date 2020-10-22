@@ -131,7 +131,7 @@ type SourceConfig struct {
 	URL            string
 	URLs           []string
 	MinisignKeyStr string `toml:"minisign_key"`
-	CacheFile      string `toml:"Cache_file"`
+	cacheFile      string `toml:"Cache_file"`
 	FormatStr      string `toml:"format"`
 	RefreshDelay   int    `toml:"refresh_delay"`
 	Prefix         string
@@ -621,8 +621,8 @@ func (config *Config) loadSource(proxy *channels.Proxy, requiredProps stamps.Ser
 	if cfgSource.MinisignKeyStr == "" {
 		return dlog.Errorf("missing Minisign key for source [%s]", cfgSourceName)
 	}
-	if cfgSource.CacheFile == "" {
-		return dlog.Errorf("missing Cache file for source [%s]", cfgSourceName)
+	if cfgSource.cacheFile == "" {
+		return dlog.Errorf("missing cache file for source [%s]", cfgSourceName)
 	}
 	if cfgSource.FormatStr == "" {
 		cfgSource.FormatStr = "v2"
@@ -630,7 +630,7 @@ func (config *Config) loadSource(proxy *channels.Proxy, requiredProps stamps.Ser
 	if cfgSource.RefreshDelay <= 0 {
 		cfgSource.RefreshDelay = 72
 	}
-	source, err := NewSource(cfgSourceName, proxy.XTransport, cfgSource.URLs, cfgSource.MinisignKeyStr, cfgSource.CacheFile, cfgSource.FormatStr, time.Duration(cfgSource.RefreshDelay)*time.Hour)
+	source, err := NewSource(cfgSourceName, proxy.XTransport, cfgSource.URLs, cfgSource.MinisignKeyStr, cfgSource.cacheFile, cfgSource.FormatStr, time.Duration(cfgSource.RefreshDelay)*time.Hour)
 	if err != nil {
 		dlog.Criticalf("failed to retrieve source [%s]: [%s]", cfgSourceName, err)
 		return err

@@ -15,7 +15,7 @@ type ClockEntry struct {
 }
 
 type PluginCloak struct {
-	clock_Cache    *conceptions.CloakCache
+	clock_cache    *conceptions.CloakCache
 	ttl            uint32
 }
 
@@ -61,28 +61,28 @@ func (plugin *PluginCloak) Init(proxy *Proxy) error {
 		}
 		cloaks[line] = cloakedName
 	}
-	plugin.clock_Cache = conceptions.NewCloakCache()
+	plugin.clock_cache = conceptions.NewCloakCache()
 	for name,r := range cloaks {
 		if len(r["v4"]) > 0 {
 			key := *computeCacheKey(false, dns.TypeA, dns.ClassINET, name + ".")
 			value := ClockEntry{EPRing:common.LinkEPRing(r["v4"]...),} 
-			plugin.clock_Cache.Add(key, value)
+			plugin.clock_cache.Add(key, value)
 		}
 		if len(r["v6"]) > 0 {
 			key := *computeCacheKey(false, dns.TypeAAAA, dns.ClassINET, name + ".")
 			value := ClockEntry{EPRing:common.LinkEPRing(r["v6"]...),} 
-			plugin.clock_Cache.Add(key, value)
+			plugin.clock_cache.Add(key, value)
 		}
 	}
 	return nil
 }
 
 func (plugin *PluginCloak) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
-	CachedAny, ok := plugin.clock_Cache.Get(*pluginsState.hash_key)
+	cachedAny, ok := plugin.clock_cache.Get(*pluginsState.hash_key)
 	if !ok {
 		return nil
 	}
-	ce := CachedAny.(ClockEntry)
+	ce := cachedAny.(ClockEntry)
 	ip := ce.EPRing.IP
 	ce.EPRing = ce.EPRing.Next()
 	synth := common.EmptyResponseFromMessage(msg)

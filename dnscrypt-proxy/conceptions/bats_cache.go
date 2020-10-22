@@ -46,40 +46,40 @@ type eface struct {
 
 const bufsize = 8
 func NewCache(size int) *Cache {
-	Cache := &Cache{keys:&poolDequeue{vals: make([]eface, size),},RWMutex:&sync.RWMutex{},}
-	Cache.entries = make(map[interface{}]*entry, size)
-	Cache.keys.headTail = Cache.keys.pack(1<<dequeueBits-1, 1<<dequeueBits-1)
-	Cache.push = make(chan interface{}, common.Min(size, bufsize))
-	Cache.push2 = make(chan interface{}, common.Min(size, bufsize))
-	Cache.delete = make(chan interface{}, common.Min(size, bufsize))
-	Cache.set = make(chan *struct{K interface{}; V *entry}, common.Min(size, bufsize))
-	Cache.full = make(chan bool, common.Min(size, bufsize))
+	cache := &Cache{keys:&poolDequeue{vals: make([]eface, size),},RWMutex:&sync.RWMutex{},}
+	cache.entries = make(map[interface{}]*entry, size)
+	cache.keys.headTail = cache.keys.pack(1<<dequeueBits-1, 1<<dequeueBits-1)
+	cache.push = make(chan interface{}, common.Min(size, bufsize))
+	cache.push2 = make(chan interface{}, common.Min(size, bufsize))
+	cache.delete = make(chan interface{}, common.Min(size, bufsize))
+	cache.set = make(chan *struct{K interface{}; V *entry}, common.Min(size, bufsize))
+	cache.full = make(chan bool, common.Min(size, bufsize))
 
 	go func() {
 		for {
 			select {
-			case key := <-Cache.push:
-			full := !Cache.keys.pushHead(key)
-			Cache.full <- full
-			case key := <-Cache.push2:
-			Cache.keys.pushHead(key)
-			case key := <-Cache.delete:
-			Cache.Lock()
-			delete(Cache.entries, key)
-			Cache.Unlock()
-			case kv := <-Cache.set:
-			Cache.Lock()
-			Cache.entries[kv.K] = kv.V
-			Cache.Unlock()
+			case key := <-cache.push:
+			full := !cache.keys.pushHead(key)
+			cache.full <- full
+			case key := <-cache.push2:
+			cache.keys.pushHead(key)
+			case key := <-cache.delete:
+			cache.Lock()
+			delete(cache.entries, key)
+			cache.Unlock()
+			case kv := <-cache.set:
+			cache.Lock()
+			cache.entries[kv.K] = kv.V
+			cache.Unlock()
 			}
 		}
 	}()
-	return Cache
+	return cache
 }
 
 func NewCloakCache() *CloakCache {
-	Cache := &CloakCache{entries : make(map[interface{}]*entry),}
-	return Cache
+	cache := &CloakCache{entries : make(map[interface{}]*entry),}
+	return cache
 }
 
 func (m *CloakCache) Get(key interface{}) (value interface{}, ok bool) {

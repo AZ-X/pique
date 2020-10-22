@@ -47,7 +47,7 @@ func (plugin *PluginQueryLog) Eval(pluginsState *PluginsState, msg *dns.Msg) err
 		clientIPStr = (*pluginsState.clientAddr).(*net.TCPAddr).IP.String()
 	}
 	qName := *(pluginsState.qName)
-	if pluginsState.CacheHit {
+	if pluginsState.cacheHit {
 		pluginsState.serverName = nil
 	} else {
 		switch pluginsState.returnCode {
@@ -74,7 +74,7 @@ func (plugin *PluginQueryLog) Eval(pluginsState *PluginsState, msg *dns.Msg) err
 			common.StringQuote(pluginsState.ServerName()))
 	} else if plugin.format == "ltsv" {
 		Cached := 0
-		if pluginsState.CacheHit {
+		if pluginsState.cacheHit {
 			Cached = 1
 		}
 		line = fmt.Sprintf("time:%d\thost:%s\tmessage:%s\ttype:%s\treturn:%s\tCached:%d\tduration:%d\tserver:%s\n",

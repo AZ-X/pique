@@ -35,7 +35,7 @@ type PluginsShareObjects struct {
 	blockmatcher    *services.Regexp_builder
 	block_logger    *lumberjack.Logger
 	block_format    *string
-	Cache           *conceptions.Cache
+	cache           *conceptions.Cache
 }
 
 type PluginsReturnCode int
@@ -80,10 +80,10 @@ type PluginsState struct {
 	originalMaxPayloadSize           int
 	maxPayloadSize                   int
 	idx                              int
-	CacheNegMinTTL                   uint32
-	CacheNegMaxTTL                   uint32
-	CacheMinTTL                      uint32
-	CacheMaxTTL                      uint32
+	cacheNegMinTTL                   uint32
+	cacheNegMaxTTL                   uint32
+	cacheMinTTL                      uint32
+	cacheMaxTTL                      uint32
 	clientProto                      *string
 	qName                            *string
 	serverName                       *string
@@ -93,7 +93,7 @@ type PluginsState struct {
 	clientAddr                       *net.Addr
 	synthResponse                    *dns.Msg
 	dnssec                           bool
-	CacheHit                         bool
+	cacheHit                         bool
 	returnCode                       PluginsReturnCode
 }
 
@@ -181,10 +181,10 @@ func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, sta
 		maxPayloadSize:                   common.MaxDNSUDPPacketSize - protocols.ResponseOverhead,
 		clientProto:                      &clientProto,
 		clientAddr:                       clientAddr,
-		CacheNegMinTTL:                   proxy.CacheNegMinTTL,
-		CacheNegMaxTTL:                   proxy.CacheNegMaxTTL,
-		CacheMinTTL:                      proxy.CacheMinTTL,
-		CacheMaxTTL:                      proxy.CacheMaxTTL,
+		cacheNegMinTTL:                   proxy.CacheNegMinTTL,
+		cacheNegMaxTTL:                   proxy.CacheNegMaxTTL,
+		cacheMinTTL:                      proxy.CacheMinTTL,
+		cacheMaxTTL:                      proxy.CacheMaxTTL,
 		qName:                            nil,
 		requestStart:                     start,
 		maxUnencryptedUDPSafePayloadSize: common.MaxDNSUDPSafePacketSize,

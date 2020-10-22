@@ -24,7 +24,7 @@ might present some implementations with no other choice.
 
 3. Fixed overheads will be sufficiently amortised by messages as small as 8KB.
 
-4. Performance may be improved by working with messages that fit into data caches.
+4. Performance may be improved by working with messages that fit into data Caches.
 
 Thus large amounts of data should be chunked so that each message is small.
 (Each message still needs a unique nonce.) If in doubt, 16KB is a reasonable

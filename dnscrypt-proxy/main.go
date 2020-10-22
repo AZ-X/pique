@@ -11,16 +11,26 @@ import (
 	"syscall"
 
 	"github.com/jedisct1/dlog"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/behaviors"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/channels"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/configuration"
+
 )
 
 const (
 	DefaultConfigFileName = "dnscrypt-proxy.toml"
 )
 
-var	AppVersion            = "dev-X"
+var AppVersion            = "dev-X"
+
 type App struct {
-	proxy *Proxy
-	flags *ConfigFlags
+	proxy *channels.Proxy
+	flags *configuration.ConfigFlags
+}
+
+func init() {
+	common.AppVersion = AppVersion
 }
 
 func main() {
@@ -31,16 +41,16 @@ func main() {
 	rand.Seed(int64(binary.BigEndian.Uint64(seed[:])))
 
 	version := flag.Bool("version", false, "print current proxy version")
-	flags := ConfigFlags{}
+	flags := configuration.ConfigFlags{}
 	flags.Check = flag.Bool("check", false, "check the configuration file and exit")
 	flags.ConfigFile = flag.String("config", DefaultConfigFileName, "Path to the configuration file")
-	flags.Child = flag.Bool("child", false, "Invokes program as a child process")
-	flags.NetprobeTimeoutOverride = flag.Int("netprobe-timeout", 60, "Override the netprobe timeout")
+	flags.Child = flag.Bool("Child", false, "Invokes program as a Child process")
+	flags.NetprobeTimeoutOverride = flag.Int("netprobe-Timeout", 60, "Override the netprobe Timeout")
 
 	flag.Parse()
 
 	if *version {
-		fmt.Println(AppVersion)
+		fmt.Println(common.AppVersion)
 		os.Exit(0)
 	}
 
@@ -48,13 +58,13 @@ func main() {
 		flags: &flags,
 	}
 
-	app.proxy = NewProxy()
+	app.proxy = channels.NewProxy()
 	app.AppMain()
 }
 
 
 func (app *App) AppMain() {
-	if err := ConfigLoad(app.proxy, app.flags); err != nil {
+	if err := configuration.ConfigLoad(app.proxy, app.flags); err != nil {
 		dlog.Fatal(err)
 		os.Exit(1)
 	}
@@ -62,7 +72,7 @@ func (app *App) AppMain() {
 		dlog.Fatal(err)
 		os.Exit(1)
 	}
-	pid, err := NewPidFile()
+	pid, err := behaviors.NewPidFile()
 	if err != nil {
 		dlog.Error(err)
 	}

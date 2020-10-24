@@ -98,7 +98,7 @@ func NewAddr(sa string) (addr *Addr, err error) {
 	if err != nil {
 		return nil, err
 	}
-	port, err := strconv.Atoi(sport)
+	port, err := strconv.ParseUint(sport, 10, 16)
 	if err != nil {
 		return nil, err
 	}

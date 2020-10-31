@@ -12,7 +12,7 @@ import (
 
 	"github.com/jedisct1/dlog"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/behaviors"
-	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/channels"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/features/dns"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/configuration"
 
@@ -25,7 +25,7 @@ const (
 var AppVersion            = "dev-X"
 
 type App struct {
-	proxy *channels.Proxy
+	proxy *dns.Proxy
 	flags *configuration.ConfigFlags
 }
 
@@ -58,7 +58,7 @@ func main() {
 		flags: &flags,
 	}
 
-	app.proxy = channels.NewProxy()
+	app.proxy = dns.NewProxy()
 	app.AppMain()
 }
 

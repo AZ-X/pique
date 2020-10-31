@@ -42,6 +42,7 @@ const (
 	MaxDNSUDPPacketSize     = dns.DefaultMsgSize
 	MaxDNSUDPSafePacketSize = 1252
 	STAR                    = "*"
+	Delimiter               = ";"
 )
 
 type RegisteredServer struct {
@@ -181,6 +182,8 @@ Go:
 	goto Error
 }
 
+type DialFn func(network, address string) (net.Conn, error)
+
 func GetDialer(network string, ifi *string, Timeout time.Duration, KeepAlive time.Duration) (*net.Dialer, error) {
 	var addr net.Addr
 	var err error
@@ -215,6 +218,7 @@ func Dial(network, address string, ifi *string, Timeout time.Duration, KeepAlive
 	}
 }
 
+// for DNS Packet
 func ReadDP(conn net.Conn) ([]byte, error) {
 	if conn == nil {
 		return nil, dns.ErrConnEmpty
@@ -233,24 +237,23 @@ func ReadDP(conn net.Conn) ([]byte, error) {
 	if err := binary.Read(conn, binary.BigEndian, &length); err != nil {
 		return nil, err
 	}
-	if length > MaxDNSPacketSize-1 {
-		return nil, errors.New("Packet too large")
-	}
-	if length < MinDNSPacketSize {
-		return nil, errors.New("Packet too short")
+	Program_dbg_full_log("[Reading - RAW packet length]: %d", length)
+	if length < MinDNSPacketSize || length > MaxDNSPacketSize {
+		return nil, errors.New("unexpected size of packet")
 	}
 	p = make([]byte, length)
 	n, err = io.ReadFull(conn, p[:length])
 Ret:
-	Program_dbg_full_log("[RAW packet length]: %d", length)
+	Program_dbg_full_log("[Ret RAW packet length]: %d", n)
 	return p[:n], err
 }
 
-
+// for DNS Packet
 func WriteDP(conn net.Conn, p []byte, clients ...*net.Addr) error {
-
+	Program_dbg_full_log("[Writing - RAW packet length]: %d", len(p))
 	if _, ok := conn.(net.PacketConn); ok {
 		if len(p) > MaxDNSUDPPacketSize {
+			
 			return errors.New("Packet too large")
 		}
 		var err error

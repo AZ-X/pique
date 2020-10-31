@@ -1,8 +1,7 @@
-package channels
+package dns
 
 import (
 	"context"
-	"encoding/binary"
 	"net"
 	"os"
 	"time"
@@ -13,7 +12,8 @@ import (
 	clocksmith "github.com/jedisct1/go-clocksmith"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/behaviors"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
-	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols/dnscrypt"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols/tls"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/services"
 
 	"github.com/jedisct1/dlog"
@@ -31,16 +31,11 @@ var (
 	FileDescriptorNum = 0
 )
 
-//these are the fingerprint of the dnscrypt protocols, keep in mind
-func AnonymizedDNSHeader() []byte {
-	return []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00}
-}
 
 type Proxy struct {
 	*ProxyStartup
 	Timeout                       time.Duration
 	CertRefreshDelay              time.Duration
-	CertIgnoreTimestamp           bool
 	Calc_hash_key                 bool
 	MainProto                     string
 	BlockedQueryResponse          string
@@ -58,7 +53,7 @@ type Proxy struct {
 	pluginsGlobals                *PluginsGlobals
 	SmaxClients                   *semaphore.Weighted
 	IsRefreshing                  *atomic.Value
-	XTransport                    *protocols.XTransport
+	XTransport                    *tls.XTransport
 	Wg                            *sync.WaitGroup
 	Ctx                           context.Context
 	Cancel                        context.CancelFunc
@@ -188,9 +183,6 @@ func (proxy *Proxy) StartProxy() {
 	proxy.Wg = &sync.WaitGroup{}
 	liveServers, err := proxy.ServersInfo.refresh(proxy)
 	if liveServers > 0 {
-		proxy.CertIgnoreTimestamp = false
-	}
-	if liveServers > 0 {
 		dlog.Noticef("dnscrypt-proxy is ready - live servers: %d", liveServers)
 	} else if err != nil {
 		dlog.Error(err)
@@ -206,9 +198,6 @@ func (proxy *Proxy) StartProxy() {
 				}
 				clocksmith.Sleep(delay)
 				liveServers, _ = proxy.ServersInfo.refresh(proxy)
-				if liveServers > 0 {
-					proxy.CertIgnoreTimestamp = false
-				}
 			}
 		}()
 	}
@@ -273,72 +262,6 @@ func (proxy *Proxy) tcpListenerFromAddr(listenAddr *net.TCPAddr, idx int) error 
 	return nil
 }
 
-func (proxy *Proxy) prepareForRelay(endpoint *common.Endpoint, encryptedQuery *[]byte) {
-	relayedQuery := append(AnonymizedDNSHeader(), endpoint.IP.To16()...)
-	var tmp [2]byte
-	binary.BigEndian.PutUint16(tmp[0:2], uint16(endpoint.Port))
-	relayedQuery = append(relayedQuery, tmp[:]...)
-	relayedQuery = append(relayedQuery, *encryptedQuery...)
-	*encryptedQuery = relayedQuery
-}
-
-func (proxy *Proxy) exchangeDnScRypt(serverInfo *DNSCryptInfo, packet []byte, serverProto string) ([]byte, error) {
-	var err error
-	goto Go
-Error:
-	return nil, err
-Go:
-	proxies := proxy.XTransport.Proxies.Merge(serverInfo.Proxies)
-	if serverProto == "udp" && !proxies.UDPProxies() {
-		serverProto = "tcp"
-	}
-	sharedKey , clientNonce, encryptedQuery, err := protocols.Encrypt(serverInfo.DNSCrypt, packet, serverProto)
-	if err != nil {
-		common.Program_dbg_full_log("exchangeDnScRypt E01")
-		goto Error
-	}
-	upstreamAddr := serverInfo.IPAddr.Load().(*common.EPRing)
-	serverInfo.IPAddr.Store(upstreamAddr.Next())
-	if serverInfo.RelayAddr != nil {
-		upstreamAddr = serverInfo.RelayAddr.Load().(*common.EPRing)
-		serverInfo.RelayAddr.Store(upstreamAddr.Next())
-	}
-	var pc net.Conn
-	if !proxies.HasValue() {
-		pc, err = common.Dial(serverProto, upstreamAddr.String(), proxy.LocalInterface, proxy.Timeout, -1)
-	} else {
-		pc, err = proxies.GetDialContext()(nil, serverProto, upstreamAddr.String())
-	}
-	if err != nil {
-		common.Program_dbg_full_log("exchangeDnScRypt E02")
-		goto Error
-	}
-	defer pc.Close()
-	if err = pc.SetDeadline(time.Now().Add(serverInfo.Timeout)); err != nil {
-		common.Program_dbg_full_log("exchangeDnScRypt E03")
-		goto Error
-	}
-	if serverInfo.RelayAddr != nil {
-		proxy.prepareForRelay(serverInfo.IPAddr.Load().(*common.EPRing).Endpoint, &encryptedQuery)
-	}
-	var encryptedResponse []byte
-	for tries := 2; tries > 0; tries-- {
-		if err = common.WriteDP(pc, encryptedQuery); err != nil {
-			common.Program_dbg_full_log("exchangeDnScRypt E04")
-			continue
-		}
-		if encryptedResponse, err = common.ReadDP(pc); err == nil {
-			break
-		}
-		common.Program_dbg_full_log("retry on Timeout or <-EOF msg")
-	}
-	if err != nil {
-		common.Program_dbg_full_log("exchangeDnScRypt E05")
-		goto Error
-	}
-	return protocols.Decrypt(serverInfo.DNSCrypt, sharedKey, encryptedResponse, clientNonce, serverProto)
-}
-
 func (proxy *Proxy) ExchangeDnScRypt(serverInfo *DNSCryptInfo, request *dns.Msg) (*dns.Msg, error) {
 	var err error
 	goto Go
@@ -349,7 +272,40 @@ Go:
 	if err != nil {
 		goto Error
 	}
-	bin, err := proxy.exchangeDnScRypt(serverInfo, packet, proxy.MainProto)
+
+	var service *dnscrypt.Service
+	if len(serverInfo.V2_Services) != 0 {
+		service = serverInfo.V2_Services[0].Service
+	} else if len(serverInfo.V1_Services) != 0 {
+		service = serverInfo.V1_Services[0].Service
+	}
+	upstreamAddr := serverInfo.IPAddr.Load().(*common.EPRing)
+	upstream := upstreamAddr.Endpoint
+	serverInfo.IPAddr.Store(upstreamAddr.Next())
+	var relay *common.Endpoint
+	if serverInfo.RelayAddr != nil {
+		relayAddr := serverInfo.RelayAddr.Load().(*common.EPRing)
+		relay = relayAddr.Endpoint
+		serverInfo.RelayAddr.Store(relayAddr.Next())
+	}
+	dailFn := func(network, address string) (net.Conn, error) {
+		proxies := proxy.XTransport.Proxies.Merge(serverInfo.Proxies)
+		if network == "udp" && !proxies.UDPProxies() {
+			network = "tcp"
+		}
+		var pc net.Conn
+		var err error
+		if !proxies.HasValue() {
+			pc, err = common.Dial(network, address, proxy.LocalInterface, proxy.Timeout, -1)
+		} else {
+			pc, err = proxies.GetDialContext()(nil, network, address)
+		}
+		if err == nil {
+			err = pc.SetDeadline(time.Now().Add(serverInfo.Timeout))
+		}
+		return pc, err
+	}
+	bin, _, err := dnscrypt.Query(dailFn, proxy.MainProto, service, packet, upstream, relay)
 	if err != nil {
 		goto Error
 	}
@@ -360,14 +316,14 @@ Go:
 	return response, nil
 }
 
-func (proxy *Proxy) doHQuery(name string, path string, useGet bool, ctx *protocols.HTTPSContext, body *[]byte, cbs ...interface{}) ([]byte, error) {
+func (proxy *Proxy) doHQuery(name string, path string, useGet bool, ctx *tls.HTTPSContext, body *[]byte, cbs ...interface{}) ([]byte, error) {
 	if useGet {
 		return proxy.XTransport.FetchHTTPS(name, path, "GET", true, ctx, body, proxy.Timeout, cbs...)
 	}
 	return proxy.XTransport.FetchHTTPS(name, path, "POST", true, ctx, body, proxy.Timeout, cbs...)
 }
 
-func (proxy *Proxy) DoHQuery(name string, info *DOHInfo, ctx *protocols.HTTPSContext, request *dns.Msg, cbs ...interface{}) (*dns.Msg, error) {
+func (proxy *Proxy) DoHQuery(name string, info *DOHInfo, ctx *tls.HTTPSContext, request *dns.Msg, cbs ...interface{}) (*dns.Msg, error) {
 	var err error
 	goto Go
 Error:

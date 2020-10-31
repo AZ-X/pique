@@ -15,10 +15,10 @@ import (
 	"runtime"
 	
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/behaviors"
-	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/channels"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/features/dns"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/conceptions"
-	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols/tls"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/services"
 	"github.com/BurntSushi/toml"
 	"github.com/jedisct1/dlog"
@@ -28,7 +28,6 @@ import (
 
 const (
 	DefaultNetprobeAddress = "127.0.0.1:53"
-	delimiter              = ";"
 )
 
 type Config struct {
@@ -50,7 +49,6 @@ type Config struct {
 	OfflineMode              bool                        `toml:"offline_mode"`
 	UseSyslog                bool                        `toml:"use_syslog"`
 	ForceTCP                 bool                        `toml:"force_tcp"`
-	CertIgnoreTimestamp      bool                        `toml:"cert_ignore_timestamp"`
 	BlockIPv6                bool                        `toml:"block_ipv6"`
 	BlockUnqualified         bool                        `toml:"block_unqualified"`
 	SourceRequireDNSSEC      bool                        `toml:"require_dnssec"`
@@ -62,11 +60,11 @@ type Config struct {
 	SourceIPv4               bool                        `toml:"ipv4_servers"`
 	SourceIPv6               bool                        `toml:"ipv6_servers"`
 	TLSDisableSessionTickets bool                        `toml:"tls_disable_session_tickets"`
-	CacheNegTTL              uint32                      `toml:"Cache_neg_ttl"`
-	CacheNegMinTTL           uint32                      `toml:"Cache_neg_min_ttl"`
-	CacheNegMaxTTL           uint32                      `toml:"Cache_neg_max_ttl"`
-	CacheMinTTL              uint32                      `toml:"Cache_min_ttl"`
-	CacheMaxTTL              uint32                      `toml:"Cache_max_ttl"`
+	CacheNegTTL              uint32                      `toml:"cache_neg_ttl"`
+	CacheNegMinTTL           uint32                      `toml:"cache_neg_min_ttl"`
+	CacheNegMaxTTL           uint32                      `toml:"cache_neg_max_ttl"`
+	CacheMinTTL              uint32                      `toml:"cache_min_ttl"`
+	CacheMaxTTL              uint32                      `toml:"cache_max_ttl"`
 	RejectTTL                uint32                      `toml:"reject_ttl"`
 	CloakTTL                 uint32                      `toml:"cloak_ttl"`
 	MaxClients               uint32                      `toml:"max_clients"`
@@ -95,7 +93,6 @@ func newConfig() Config {
 		Timeout:                  5000,
 		KeepAlive:                5,
 		CertRefreshDelay:         240,
-		CertIgnoreTimestamp:      false,
 		Cache:                    true,
 		CacheSize:                512,
 		CacheNegTTL:              0,
@@ -131,7 +128,7 @@ type SourceConfig struct {
 	URL            string
 	URLs           []string
 	MinisignKeyStr string `toml:"minisign_key"`
-	cacheFile      string `toml:"Cache_file"`
+	CacheFile      string `toml:"cache_file"`
 	FormatStr      string `toml:"format"`
 	RefreshDelay   int    `toml:"refresh_delay"`
 	Prefix         string
@@ -203,13 +200,13 @@ func findConfigFile(configFile *string) (string, error) {
 	return path.Join(pwd, *configFile), nil
 }
 
-func ConfigLoad(proxy *channels.Proxy, flags *ConfigFlags) error {
+func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	foundConfigFile, err := findConfigFile(flags.ConfigFile)
 	if err != nil {
 		dlog.Fatalf("failed to load the configuration file [%s]", *flags.ConfigFile)
 	}
 	config := newConfig()
-	proxy.ProxyStartup = &channels.ProxyStartup{}
+	proxy.ProxyStartup = &dns.ProxyStartup{}
 	md, err := toml.DecodeFile(foundConfigFile, &config)
 	if err != nil {
 		return err
@@ -229,9 +226,9 @@ func ConfigLoad(proxy *channels.Proxy, flags *ConfigFlags) error {
 	} else if config.LogFile != nil {
 		dlog.UseLogFile(*config.LogFile)
 		if !*flags.Child {
-			channels.FileDescriptors = append(channels.FileDescriptors, dlog.GetFileDescriptor())
+			dns.FileDescriptors = append(dns.FileDescriptors, dlog.GetFileDescriptor())
 		} else {
-			channels.FileDescriptorNum++
+			dns.FileDescriptorNum++
 			dlog.SetFileDescriptor(os.NewFile(uintptr(3), "logFile"))
 		}
 	}
@@ -258,10 +255,10 @@ func ConfigLoad(proxy *channels.Proxy, flags *ConfigFlags) error {
 	proxy.LogMaxBackups = config.LogMaxBackups
 
 
-	proxy.XTransport = protocols.NewXTransport()
+	proxy.XTransport = tls.NewXTransport()
 	proxy.XTransport.TlsDisableSessionTickets = config.TLSDisableSessionTickets
 	proxy.XTransport.KeepAlive = time.Duration(config.KeepAlive) * time.Second
-	proxy.XTransport.Transports = make(map[string]*protocols.TransportHolding)
+	proxy.XTransport.Transports = make(map[string]*tls.TransportHolding)
 	proxy.XTransport.LocalInterface = proxy.LocalInterface
 	if len(config.ProxyURI) > 0 {
 		globalProxy, err := url.Parse(config.ProxyURI)
@@ -289,28 +286,27 @@ func ConfigLoad(proxy *channels.Proxy, flags *ConfigFlags) error {
 	}
 	dlog.Noticef("dnscrypt-protocol bind to %s", proxy.MainProto)
 	proxy.CertRefreshDelay = time.Duration(common.Max(60, config.CertRefreshDelay)) * time.Minute
-	proxy.CertIgnoreTimestamp = config.CertIgnoreTimestamp
 	if len(config.ListenAddresses) == 0 {
 		dlog.Debug("check local IP/port configuration")
 	}
 
-	lbStrategy := channels.DefaultLBStrategy
+	lbStrategy := dns.DefaultLBStrategy
 	switch strings.ToLower(config.LBStrategy) {
 	case "":
 		// default
 	case "p2":
-		lbStrategy = channels.LBStrategyP2
+		lbStrategy = dns.LBStrategyP2
 	case "ph":
-		lbStrategy = channels.LBStrategyPH
+		lbStrategy = dns.LBStrategyPH
 	case "fastest":
 	case "first":
-		lbStrategy = channels.LBStrategyFirst
+		lbStrategy = dns.LBStrategyFirst
 	case "random":
-		lbStrategy = channels.LBStrategyRandom
+		lbStrategy = dns.LBStrategyRandom
 	default:
 		dlog.Warnf("unknown load balancing strategy: [%s]", config.LBStrategy)
 	}
-	proxy.ServersInfo = &channels.ServersInfo{}
+	proxy.ServersInfo = &dns.ServersInfo{}
 	proxy.ServersInfo.LbStrategy = lbStrategy
 
 	proxy.PluginBlockIPv6 = config.BlockIPv6
@@ -430,10 +426,10 @@ func ConfigLoad(proxy *channels.Proxy, flags *ConfigFlags) error {
 }
 
 
-func (config *Config) loadTags(proxy *channels.Proxy) {
+func (config *Config) loadTags(proxy *dns.Proxy) {
 	tags := make(map[string]map[string]interface{})
 	for _, server := range proxy.RegisteredServers {
-		for _, tag := range strings.Split(server.Stamp.Tags, delimiter) {
+		for _, tag := range strings.Split(server.Stamp.Tags, common.Delimiter) {
 			if servers, ok := tags[tag]; !ok {
 				servers = make(map[string]interface{})
 				servers[server.Name] = nil
@@ -450,7 +446,7 @@ func (config *Config) loadTags(proxy *channels.Proxy) {
 
 // Simplicity, Beauty, Complex, as Original Repurification
 // panic if error, will migrate all critical cfg error to panic
-func (config *Config) loadGroupsAssociation(proxy *channels.Proxy) {
+func (config *Config) loadGroupsAssociation(proxy *dns.Proxy) {
 	if len(config.Groups) == 0 || len(config.GroupsListener) == 0 {
 		return
 	}
@@ -489,7 +485,7 @@ func (config *Config) loadGroupsAssociation(proxy *channels.Proxy) {
 		panic("group cfg has error:" + err.Error())
 	}
 	positionLimit := len(proxy.ListenAddresses)
-	listenerCfg := make(map[int]*channels.ListenerConfiguration)
+	listenerCfg := make(map[int]*dns.ListenerConfiguration)
 	for _, gl := range config.GroupsListener {
 		if gl.Position < 1 || gl.Position > positionLimit {
 			panic("position of listener_association out of range, check listen_addresses")
@@ -501,9 +497,9 @@ func (config *Config) loadGroupsAssociation(proxy *channels.Proxy) {
 		if gl.Regex && len(gl.Group) != 0 {
 			panic("group or regex is mutually exclusive in listener_association")
 		}
-		lc := channels.ListenerConfiguration{}
-		getSvrs := func(groups []interface{}) *channels.Servers {
-			svrs := channels.Servers{Priority:groups[0].(GroupsConfig).Priority}
+		lc := dns.ListenerConfiguration{}
+		getSvrs := func(groups []interface{}) *dns.Servers {
+			svrs := dns.Servers{Priority:groups[0].(GroupsConfig).Priority}
 			serverList := make(map[string]interface{})
 			for _, group := range groups {
 				gc := group.(GroupsConfig)
@@ -548,7 +544,7 @@ func (config *Config) loadGroupsAssociation(proxy *channels.Proxy) {
 				panic("group " + gl.Group + " not found in groups")
 			}
 		} else if len(regexNames) > 0 {
-			gs := make(map[string]*channels.Servers)
+			gs := make(map[string]*dns.Servers)
 			regexes := make([]string, len(regexNames))
 			for i, name := range regexNames {
 				groups := g.Tags(name);
@@ -570,7 +566,7 @@ func (config *Config) loadGroupsAssociation(proxy *channels.Proxy) {
 	proxy.ListenerCfg = &listenerCfg
 }
 
-func (config *Config) loadSources(proxy *channels.Proxy) error {
+func (config *Config) loadSources(proxy *dns.Proxy) error {
 	var requiredProps stamps.ServerInformalProperties
 	if config.SourceRequireDNSSEC {
 		requiredProps |= stamps.ServerInformalPropertyDNSSEC
@@ -612,7 +608,7 @@ func (config *Config) loadSources(proxy *channels.Proxy) error {
 	return nil
 }
 
-func (config *Config) loadSource(proxy *channels.Proxy, requiredProps stamps.ServerInformalProperties, cfgSourceName string, cfgSource *SourceConfig) error {
+func (config *Config) loadSource(proxy *dns.Proxy, requiredProps stamps.ServerInformalProperties, cfgSourceName string, cfgSource *SourceConfig) error {
 	if len(cfgSource.URL) == 0 {
 		dlog.Debugf("missing URLs for source [%s]", cfgSourceName)
 	} else {
@@ -621,7 +617,7 @@ func (config *Config) loadSource(proxy *channels.Proxy, requiredProps stamps.Ser
 	if cfgSource.MinisignKeyStr == "" {
 		return dlog.Errorf("missing Minisign key for source [%s]", cfgSourceName)
 	}
-	if cfgSource.cacheFile == "" {
+	if cfgSource.CacheFile == "" {
 		return dlog.Errorf("missing cache file for source [%s]", cfgSourceName)
 	}
 	if cfgSource.FormatStr == "" {
@@ -630,7 +626,7 @@ func (config *Config) loadSource(proxy *channels.Proxy, requiredProps stamps.Ser
 	if cfgSource.RefreshDelay <= 0 {
 		cfgSource.RefreshDelay = 72
 	}
-	source, err := NewSource(cfgSourceName, proxy.XTransport, cfgSource.URLs, cfgSource.MinisignKeyStr, cfgSource.cacheFile, cfgSource.FormatStr, time.Duration(cfgSource.RefreshDelay)*time.Hour)
+	source, err := NewSource(cfgSourceName, proxy.XTransport, cfgSource.URLs, cfgSource.MinisignKeyStr, cfgSource.CacheFile, cfgSource.FormatStr, time.Duration(cfgSource.RefreshDelay)*time.Hour)
 	if err != nil {
 		dlog.Criticalf("failed to retrieve source [%s]: [%s]", cfgSourceName, err)
 		return err

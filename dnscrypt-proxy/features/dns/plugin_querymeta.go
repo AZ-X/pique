@@ -1,4 +1,4 @@
-package channels
+package dns
 
 import (
 	"github.com/miekg/dns"

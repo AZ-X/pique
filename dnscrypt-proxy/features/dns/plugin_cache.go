@@ -1,4 +1,4 @@
-package channels
+package dns
 
 import (
 	"crypto/sha512"

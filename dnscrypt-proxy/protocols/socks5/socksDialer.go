@@ -4,7 +4,7 @@
 //https://github.com/ginuerzh/gosocks5 better but not finished
 //Below is a typical apple-pen-pineapple solution to minimum the binary size as well as a pretty implementation
 
-package conceptions
+package socks5
 
 import (
 	"bytes"

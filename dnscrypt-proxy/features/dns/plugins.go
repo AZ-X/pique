@@ -1,4 +1,4 @@
-package channels
+package dns
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/conceptions"
-	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols/dnscrypt"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/services"
 	"github.com/jedisct1/dlog"
 	"github.com/miekg/dns"
@@ -178,7 +178,7 @@ func NewPluginsState(proxy *Proxy, clientProto string, clientAddr *net.Addr, sta
 	return &PluginsState{
 		state:                            PluginsStateNone,
 		returnCode:                       PluginsReturnCodePass,
-		maxPayloadSize:                   common.MaxDNSUDPPacketSize - protocols.ResponseOverhead,
+		maxPayloadSize:                   common.MaxDNSUDPPacketSize - dnscrypt.ResponseOverhead,
 		clientProto:                      &clientProto,
 		clientAddr:                       clientAddr,
 		cacheNegMinTTL:                   proxy.CacheNegMinTTL,

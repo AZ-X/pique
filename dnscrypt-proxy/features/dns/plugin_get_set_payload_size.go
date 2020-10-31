@@ -1,8 +1,8 @@
-package channels
+package dns
 
 import (
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
-	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols/dnscrypt"
 	"github.com/miekg/dns"
 )
 
@@ -13,16 +13,16 @@ func (plugin *PluginGetSetPayloadSize) Init(proxy *Proxy) error {
 }
 
 func (plugin *PluginGetSetPayloadSize) Eval(pluginsState *PluginsState, msg *dns.Msg) error {
-	pluginsState.originalMaxPayloadSize = 512 - protocols.ResponseOverhead
+	pluginsState.originalMaxPayloadSize = 512 - dnscrypt.ResponseOverhead
 	edns0 := msg.IsEdns0()
 	dnssec := false
 	if edns0 != nil {
 		pluginsState.maxUnencryptedUDPSafePayloadSize = int(edns0.UDPSize())
-		pluginsState.originalMaxPayloadSize = common.Max(pluginsState.maxUnencryptedUDPSafePayloadSize-protocols.ResponseOverhead, pluginsState.originalMaxPayloadSize)
+		pluginsState.originalMaxPayloadSize = common.Max(pluginsState.maxUnencryptedUDPSafePayloadSize-dnscrypt.ResponseOverhead, pluginsState.originalMaxPayloadSize)
 		dnssec = edns0.Do()
 	}
 	var options *[]dns.EDNS0
-	pluginsState.maxPayloadSize = common.Min(common.MaxDNSUDPPacketSize-protocols.ResponseOverhead, common.Max(pluginsState.originalMaxPayloadSize, pluginsState.maxPayloadSize))
+	pluginsState.maxPayloadSize = common.Min(common.MaxDNSUDPPacketSize-dnscrypt.ResponseOverhead, common.Max(pluginsState.originalMaxPayloadSize, pluginsState.maxPayloadSize))
 	if pluginsState.maxPayloadSize > 512 {
 		extra2 := []dns.RR{}
 		for _, extra := range msg.Extra {

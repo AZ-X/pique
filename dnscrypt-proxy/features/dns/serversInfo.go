@@ -1,4 +1,4 @@
-package channels
+package dns
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 	
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/conceptions"
-	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols/dnscrypt"
 	"github.com/jedisct1/dlog"
 	mm "github.com/RobinUS2/golang-moving-average"
 	stamps "stammel"
@@ -27,13 +27,14 @@ import (
 
 const Windows = 7
 
+
 type ServerInterface interface {
 	Proto()         string
 	Query(*Proxy, *dns.Msg, ...interface{}) (*dns.Msg, error)
 }
 
 type DNSCryptInfo struct {
-	*protocols.DNSCrypt
+	*dnscrypt.Resolver
 	*ServerInfo
 	Proxies            *conceptions.NestedProxy  // individual proxies chain
 	IPAddr             *atomic.Value //*EPRing
@@ -272,18 +273,18 @@ func fetchServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, isNew
 	}
 }
 
-func routes(proxy *Proxy, name string) ([]*common.Endpoint, error) {
+func routes(proxy *Proxy, name string) (*[]*common.Endpoint, error) {
 	routes := proxy.Routes
 	var relays0 = make([]*common.Endpoint, 0)
 	if routes == nil {
-		return relays0, nil
+		return &relays0, nil
 	}
 	relayNames, ok := (*routes)[name]
 	if !ok {
 		relayNames, ok = (*routes)[common.STAR]
 	}
 	if !ok {
-		return relays0, nil
+		return &relays0, nil
 	}
 	dlog.Infof("select relays for %s", name)
 	if len(relayNames) > 0 && relayNames[0] == common.STAR {
@@ -296,7 +297,7 @@ func routes(proxy *Proxy, name string) ([]*common.Endpoint, error) {
 			relays_all[i] = relayAddr
 			dlog.Infof("%s=>%s",registeredServer.Name, relayAddr.String())
 		}
-		return relays_all, nil
+		return &relays_all, nil
 	}
 	var relays = make([]*common.Endpoint, len(relayNames))
 	for i, relayName := range relayNames {
@@ -341,8 +342,7 @@ func routes(proxy *Proxy, name string) ([]*common.Endpoint, error) {
 		}
 		return nil, dlog.Errorf("Invalid relay [%v] for server [%v]", relayName, name)
 	}
-	return relays, nil
-
+	return &relays, nil
 }
 
 func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, isNew bool) (ServerInfo, error) {
@@ -362,18 +362,53 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStam
 	if err != nil {
 		return ServerInfo{}, err
 	}
-	certInfo, rtt, err := FetchCurrentDNSCryptCert(proxy, &name, proxy.MainProto, []uint8(stamp.ServerPk), remoteAddr, stamp.ProviderName, isNew, relays)
+	resolver := &dnscrypt.Resolver{
+		Name:&name,
+		Identifiers:strings.Split(stamp.ProviderName, common.Delimiter),
+		PublicKey:[]uint8(stamp.ServerPk),
+	}
+	dailFn := func(network, address string) (net.Conn, error) {
+		proxies := proxy.XTransport.Proxies
+		if network == "udp" && !proxies.UDPProxies() {
+			network = "tcp"
+		}
+		var pc net.Conn
+		var err error
+		if !proxies.HasValue() {
+			pc, err = common.Dial(network, address, proxy.LocalInterface, proxy.Timeout, -1)
+		} else {
+			pc, err = proxies.GetDialContext()(nil, network, address)
+		}
+		if err == nil {
+			err = pc.SetDeadline(time.Now().Add(proxy.Timeout))
+		}
+		return pc, err
+	}
+	rtt, err := dnscrypt.RetrieveServicesInfo(false, resolver, dailFn, proxy.MainProto, remoteAddr, relays)
 	if err != nil {
 		return ServerInfo{}, err
 	}
-
+	certInfo := &DNSCryptInfo{Resolver:resolver}
+	if epring := common.LinkEPRing(*relays...); epring != nil {
+		certInfo.RelayAddr = &atomic.Value{}
+		certInfo.RelayAddr.Store(epring)
+	}
+	certInfo.IPAddr = &atomic.Value{}
+	certInfo.IPAddr.Store(common.LinkEPRing(remoteAddr))
+	if certInfo.RelayAddr != nil {
+		certInfo.RelayAddr.Load().(*common.EPRing).Do(
+		func(v interface{}){
+		dlog.Infof("relay [%s*%s]=%s", name, v.(*common.EPRing).Order(), v.(*common.EPRing).String())
+		})
+	}
 	serverInfo := ServerInfo{
 		Info:               certInfo,
 		Name:               name,
 		Timeout:            proxy.Timeout,
 		rtt:                mm.Concurrent(mm.New(Windows)),
 	}
-	serverInfo.rtt.Add(float64(rtt))
+	xrtt := int(rtt.Nanoseconds() / 1000000)
+	serverInfo.rtt.Add(float64(xrtt))
 	certInfo.ServerInfo = &serverInfo
 	return serverInfo, nil
 }

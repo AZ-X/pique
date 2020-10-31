@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode"
 	
-	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols/tls"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
 	"github.com/jedisct1/dlog"
 	"stammel"
@@ -73,12 +73,12 @@ func (source *Source) fetchFromCache(now time.Time) (delay time.Duration, err er
 }
 
 // if the whole process can NOT boost itself using secure dns query, why leave it here? for an infinite loop by system resolver?
-func fetchFromURL(XTransport *protocols.XTransport, u *url.URL) (bin []byte, err error) {
+func fetchFromURL(XTransport *tls.XTransport, u *url.URL) (bin []byte, err error) {
 	return nil, errors.New("Not supported yet")
 }
 
 // NewSource loads a new source using the given cacheFile and urls, ensuring it has a valid signature
-func NewSource(name string, XTransport *protocols.XTransport, urls []string, minisignKeyStr string, cacheFile string, formatStr string, refreshDelay time.Duration) (source *Source, err error) {
+func NewSource(name string, XTransport *tls.XTransport, urls []string, minisignKeyStr string, cacheFile string, formatStr string, refreshDelay time.Duration) (source *Source, err error) {
 	if refreshDelay < DefaultPrefetchDelay {
 		refreshDelay = DefaultPrefetchDelay
 	}

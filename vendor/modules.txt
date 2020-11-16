@@ -12,7 +12,7 @@ github.com/jedisct1/dlog
 github.com/jedisct1/go-clocksmith
 ## explicit
 github.com/jedisct1/xsecretbox
-# github.com/miekg/dns v1.1.33 => ../miekg_dns/
+# github.com/miekg/dns v1.1.35 => ../miekg_dns/
 ## explicit
 github.com/miekg/dns
 # golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9

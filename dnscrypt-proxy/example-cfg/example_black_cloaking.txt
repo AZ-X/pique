@@ -1,0 +1,113 @@
+# IF YOU MAKE ANY CHANGES TO THIS FILE YOU HAVE TO RESTART THE PROGRAM IN ORDER TO SEE THEIR EFFECTS.
+#
+# This is the <Example File> for a conception of [black_cloaking_routine] refer to the configuration.
+# Can rename this file to any name you want. IN example-dnscrypt-proxy.toml 'routine.txt'
+#
+# It contains user-defined mappings between domain names and addresses.
+# It matches both dns request(QNAME) and response(CNAME if carry with)
+#
+# The standard format is: TARGET PATTERN [PATTERN2] [PATTERN3] ...
+#
+# Where TARGET is in dotted-quad notation for IPv4 or in colon-separated groups for IPv6 or shortenings in specialty
+# IPv6 address must be enclosed in square brackets
+# Where PATTERN or PATTERNs are strings separated by white spaces.
+#
+# A line starting with any whitespace and the '#' character
+# (and everything after it if it's found within a line and in back of whitespace characters)
+# is considered a comment and therefore ignored.
+# e.g.
+# #comments blah-blah-blah
+#             #comments: whitespace blah-blah-blah
+#     127.0.0.1 localhost #comments: following blah-blah-blah
+# 127.0.0.1 /localhost#thisisnotacomment #comments: '/localhost#thisisnotacomment' is considered as a match
+#
+# PATTERN can be a fully qualified domain name (ended with a dot)
+# Notice: A fully qualified domain name for PATTERN is Case Sensitive
+#
+# e.g. foxnews.com.
+#
+# PATTERN can also be regular expressions if starting with a '/' character:
+# Notice: Regular Expressions for PATTERN is Case Insensitive by default
+#
+# 127.0.0.1 /^ads?\..*$
+# 1.1.1.1 /^static0[1-9]\.quad9\.net\.$     #comments: regex='/^static0[1-9]\.quad9\.net\.$'
+# 9.9.9.9 /^fake\.cloudflare\.com\.$ faker.1.1.1.1. #comments: regex='/^fake\.cloudflare\.com\.$' and domain=faker.1.1.1.1.
+#
+# Note that there's no final '/' at the end of a regular expression. More info about the regular expression engine and
+# its syntax can be found online.
+# Regular expression is a considerable and formal solution substitutes wildcard characters.
+# \Q...\E is useful for literal text e.g. RF /\.google\.com\.$ is equal to RF /\Q.google.com.\E
+#
+# Negative responses for NXDOMAIN=NX and REFUSED=RF entries 
+# can also be mapped to domain names or regular expressions using all of the possibilities
+#
+
+# RF /\.google\.com\.$
+# RF /^ads?\..*$
+#
+# NX /\.google\.com\.$
+# NX /^ads?\..*$
+#
+# If a regex match is determinable to both RF and NX, dedicated match is RF. 
+# (for above case RF www.google.com. will take effect)
+#
+# The best way to effectively blocking every domain except the ones you explicitly allow is manipulating complex regular expressions.
+#
+#
+# To minimize resources, only one file can be associated to certain listener.
+# Listeners can share one file or use their independent one.
+#
+
+## Example of both invalid and valid patterns:
+##
+##
+## *.example.com      | warning: program panics because '*' is not quantifiable
+## example.com        | matches any domain name contains example(any character)com e.g. example0com.org.xyz
+## example\.com\.$    | matches example.com and all names within that zone such as www.example.com
+## .*\.example\.com\.$| matches all names within that zone such as www.example.com
+## ^ads\..*           | matches anything with an "ads." prefix
+## sex                | matches any name containing that substring
+## ^ads[0-9]*         | matches "ads" followed by zero or more digits
+## ^ads[0-9]+         | matches "ads" followed by one or more digits
+## ^ads.*\.example.*  | hint: using '^' prefix and '\.$' suffix are faster than pattern contains any character literally
+
+
+## YOU CAN DELETE ALL BELOW CONTENT OR KEEP IT AS DEFAULT
+
+# The GAFAM
+NX /google /doubleclick /crashlytics /gstatic /firebaseio 
+NX /facebook /tfbnw /fbcdn
+RF /(wns)|(wdcp)|(wdcpalt)\.windows\.com\.$ # Win32/HostsFileHijack wiki/Criticism_of_Microsoft
+RF /1drv\.com\.$ # Win32/HostsFileHijack wiki/Criticism_of_Microsoft
+
+# Criticism of other software companies:
+# wiki Criticism of Facebook
+# wiki Criticism of Apple
+# wiki Criticism of Google
+# wiki Criticism of Yahoo!
+
+# github&aws......fruIT&apple.....hoo.^$^
+
+NX /^ad\..*
+NX /^ads\..*
+NX /^banner\..*
+NX /^banners\..*
+NX /^creatives\..*
+NX /^oas\..*
+NX /^oascentral\..*        # inline comments are allowed after whitespaces and a pound sign
+NX /^stats\..*
+NX /^tag\..*
+NX /^telemetry\..*
+NX /^tracker\..*
+NX /.*\.local\.$
+NX /eth0.\.me\.$
+NX /.*\.workgroup\.$
+NX /\.in-addr\.arpa\.$
+
+127.0.0.1 localhost
+[::1]     localhost
+
+# static addresses always work even on 'NX /google'
+8.8.8.8                        dns.google.com.
+8.8.4.4                        dns.google.com.
+#[2001:4860:4860::]             dns.google.com. # NO_IPV6

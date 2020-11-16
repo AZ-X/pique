@@ -2,7 +2,6 @@ package configuration
 
 import (
 	"errors"
-	"flag"
 	"math/rand"
 	"net"
 	"net/url"
@@ -16,6 +15,7 @@ import (
 	
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/behaviors"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/features/dns"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/features/dns/channels"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/conceptions"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols/tls"
@@ -27,30 +27,22 @@ import (
 )
 
 const (
-	DefaultNetprobeAddress = "127.0.0.1:53"
 )
 
 type Config struct {
-	Cache                    bool
-	Timeout                  int                         `toml:"Timeout"`
-	KeepAlive                int                         `toml:"keepalive"`
-	CertRefreshDelay         int                         `toml:"cert_refresh_delay"`
-	CacheSize                int                         `toml:"Cache_size"`
-	NetprobeTimeout          int                         `toml:"netprobe_Timeout"`
-	LogMaxSize               int                         `toml:"log_files_max_size"`
-	LogMaxAge                int                         `toml:"log_files_max_age"`
-	LogMaxBackups            int                         `toml:"log_files_max_backups"`
+	*Main
+	ChannelsSections         map[string]channels.Config  `toml:"channels_sections"`
+	StaticsConfig            map[string]StaticConfig     `toml:"static"`
+	AnonymizedDNS            AnonymizedDNSConfig         `toml:"anonymized_dns"`
+	SourcesConfig            map[string]SourceConfig     `toml:"sources"`
+}
+
+type Main struct {
 	LogLevel                 int                         `toml:"log_level"`
 	LogFile                  *string                     `toml:"log_file"`
-	ServerNames              []string                    `toml:"server_names"`
-	DisabledServerNames      []string                    `toml:"disabled_server_names"`
-	ListenAddresses          []string                    `toml:"listen_addresses"`
-	QueryMeta                []string                    `toml:"query_meta"`
-	OfflineMode              bool                        `toml:"offline_mode"`
 	UseSyslog                bool                        `toml:"use_syslog"`
+	OfflineMode              bool                        `toml:"offline_mode"`
 	ForceTCP                 bool                        `toml:"force_tcp"`
-	BlockIPv6                bool                        `toml:"block_ipv6"`
-	BlockUnqualified         bool                        `toml:"block_unqualified"`
 	SourceRequireDNSSEC      bool                        `toml:"require_dnssec"`
 	SourceRequireNoLog       bool                        `toml:"require_nolog"`
 	SourceRequireNoFilter    bool                        `toml:"require_nofilter"`
@@ -60,64 +52,22 @@ type Config struct {
 	SourceIPv4               bool                        `toml:"ipv4_servers"`
 	SourceIPv6               bool                        `toml:"ipv6_servers"`
 	TLSDisableSessionTickets bool                        `toml:"tls_disable_session_tickets"`
-	CacheNegTTL              uint32                      `toml:"cache_neg_ttl"`
-	CacheNegMinTTL           uint32                      `toml:"cache_neg_min_ttl"`
-	CacheNegMaxTTL           uint32                      `toml:"cache_neg_max_ttl"`
-	CacheMinTTL              uint32                      `toml:"cache_min_ttl"`
-	CacheMaxTTL              uint32                      `toml:"cache_max_ttl"`
-	RejectTTL                uint32                      `toml:"reject_ttl"`
-	CloakTTL                 uint32                      `toml:"cloak_ttl"`
+	NetprobeTimeout          int                         `toml:"netprobe_Timeout"`
+	CertRefreshDelay         int                         `toml:"cert_refresh_delay"`
+	Timeout                  int                         `toml:"Timeout"`
+	KeepAlive                int                         `toml:"keepalive"`
+	ServerNames              []string                    `toml:"server_names"`
+	DisabledServerNames      []string                    `toml:"disabled_server_names"`
+	ListenAddresses          []string                    `toml:"listen_addresses"`
 	MaxClients               uint32                      `toml:"max_clients"`
-	LocalInterface           string                      `toml:"network_interface"`
-	UserName                 string                      `toml:"user_name"`
-	LBStrategy               string                      `toml:"lb_strategy"`
-	CloakFile                string                      `toml:"cloaking_rules"`
-	NetprobeAddress          string                      `toml:"netprobe_address"`
 	ProxyURI                 string                      `toml:"proxy_uri"`
 	ProxyIP                  string                      `toml:"proxy_ip"`
-	BlockedQueryResponse     string                      `toml:"blocked_query_response"`
-	StaticsConfig            map[string]StaticConfig     `toml:"static"`
-	SourcesConfig            map[string]SourceConfig     `toml:"sources"`
-	QueryLog                 QueryLogConfig              `toml:"query_log"`
-	NxLog                    NxLogConfig                 `toml:"nx_log"`
-	BlockName                BlockNameConfig             `toml:"blacklist"`
-	AnonymizedDNS            AnonymizedDNSConfig         `toml:"anonymized_dns"`
+	LocalInterface           string                      `toml:"network_interface"`
+	NetprobeAddress          string                      `toml:"netprobe_address"`
+	UserName                 string                      `toml:"user_name"`
+	LBStrategy               string                      `toml:"lb_strategy"`
 	Groups                   []GroupsConfig              `toml:"groups"`
 	GroupsListener           []ListenerAssociation       `toml:"listener_association"`
-}
-
-func newConfig() Config {
-	return Config{
-		LogLevel:                 int(dlog.LogLevel()),
-		ListenAddresses:          []string{"127.0.0.1:53"},
-		Timeout:                  5000,
-		KeepAlive:                5,
-		CertRefreshDelay:         240,
-		Cache:                    true,
-		CacheSize:                512,
-		CacheNegTTL:              0,
-		CacheNegMinTTL:           60,
-		CacheNegMaxTTL:           600,
-		CacheMinTTL:              60,
-		CacheMaxTTL:              86400,
-		RejectTTL:                600,
-		CloakTTL:                 600,
-		SourceRequireNoLog:       true,
-		SourceRequireNoFilter:    true,
-		SourceIPv4:               true,
-		SourceIPv6:               false,
-		SourceDoH:                true,
-		SourceDoT:                true,
-		SourceDNSCrypt:           true,
-		MaxClients:               250,
-		LogMaxSize:               10,
-		LogMaxAge:                7,
-		LogMaxBackups:            1,
-		TLSDisableSessionTickets: false,
-		NetprobeTimeout:          60,
-		OfflineMode:              false,
-		BlockedQueryResponse:     "refused",
-	}
 }
 
 type StaticConfig struct {
@@ -134,23 +84,6 @@ type SourceConfig struct {
 	Prefix         string
 }
 
-type QueryLogConfig struct {
-	File          string
-	Format        string
-	IgnoredQtypes []string `toml:"ignored_qtypes"`
-}
-
-type NxLogConfig struct {
-	File   string
-	Format string
-}
-
-type BlockNameConfig struct {
-	File    string `toml:"blacklist_file"`
-	LogFile string `toml:"log_file"`
-	Format  string `toml:"log_format"`
-}
-
 type AnonymizedDNSRouteConfig struct {
 	ServerName string   `toml:"server_name"`
 	RelayNames []string `toml:"via"`
@@ -158,13 +91,6 @@ type AnonymizedDNSRouteConfig struct {
 
 type AnonymizedDNSConfig struct {
 	Routes []AnonymizedDNSRouteConfig `toml:"routes"`
-}
-
-type ConfigFlags struct {
-	Check                   *bool
-	ConfigFile              *string
-	Child                   *bool
-	NetprobeTimeoutOverride *int
 }
 
 type GroupsConfig struct {
@@ -182,6 +108,13 @@ type ListenerAssociation struct {
 	Regex          bool     `toml:"regex"`
 }
 
+
+type ConfigFlags struct {
+	Check                   *bool
+	ConfigFile              *string
+	Child                   *bool
+	NetprobeTimeoutOverride *int
+}
 
 func findConfigFile(configFile *string) (string, error) {
 	if _, err := os.Stat(*configFile); os.IsNotExist(err) {
@@ -205,9 +138,9 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	if err != nil {
 		dlog.Fatalf("failed to load the configuration file [%s]", *flags.ConfigFile)
 	}
-	config := newConfig()
+	config := &Config{}
 	proxy.ProxyStartup = &dns.ProxyStartup{}
-	md, err := toml.DecodeFile(foundConfigFile, &config)
+	md, err := toml.DecodeFile(foundConfigFile, config)
 	if err != nil {
 		return err
 	}
@@ -249,12 +182,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	if config.LogLevel == int(dlog.SeverityDebug) {
 		PrintInferfaceInfo(proxy.LocalInterface)
 	}
-
-	proxy.LogMaxSize = config.LogMaxSize
-	proxy.LogMaxAge = config.LogMaxAge
-	proxy.LogMaxBackups = config.LogMaxBackups
-
-
+	
 	proxy.XTransport = tls.NewXTransport()
 	proxy.XTransport.TlsDisableSessionTickets = config.TLSDisableSessionTickets
 	proxy.XTransport.KeepAlive = time.Duration(config.KeepAlive) * time.Second
@@ -276,7 +204,6 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 		proxy.XTransport.Proxies.AddGlobalProxy(globalProxy, ep)
 	}
 
-	proxy.BlockedQueryResponse = config.BlockedQueryResponse
 	proxy.Timeout = time.Duration(config.Timeout) * time.Millisecond
 	proxy.SmaxClients = semaphore.NewWeighted(int64(config.MaxClients))
 	proxy.Ctx, proxy.Cancel = context.WithCancel(context.Background())
@@ -287,7 +214,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	dlog.Noticef("dnscrypt-protocol bind to %s", proxy.MainProto)
 	proxy.CertRefreshDelay = time.Duration(common.Max(60, config.CertRefreshDelay)) * time.Minute
 	if len(config.ListenAddresses) == 0 {
-		dlog.Debug("check local IP/port configuration")
+		dlog.Fatal("check local IP/port configuration")
 	}
 
 	lbStrategy := dns.DefaultLBStrategy
@@ -309,62 +236,6 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	proxy.ServersInfo = &dns.ServersInfo{}
 	proxy.ServersInfo.LbStrategy = lbStrategy
 
-	proxy.PluginBlockIPv6 = config.BlockIPv6
-	proxy.PluginBlockUnqualified = config.BlockUnqualified
-	proxy.Cache = config.Cache
-	proxy.CacheSize = config.CacheSize
-
-	if config.CacheNegTTL > 0 {
-		proxy.CacheNegMinTTL = config.CacheNegTTL
-		proxy.CacheNegMaxTTL = config.CacheNegTTL
-	} else {
-		proxy.CacheNegMinTTL = config.CacheNegMinTTL
-		proxy.CacheNegMaxTTL = config.CacheNegMaxTTL
-	}
-
-	proxy.CacheMinTTL = config.CacheMinTTL
-	proxy.CacheMaxTTL = config.CacheMaxTTL
-	proxy.CloakTTL = config.CloakTTL
-
-	proxy.QueryMeta = config.QueryMeta
-
-	if len(config.QueryLog.Format) == 0 {
-		config.QueryLog.Format = "tsv"
-	} else {
-		config.QueryLog.Format = strings.ToLower(config.QueryLog.Format)
-	}
-	if config.QueryLog.Format != "tsv" && config.QueryLog.Format != "ltsv" {
-		return errors.New("Unsupported query log format")
-	}
-	proxy.QueryLogFile = config.QueryLog.File
-	proxy.QueryLogFormat = config.QueryLog.Format
-	proxy.QueryLogIgnoredQtypes = config.QueryLog.IgnoredQtypes
-
-	if len(config.NxLog.Format) == 0 {
-		config.NxLog.Format = "tsv"
-	} else {
-		config.NxLog.Format = strings.ToLower(config.NxLog.Format)
-	}
-	if config.NxLog.Format != "tsv" && config.NxLog.Format != "ltsv" {
-		return errors.New("Unsupported NX log format")
-	}
-	proxy.NxLogFile = config.NxLog.File
-	proxy.NxLogFormat = config.NxLog.Format
-
-	if len(config.BlockName.Format) == 0 {
-		config.BlockName.Format = "tsv"
-	} else {
-		config.BlockName.Format = strings.ToLower(config.BlockName.Format)
-	}
-	if config.BlockName.Format != "tsv" && config.BlockName.Format != "ltsv" {
-		return errors.New("Unsupported block log format")
-	}
-	proxy.BlockNameFile = config.BlockName.File
-	proxy.BlockNameFormat = config.BlockName.Format
-	proxy.BlockNameLogFile = config.BlockName.LogFile
-
-	proxy.CloakFile = config.CloakFile
-
 	if configRoutes := config.AnonymizedDNS.Routes; configRoutes != nil {
 		routes := make(map[string][]string)
 		for _, configRoute := range configRoutes {
@@ -373,18 +244,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 		proxy.Routes = &routes
 	}
 
-	netprobeTimeout := config.NetprobeTimeout
-	flag.Visit(func(flag *flag.Flag) {
-		if flag.Name == "netprobe-Timeout" && flags.NetprobeTimeoutOverride != nil {
-			netprobeTimeout = *flags.NetprobeTimeoutOverride
-		}
-	})
-	netprobeAddress := DefaultNetprobeAddress
-	if len(config.NetprobeAddress) > 0 {
-		netprobeAddress = config.NetprobeAddress
-	}
-	
-	if err := behaviors.NetProbe(netprobeAddress, proxy.LocalInterface, netprobeTimeout); err != nil {
+	if err := behaviors.NetProbe(config.NetprobeAddress, proxy.LocalInterface, config.NetprobeTimeout); err != nil {
 		return err
 	}
 	if !config.OfflineMode {
@@ -397,7 +257,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 		config.loadTags(proxy)
 		config.loadGroupsAssociation(proxy)
 	}
-	
+	config.loadChannels(proxy)
 	if proxy.Routes != nil && len(*proxy.Routes) > 0 {
 		hasSpecificRoutes := false
 		for _, server := range proxy.RegisteredServers {
@@ -424,7 +284,6 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	}
 	return nil
 }
-
 
 func (config *Config) loadTags(proxy *dns.Proxy) {
 	tags := make(map[string]map[string]interface{})
@@ -564,6 +423,27 @@ func (config *Config) loadGroupsAssociation(proxy *dns.Proxy) {
 		
 	}
 	proxy.ListenerCfg = &listenerCfg
+}
+
+const CFG_Channels_Main = "main"
+func (config *Config) loadChannels(proxy *dns.Proxy) {
+	proxy.ChannelMgr = &channels.ChannelMgr{}
+	proxy.ChannelMgr.Init(len(config.ListenAddresses))
+	var individual, shares []int
+	for idx, la := range config.ListenAddresses {
+		if cfg, ok := config.ChannelsSections[la]; ok {
+			proxy.ChannelMgr.Cfgs[idx+1] = &cfg
+			individual = append(individual, idx+1)
+		} else {
+			if cfg, ok := config.ChannelsSections[CFG_Channels_Main]; ok {
+				proxy.ChannelMgr.Cfgs[idx+1] = &cfg
+				shares = append(shares, idx+1)
+			} else {
+				dlog.Fatal("missing main cfg for channels")
+			}
+		}
+	}
+	proxy.ChannelMgr.InitChannels(individual, shares)
 }
 
 func (config *Config) loadSources(proxy *dns.Proxy) error {

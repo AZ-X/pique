@@ -18,18 +18,19 @@ func CreateRegexBuilder(regexes []string, groups []string) *Regexp_builder {
 	if g && len(regexes) != len (groups) {
 		panic("length of groups should equal to regexes")
 	}
+	fmt.Fprintf(&reg, `(?i)`)
 	for i, str := range regexes {
 		if len(regexes) == i + 1 {
 			if g {
-				fmt.Fprintf(&reg, "(?P<%s>%s)", groups[i], str)
+				fmt.Fprintf(&reg, `(?P<%s>%s)`, groups[i], str)
 			} else {
-				fmt.Fprintf(&reg, "(%s)", str)
+				fmt.Fprintf(&reg, `(?:%s)`, str)
 			}
 		} else {
 			if g {
-				fmt.Fprintf(&reg, "(?P<%s>%s)|", groups[i], str)
+				fmt.Fprintf(&reg, `(?P<%s>%s)|`, groups[i], str)
 			} else {
-				fmt.Fprintf(&reg, "(%s)|", str)
+				fmt.Fprintf(&reg, `(?:%s)|`, str)
 			}
 		}
 	}

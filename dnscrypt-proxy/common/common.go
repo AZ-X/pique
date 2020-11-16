@@ -1,18 +1,15 @@
 package common
 
 import (
-	"bytes"
 	"container/ring"
 	"context"
 	"encoding/binary"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 	_ "unsafe"
 
 	"github.com/jedisct1/dlog"
@@ -29,7 +26,7 @@ func Program_dbg_full_log(args ...interface{}) {
 		var params []interface{}
 		if len(args) > 1 {
 			params = args[1:]
-			dlog.Debugf(format, params)
+			dlog.Debugf(format, params...)
 		} else {
 			dlog.Debug(format)
 		}
@@ -109,7 +106,7 @@ func ResolveEndpoint(hostport string) (*Endpoint, error) {
 	}
 	ip, zone := ParseIPZone(host)
 	if ip == nil {
-		return nil, errors.New("ResolveEndpoint error: illegal IP format")
+		return nil, errors.New("ResolveEndpoint: illegal IP format")
 	}
 	ipaddr := &net.IPAddr{IP:ip, Zone:zone}
 	if err != nil {
@@ -122,7 +119,7 @@ func ExtractHostAndPort(hostport string, defaultPort int) (string, int, error) {
 	host, portStr, err := net.SplitHostPort(hostport)
 	if err != nil {
 		if strings.HasSuffix(err.Error(), "missing port in address") {
-			return strings.TrimSpace(hostport), defaultPort, nil
+			return strings.Trim(hostport, " []"), defaultPort, nil
 		} else {
 			return "", 0, err
 		}
@@ -306,28 +303,7 @@ func Max(a, b int) int {
 	return b
 }
 
-func StringQuote(str string) string {
-	str = strconv.QuoteToGraphic(str)
-	return str[1 : len(str)-1]
-}
-
-func TrimAndStripInlineComments(str string) string {
-	if idx := strings.LastIndexByte(str, '#'); idx >= 0 {
-		if idx == 0 || str[0] == '#' {
-			return ""
-		}
-		if prev := str[idx-1]; prev == ' ' || prev == '\t' {
-			str = str[:idx-1]
-		}
-	}
-	return strings.TrimFunc(str, unicode.IsSpace)
-}
-
-func ReadTextFile(filename string) (string, error) {
-	bin, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return "", err
-	}
-	bin = bytes.TrimPrefix(bin, []byte{0xef, 0xbb, 0xbf})
-	return string(bin), nil
+func StringQuote(str *string) string {
+	str1 := strconv.QuoteToGraphic(*str)
+	return str1[1 : len(str1)-1]
 }

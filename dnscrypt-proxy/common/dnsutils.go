@@ -1,8 +1,6 @@
 package common
 
 import (
-	"errors"
-
 	"github.com/miekg/dns"
 )
 
@@ -35,43 +33,4 @@ func SetDNSSECFlag(msg *dns.Msg) {
 		ext.Padding[i] = 0x00
 	}
 	opt.Option = append(opt.Option, ext)
-}
-
-func EmptyResponseFromMessage(srcMsg *dns.Msg) *dns.Msg {
-	dstMsg := &dns.Msg{MsgHdr: srcMsg.MsgHdr, Compress: true}
-	dstMsg.Question = srcMsg.Question
-	dstMsg.Response = true
-	if srcMsg.RecursionDesired {
-		dstMsg.RecursionAvailable = true
-	}
-	dstMsg.RecursionDesired = false
-	dstMsg.CheckingDisabled = false
-	dstMsg.AuthenticatedData = false
-	if edns0 := srcMsg.IsEdns0(); edns0 != nil {
-		dstMsg.SetEdns0(edns0.UDPSize(), edns0.Do())
-	}
-	return dstMsg
-}
-
-func TruncatedResponse(srcMsg *dns.Msg) {
-	srcMsg = EmptyResponseFromMessage(srcMsg)
-	srcMsg.Truncated = true
-}
-
-func RefusedResponseFromMessage(srcMsg *dns.Msg, BlockedQueryResponse string) *dns.Msg {
-	dstMsg := EmptyResponseFromMessage(srcMsg)
-	switch BlockedQueryResponse {
-		case "nxdomain":
-			dstMsg.Rcode = dns.RcodeNameError
-		case "refused":
-			dstMsg.Rcode = dns.RcodeRefused
-	}
-	return dstMsg
-}
-
-func NormalizeQName(str string) (string, error) {
-	if _,ok := dns.IsDomainName(str); ok {
-		return dns.CanonicalName(str), nil
-	}
-	return "", errors.New("Invalid QName")
 }

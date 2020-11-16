@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
-	//"encoding/hex"
 	"errors"
 	"math/big"
 	"net"
@@ -44,6 +43,7 @@ const (
 	ClientMagicLen   = 8
 	ServerMagicLen   = 8
 	PublicKeySize    = 32
+	SharedKeySize    = PublicKeySize
 	NonceSize        = unclassified.NonceSize
 	HalfNonceSize    = unclassified.NonceSize / 2
 	TagSize          = unclassified.TagSize
@@ -99,7 +99,7 @@ type Service struct {
 
 type ServerKey struct {
 	MagicQuery         [ClientMagicLen]byte
-	ServerPk           [32]byte
+	ServerPk           [PublicKeySize]byte
 }
 
 func RetrieveServicesInfo(useSk bool, resolver *Resolver, dialFn common.DialFn, proto string, upstreamAddr *common.Endpoint, relays *[]*common.Endpoint) (time.Duration, error) {
@@ -213,7 +213,7 @@ RowLoop:
 				continue
 			}
 			si := &ServiceInfo{Ext:make([]byte, len(binCert) - 124)}
-			si.Service = &Service{Name:resolver.Name, ServerKey:&ServerKey{MagicQuery:*new([ClientMagicLen]byte), ServerPk:*new([32]byte)}}
+			si.Service = &Service{Name:resolver.Name, ServerKey:&ServerKey{MagicQuery:*new([ClientMagicLen]byte), ServerPk:*new([PublicKeySize]byte)}}
 			si.Name = resolver.Name
 			si.Minor = binary.BigEndian.Uint16(binCert[6:8])
 			si.Serial = binary.BigEndian.Uint32(binCert[112:116])
@@ -414,7 +414,7 @@ func encrypt(service *Service, packet *[]byte, proto string) (sharedKey *[Public
 	_packet := *packet
 	minQuestionSize := QueryOverhead + len(_packet)
 	if minQuestionSize+1 > common.MaxDNSUDPPacketSize -64 {
-		err = errors.New("Question too large; cannot be padded")
+		err = errors.New("data too large; cannot be padded")
 		return
 	}
 	firstclass := 0 //tcp: a query sent over TCP can be shorter than the response.
@@ -443,7 +443,7 @@ func encrypt(service *Service, packet *[]byte, proto string) (sharedKey *[Public
 	return
 }
 
-func decrypt(version CryptoConstruction, sharedKey *[32]byte, encrypted []byte, nonce *[NonceSize]byte, proto string) ([]byte, error) {
+func decrypt(version CryptoConstruction, sharedKey *[SharedKeySize]byte, encrypted []byte, nonce *[NonceSize]byte, proto string) ([]byte, error) {
 	responseHeaderLen := ServerMagicLen + NonceSize
 	var maxDNSPacketSize int64
 	if proto == "udp" {
@@ -465,12 +465,12 @@ func decrypt(version CryptoConstruction, sharedKey *[32]byte, encrypted []byte, 
 	if version == XChacha20Poly1305 {
 		packet, err = unclassified.OpenX(nil, serverNonce, encrypted[responseHeaderLen:], sharedKey[:])
 	} else {
-		var xsalsaServerNonce [24]byte
+		var xsalsaServerNonce [NonceSize]byte
 		copy(xsalsaServerNonce[:], serverNonce)
 		var ok bool
 		packet, ok = unclassified.Open(nil, encrypted[responseHeaderLen:], &xsalsaServerNonce, sharedKey)
 		if !ok {
-			err = errors.New("Incorrect tag")
+			err = errors.New("incorrect tag")
 		}
 	}
 	if err != nil {
@@ -478,7 +478,7 @@ func decrypt(version CryptoConstruction, sharedKey *[32]byte, encrypted []byte, 
 	}
 	packet, err = unpad(packet)
 	if err != nil || len(packet) < common.MinDNSPacketSize {
-		return encrypted, errors.New("Incorrect padding")
+		return encrypted, errors.New("incorrect padding")
 	}
 	return packet, nil
 }

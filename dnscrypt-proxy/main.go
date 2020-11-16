@@ -68,10 +68,6 @@ func (app *App) AppMain() {
 		dlog.Fatal(err)
 		os.Exit(1)
 	}
-	if err := app.proxy.InitPluginsGlobals(); err != nil {
-		dlog.Fatal(err)
-		os.Exit(1)
-	}
 	pid, err := behaviors.NewPidFile()
 	if err != nil {
 		dlog.Error(err)

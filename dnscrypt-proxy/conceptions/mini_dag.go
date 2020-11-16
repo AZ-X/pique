@@ -85,7 +85,7 @@ func (e *CycleError) Error() string {
 		}
 		errStr = append(errStr, []byte(*str)...)
 	}
-	return "path " + string(append(errStr, []byte(" is a cycle")...))
+	return "path " + string(append(errStr, []byte(" is a circle")...))
 }
 
 func (g *Graph) init() {

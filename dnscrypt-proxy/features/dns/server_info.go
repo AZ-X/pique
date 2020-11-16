@@ -18,6 +18,7 @@ import (
 	
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/common"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/conceptions"
+	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/features/dns/channels"
 	"github.com/AZ-X/dnscrypt-proxy-r2/dnscrypt-proxy/protocols/dnscrypt"
 	"github.com/jedisct1/dlog"
 	mm "github.com/RobinUS2/golang-moving-average"
@@ -30,7 +31,7 @@ const Windows = 7
 
 type ServerInterface interface {
 	Proto()         string
-	Query(*Proxy, *dns.Msg, ...interface{}) (*dns.Msg, error)
+	Query(*Proxy, *[]byte, ...interface{}) (*[]byte, error)
 }
 
 type DNSCryptInfo struct {
@@ -45,7 +46,7 @@ func (info *DNSCryptInfo) Proto() string {
 	return "DNSCrypt"
 }
 
-func (info *DNSCryptInfo) Query(p *Proxy, r *dns.Msg, args ...interface{}) (*dns.Msg, error) {
+func (info *DNSCryptInfo) Query(p *Proxy, r *[]byte, args ...interface{}) (*[]byte, error) {
 	return p.ExchangeDnScRypt(info, r)
 }
 
@@ -59,7 +60,7 @@ func (info *DOHInfo) Proto() string {
 	return "DoH"
 }
 
-func (info *DOHInfo) Query(p *Proxy, r *dns.Msg, args ...interface{}) (*dns.Msg, error) {
+func (info *DOHInfo) Query(p *Proxy, r *[]byte, args ...interface{}) (*[]byte, error) {
 	return p.DoHQuery(info.Name, info, nil, r)
 }
 
@@ -71,7 +72,7 @@ func (info *DOTInfo) Proto() string {
 	return "DoT"
 }
 
-func (info *DOTInfo) Query(p *Proxy, r *dns.Msg, args ...interface{}) (*dns.Msg, error) {
+func (info *DOTInfo) Query(p *Proxy, r *[]byte, args ...interface{}) (*[]byte, error) {
 	return p.DoTQuery(info.Name, nil, r)
 }
 
@@ -237,11 +238,11 @@ RowLoop:
 }
 
 
-func (serversInfo *ServersInfo) getOne(state *PluginsState, id uint16) *ServerInfo {
+func (serversInfo *ServersInfo) getOne(s *channels.Session) *ServerInfo {
 	var servers = serversInfo.inner
 	if serversInfo.innerFuncs != nil {
-		if f, ok := (*serversInfo.innerFuncs)[state.idx]; ok {
-			servers = f(state.qName)
+		if f, ok := (*serversInfo.innerFuncs)[s.Listener]; ok {
+			servers = f(&s.Name)
 		}
 	}
 	serversCount := len(servers)
@@ -260,7 +261,7 @@ func (serversInfo *ServersInfo) getOne(state *PluginsState, id uint16) *ServerIn
 		candidate = rand.Intn(common.Min(serversCount, 2))
 	}
 	serverInfo := servers[candidate]
-	dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms", id, *state.qName, serverInfo.Name, int(serverInfo.rtt.Avg()))
+	dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms", s.ID, s.Name, serverInfo.Name, int(serverInfo.rtt.Avg()))
 	return serverInfo
 }
 
@@ -413,7 +414,7 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStam
 	return serverInfo, nil
 }
 
-func dohTestPacket(dnssec bool) (*dns.Msg, uint16) {
+func dohTestPacket(dnssec bool) (*[]byte, uint16) {
 	msg := &dns.Msg{}
 	msg.SetQuestion(".", dns.TypeMX)
 	id := msg.Id
@@ -441,7 +442,8 @@ func dohTestPacket(dnssec bool) (*dns.Msg, uint16) {
 		ext.Padding[i] = 0x00
 	}
 	opt.Option = append(opt.Option, ext)
-	return msg, id
+	bin, _ := msg.Pack()
+	return &bin, id
 }
 
 func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, isNew bool) (ServerInfo, error) {
@@ -449,6 +451,7 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	body, msgId := dohTestPacket(dnssec)
 	var rtt time.Duration
 	var serverResponse *dns.Msg
+	var bin *[]byte
 	var err error
 	var matchCert = func(state *tls.ConnectionState) error {
 		if state == nil || !state.HandshakeComplete {
@@ -488,13 +491,17 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	const retry = 3
 	for tries := retry; tries > 0; tries-- {
 		now := time.Now()
-		if serverResponse, err = proxy.DoTQuery(name, nil, body, matchCert); err != nil {
+		if bin, err = proxy.DoTQuery(name, nil, body, matchCert); err != nil {
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
 			continue
 		}
 		}
 		rtt = time.Since(now)
-		break
+		msg := &dns.Msg{}
+		if err = msg.Unpack(*bin); err == nil {
+			serverResponse = msg
+			break
+		}
 	}
 	if err != nil {
 		return ServerInfo{}, err
@@ -535,6 +542,7 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	//body := dohTestPacket(0xcafe) english tea??? 
 	var rtt time.Duration
 	var serverResponse *dns.Msg
+	var bin *[]byte
 	var err error
 	var matchCert = func(state *tls.ConnectionState) error {
 		if state == nil || !state.HandshakeComplete {
@@ -580,11 +588,15 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	const retry = 3
 	for tries := retry; tries > 0; tries-- {
 		now := time.Now()
-		if serverResponse, err = proxy.DoHQuery(name, info, nil, body, matchCert); err != nil {
+		if bin, err = proxy.DoHQuery(name, info, nil, body, matchCert); err != nil {
 			continue
 		}
 		rtt = time.Since(now)
-		break
+		msg := &dns.Msg{}
+		if err = msg.Unpack(*bin); err == nil {
+			serverResponse = msg
+			break
+		}
 	}
 	if err != nil {
 		return ServerInfo{}, err

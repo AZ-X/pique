@@ -117,10 +117,10 @@ A23:{
 					if len(parentZone) == 0 {
 						parentZone = Dot
 					}
-					soa.Hdr = dns.RR_Header{Name:parentZone, Rrtype:dns.TypeSOA, Class:dns.ClassINET, Ttl: *a.Config.NodataTTL,}
+					soa.Hdr = dns.RR_Header{Name:parentZone, Rrtype:dns.TypeSOA, Class:dns.ClassINET, Ttl: *a.NodataTTL,}
 					s.Response.Ns = []dns.RR{soa}
 			default:
-				switch a.Config.BlockedQueryResponse {
+				switch a.BlockedQueryResponse {
 					case "nxdomain": s.Response.SetRcode(s.Request, dns.RcodeNameError)
 					default:         s.Response.SetRcode(s.Request, dns.RcodeRefused)
 				}

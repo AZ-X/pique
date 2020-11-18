@@ -16,7 +16,7 @@ const (
 	Channel_End          = "E"
 	Channel_Validation   = "V"
 	Channel_Amender      = "A"
-	Channel_CP           = "CP" // caches and patterns; unitized handing
+	Channel_CP           = "CP" // caches and patterns; unitized handling
 	Channel_Remote       = "Resolver" // server selection & query over recursive resolvers
 	Channel_Logger       = "Log"
 

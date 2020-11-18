@@ -41,7 +41,7 @@ type inCacheResponse struct {
 }
 
 
-// caches and patterns; unitized handing
+// caches and patterns; unitized handling
 type CP struct {
 	*Config
 	f              FChannelByName
@@ -181,7 +181,7 @@ func (cp *CP) setIPResponse(s *Session, ip *common.Endpoint) {
 	s.Response = &dns.Msg{}
 	s.Response.SetReply(s.Request)
 	rr := dns.TypeToRR[s.Qtype]()
-	*rr.Header() = dns.RR_Header{Name: s.Name, Rrtype: s.Qtype, Class: dns.ClassINET, Ttl: *cp.Config.CloakTTL*60}
+	*rr.Header() = dns.RR_Header{Name: s.Name, Rrtype: s.Qtype, Class: dns.ClassINET, Ttl: *cp.CloakTTL*60}
 	switch s.Qtype {
 	case dns.TypeA:     rr.(*dns.A).A = ip.IP
 	case dns.TypeAAAA : rr.(*dns.AAAA).AAAA = ip.IP
@@ -213,12 +213,12 @@ func (cp *CP) match(s *Session, target *string) bool {
 	}
 	return false
 SetNGTTL:
-	if cp.Config.BlackTTL != nil {
+	if cp.BlackTTL != nil {
 		s.Response.Answer = append(s.Response.Answer, &dns.CNAME{Hdr:dns.RR_Header{
 		Dot,
 		dns.TypeCNAME,
 		dns.ClassINET,
-		*cp.Config.BlackTTL*60, 0}, Target:s.Name})
+		*cp.BlackTTL*60, 0}, Target:s.Name})
 	}
 	return true
 }
@@ -279,7 +279,7 @@ CP2:{
 		}
 	}
 	if cp.cache != nil {
-		cp.cache.Add(*s.hash_key, inCacheResponse{expiration:time.Now().Add(time.Minute * time.Duration(*cp.Config.CacheTTL)), Msg:s.Response,})
+		cp.cache.Add(*s.hash_key, inCacheResponse{expiration:time.Now().Add(time.Minute * time.Duration(*cp.CacheTTL)), Msg:s.Response,})
 	}
 	s.LastState = CP2_OK
 	goto StateN

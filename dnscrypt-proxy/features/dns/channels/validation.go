@@ -52,6 +52,7 @@ func unpackMsgHdr(msg []byte, off int) (dns.Header, int, error)
 func setHdr(dns *dns.Msg, dh dns.Header)
 
 const _QR = 1 << 15
+const rr_throttle = 15 // quote miekg/dns 'as they are attacker controlled'; thus can be partially treated 
 func msgAcceptFunc(dh dns.Header) bool {
 	isResponse := dh.Bits&_QR != 0
 
@@ -70,10 +71,11 @@ func msgAcceptFunc(dh dns.Header) bool {
 		return false
 	}
 	// IXFR request could have one SOA RR in the NS section. See RFC 1995, section 3.
-	if dh.Nscount > 1 {
+	if (!isResponse && dh.Nscount > 1) || (isResponse && dh.Nscount > rr_throttle) {
 		return false
 	}
-	if dh.Arcount > 2 {
+	// Extra
+	if (!isResponse && dh.Arcount > 2) || (isResponse && dh.Arcount > rr_throttle) {
 		return false
 	}
 	return true

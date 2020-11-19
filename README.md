@@ -1,10 +1,16 @@
-# ![dnscrypt-proxy-r2](https://github.com/AZ-X/MEDIA/blob/master/PNG/RD.png?raw=true)
+# ![repique dnscrypt-proxy-r2-legacy](https://github.com/AZ-X/MEDIA/blob/master/PNG/RD.png?raw=true)
 
-# ![dnscrypt-proxy-r2](https://github.com/AZ-X/MEDIA/blob/master/PNG/dnscrypt-proxy-r2-mips.png?raw=true)
+# ![repique dnscrypt-proxy-r2-legacy](https://github.com/AZ-X/MEDIA/blob/master/PNG/dnscrypt-proxy-r2-mips.png?raw=true)
 
-@[FiloSottile](https://github.com/FiloSottile) I won't use the `golang.org/x/net/ipv4` in order to leave this program along with unnecessaries. [#issues/1433](https://github.com/DNSCrypt/dnscrypt-proxy/issues/1433#issue-672344900)
 
 ## Autobiography
+
+**pique** /piːk/
+**repique** /ʁə.pik/
+
+> The words "pique" and "repique" are of Spanish origin
+> Although it often scores poorly, it is usually advantageous to declare it to prevent the opponent from scoring pique or repique, despite the tactical disadvantage of giving information to the opponent.
+
 
 This project started from [#issues/932](https://github.com/DNSCrypt/dnscrypt-proxy/issues/932) when I went through full issues list (Not just opened)
 
@@ -25,7 +31,7 @@ This is a show case of AMAZING project
 
 ## Overview
 
-A flexible DNS proxy, with support for modern encrypted DNS protocols such as [DNSCrypt v2](https://github.com/AZ-X/dnscrypt-proxy-r2/blob/master/dnscrypt-proxy/protocol/DNSCRYPT-V2-PROTOCOL.txt), [DNS-over-HTTPS](https://www.rfc-editor.org/rfc/rfc8484.txt) and [Anonymized DNSCrypt](https://github.com/AZ-X/dnscrypt-proxy-r2/blob/master/dnscrypt-proxy/protocol/ANONYMIZED-DNSCRYPT.txt).
+A flexible DNS proxy, with support for modern encrypted DNS protocols such as [DNSCrypt v2](https://github.com/AZ-X/pique/blob/master/doc/protocol/DNSCRYPT-V2-PROTOCOL.txt), [DNS-over-HTTPS](https://www.rfc-editor.org/rfc/rfc8484.txt) and [Anonymized DNSCrypt](https://github.com/AZ-X/pique/blob/master/doc/protocol/ANONYMIZED-DNSCRYPT.txt).
 
 Less than 7mb for go binary size
 
@@ -60,6 +66,9 @@ Available as source code and pre-built binaries for most operating systems and a
 5.	Removed Mac support (I don’t  have a powerful Mac device to run test on	:slightly_frowning_face:)
 6.	Removed Android support (I don’t agree a Non-GUI app and poor integration for Android)
 
+
+
+@[FiloSottile](https://github.com/FiloSottile) I won't use the `golang.org/x/net/ipv4` in order to leave this program along with unnecessaries. [#issues/1433](https://github.com/DNSCrypt/dnscrypt-proxy/issues/1433#issue-672344900)
 
 ## Features
 

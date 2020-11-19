@@ -1,6 +1,6 @@
-module github.com/AZ-X/dnscrypt-proxy-r2
+module github.com/AZ-X/pique
 
-go 1.14
+go 1.15
 
 require (
 	github.com/BurntSushi/toml v0.3.1

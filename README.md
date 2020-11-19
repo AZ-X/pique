@@ -6,10 +6,12 @@
 ## Autobiography
 
 **pique** /piːk/
+
 **repique** /ʁə.pik/
 
 > The words "pique" and "repique" are of Spanish origin
-> Although it often scores poorly, it is usually advantageous to declare it to prevent the opponent from scoring pique or repique, despite the tactical disadvantage of giving information to the opponent.
+
+> Although it often scores poorly, it is usually advantageous to declare it to prevent the opponent from scoring pique or repique, despite the tactical disadvantage of giving information to the opponent
 
 
 This project started from [#issues/932](https://github.com/DNSCrypt/dnscrypt-proxy/issues/932) when I went through full issues list (Not just opened)

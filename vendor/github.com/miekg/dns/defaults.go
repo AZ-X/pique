@@ -162,10 +162,10 @@ func (dns *Msg) popEdns0() *OPT {
 	// RFC 6891, Section 6.1.1 allows the OPT record to appear
 	// anywhere in the additional record section, but it's usually at
 	// the end so start there.
-	for i := len(dns.Extra) - 1; i >= 0; i-- {
-		if dns.Extra[i].Header().Rrtype == TypeOPT {
-			opt := dns.Extra[i].(*OPT)
-			dns.Extra = append(dns.Extra[:i], dns.Extra[i+1:]...)
+	for i := len(dns.Extra); i > 0; i-- {
+		if dns.Extra[i-1].Header().Rrtype == TypeOPT {
+			opt := dns.Extra[i-1].(*OPT)
+			dns.Extra = append(dns.Extra[:i-1], dns.Extra[i:]...)
 			return opt
 		}
 	}

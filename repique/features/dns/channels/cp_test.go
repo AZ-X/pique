@@ -74,4 +74,3 @@ NX /\.in-addr\.arpa\.$
 		len(match[exp.SubexpIndex("unrecognized")]) != 0 )
 	}
 }
-

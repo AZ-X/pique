@@ -164,7 +164,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 			dlog.SetFileDescriptor(os.NewFile(uintptr(3), "logFile"))
 		}
 	}
-	dlog.Noticef("repique %s built with %s", common.AppVersion, runtime.Version())
+	dlog.Noticef("repique %s built with runtime+stdlib %s", common.AppVersion, runtime.Version())
 	dlog.Noticef("LogLevel %s", dlog.SeverityName[dlog.LogLevel()])
 	proxy.UserName = config.UserName
 	proxy.Child = *flags.Child

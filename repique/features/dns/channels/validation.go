@@ -43,7 +43,7 @@ func (v *Validation) Init(cfg *Config, f FChannelByName) {
 }
 
 //go:linkname unpack github.com/miekg/dns.(*Msg).unpack
-func unpack(dns *dns.Msg, dh dns.Header, msg []byte, off int) (err error)
+func unpack(dns *dns.Msg, dh *dns.Header, msg []byte, off int) (err error)
 
 //go:linkname unpackMsgHdr github.com/miekg/dns.unpackMsgHdr
 func unpackMsgHdr(msg []byte, off int) (dns.Header, int, error)
@@ -53,7 +53,7 @@ func setHdr(dns *dns.Msg, dh dns.Header)
 
 const _QR = 1 << 15
 const rr_throttle = 15 // quote miekg/dns 'as they are attacker controlled'; thus can be partially treated 
-func msgAcceptFunc(dh dns.Header) bool {
+func msgAcceptFunc(dh *dns.Header) bool {
 	isResponse := dh.Bits&_QR != 0
 
 	// Don't allow dynamic updates, because then the sections can contain a whole bunch of RRs.
@@ -116,14 +116,14 @@ V1_Unpack:{
 		s.LastError = err
 		goto V1_NOK
 	}
-	if !msgAcceptFunc(dh) {
+	if !msgAcceptFunc(&dh) {
 		common.Program_dbg_full_log("IN1 dns header => %v", dh)
 		s.LastError = Error_DNS_Header1
 		goto V1_NOK
 	}
 	msg := &dns.Msg{}
 	setHdr(msg, dh)
-	if err = unpack(msg, dh, in_bytes, off); err != nil {
+	if err = unpack(msg, &dh, in_bytes, off); err != nil {
 		s.LastError = err
 		goto V1_NOK
 	}
@@ -186,14 +186,21 @@ V3_Unpack:{
 		s.LastError = err
 		goto V3_NOK
 	}
-	if !msgAcceptFunc(dh) {
+	if !msgAcceptFunc(&dh) {
 		common.Program_dbg_full_log("IN2 dns header => %v", dh)
 		s.LastError = Error_DNS_Header2
 		goto V3_NOK
 	}
 	msg := &dns.Msg{}
-	if err = unpack(msg, dh, in_bytes, off); err != nil {
+	setHdr(msg, dh)
+	tdh := dh
+	if err = unpack(msg, &tdh, in_bytes, off); err != nil {
 		s.LastError = err
+		goto V3_NOK
+	}
+	if tdh != dh {
+		common.Program_dbg_full_log("IN2 dns header => %v actual: %v", dh, tdh)
+		s.LastError = Error_DNS_Header2
 		goto V3_NOK
 	}
 	s.Response = msg

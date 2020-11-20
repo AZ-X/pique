@@ -49,7 +49,12 @@ func (l *Logger) Init(cfg *Config, f FChannelByName) {
 
 func (l *Logger) Handle(s *Session) Channel {
 	if s.LastError != nil {
-		dlog.Debug(s.LastError)
+		switch s.LastError {
+		case Error_DNS_NO_IPv6, Error_Stub_Timeout, Error_Stub_SvrFault, Error_Stub_Internal: 
+				dlog.Debug(s.LastError)
+		default:
+				dlog.Warn(s.LastError)
+		}
 	} else {
 		if l.logger != nil {
 			qType, ok := dns.TypeToString[s.Qtype]
@@ -94,16 +99,23 @@ ConsoleLog:
 		}
 		dlog.Debugf("ID: %5d I: |%-15s| O: |%-15s| Code:%s", s.ID, question, answer, dns.RcodeToString[s.Response.Rcode])
 	} else {
-		if answer == EMPTY {
-			if s.Response.Truncated {
-				answer += " **Truncated**"
-			} else {
-				answer += " " + dns.RcodeToString[s.Response.Rcode]
-			}
+		if s.Response.Truncated {
+			answer += " **Truncated**"
 		}
-		dlog.Debugf("ID: %5d O: |%-15s| [%s]", s.ID, answer, *s.ServerName)
+		if s.Response.Rcode != dns.RcodeSuccess {
+			answer = fmt.Sprintf("%s %s", answer, dns.RcodeToString[s.Response.Rcode])
+		}
+		if s.State&CP1_NOK == CP1_NOK || s.State&CP2_NOK == CP2_NOK {
+			answer = fmt.Sprintf("%s(R)", answer)
+		}
+		if len(s.Response.Ns) > 0 {
+			answer = fmt.Sprintf("%s Ns%d", answer, len(s.Response.Ns))
+		}
+		if len(s.Response.Extra) > 0 {
+			answer = fmt.Sprintf("%s Ex%d", answer, len(s.Response.Extra))
+		}
+		dlog.Debugf("ID: %5d O: |%-25s| [%s]", s.ID, answer, *s.ServerName)
 	}
-
 	s.LastState = L_OK
 	s.State |= s.LastState
 	return l.f(StateNChannel[s.LastState])

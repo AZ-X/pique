@@ -1,7 +1,7 @@
 # IF YOU MAKE ANY CHANGES TO THIS FILE YOU HAVE TO RESTART THE PROGRAM IN ORDER TO SEE THEIR EFFECTS.
 #
 # This is the <Example File> for a conception of [black_cloaking_routine] refer to the configuration.
-# Can rename this file to any name you want. IN example-dnscrypt-proxy.toml 'routine.txt'
+# Can rename this file to any name you want. IN repique.toml.example 'routine.txt'
 #
 # It contains user-defined mappings between domain names and addresses.
 # It matches both dns request(QNAME) and response(CNAME if carry with)

@@ -12,5 +12,4 @@ endif
 
 .PHONY: build
 build:
-	go build -trimpath -mod=vendor -buildmode=exe -ldflags "-buildid= -s -w -X main.goversion=$(GOVERSION) -X main.AppVersion=$(VERSION)" -o $(OUT_DIR)/$(PROG)$(BIN_SUFFIX) ./repique
-
+	go build -trimpath -mod=vendor -buildmode=exe -gcflags=-trimpath=$(GOPATH) -asmflags=-trimpath=$(GOPATH) -ldflags "-buildid= -s -w -X main.goversion=$(GOVERSION) -X main.AppVersion=$(VERSION)" -o $(OUT_DIR)/$(PROG)$(BIN_SUFFIX) ./repique

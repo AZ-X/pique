@@ -1,12 +1,12 @@
 
 ##############################################
 #                                            #
-#        dnscrypt-proxy configuration        #
+#        Repique's Configuration             #
 #                                            #
 ##############################################
 
 ## This is an example configuration file.
-## You should adjust it to your needs, and save it as "dnscrypt-proxy.toml"
+## You should adjust it to your needs, and save it as "repique.toml"
 ##
 ## Online documentation is not available. This program evolved far from the original dnscrypt proxy (go version)
 ## Anybody with a background in computer science and normal IQ can start this program without any 'online documents'
@@ -30,7 +30,7 @@
 # server_names = ['google', 'ev-va']
 
 ##++++++++++++++++++++++++++++++++++++++++++++++++++++
-## Groups is a powerful concept for dnscrypt-proxy-r2+
+## Groups is a powerful concept for repique
 ##++++++++++++++++++++++++++++++++++++++++++++++++++++
 ## Rules:
 ## Field 'name' must represent
@@ -188,7 +188,7 @@ force_tcp = false
 
 ## SOCKS5/HTTP/HTTPS IP of hostname of proxy
 ## leave this section comment off unless you want to use hostname e.g. proxy_uri = 'socks5://hostname:9050'
-## since dnscrypt-proxy-r2 nerver use any insecure DNS and sys DNS loops
+## since repique nerver use any insecure DNS and sys DNS loops
 
 # proxy_ip = '127.0.0.1'
 # proxy_ip = '[fe80::1%eth0]'
@@ -219,7 +219,7 @@ keepalive = 30
 
 ## log file for the application
 
-# log_file = 'dnscrypt-proxy.log'
+# log_file = 'repique.log'
 
 
 ## Use the system logger (syslog on Unix, Event Log on Windows)

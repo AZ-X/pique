@@ -45,7 +45,7 @@ Better than original one comparing to most aspect
 Available as source code and pre-built binaries for most operating systems and architectures (see below).
 
 
-## Comparison between R2 and dnscrypt-proxy
+## Comparison between repique and dnscrypt-proxy
 
 ### Pros:
 

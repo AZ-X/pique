@@ -12,8 +12,10 @@ type Regexp_builder struct {
 	*regexp.Regexp
 }
 
+const reg_delimiter = `)|(?:`
 func CreateRegexBuilder(regexes []string, groups []string) *Regexp_builder {
 	var reg strings.Builder
+	var r = strings.NewReplacer(common.Delimiter, reg_delimiter)
 	g := len(groups) > 0
 	if g && len(regexes) != len (groups) {
 		panic("length of groups should equal to regexes")
@@ -22,13 +24,13 @@ func CreateRegexBuilder(regexes []string, groups []string) *Regexp_builder {
 	for i, str := range regexes {
 		if len(regexes) == i + 1 {
 			if g {
-				fmt.Fprintf(&reg, `(?P<%s>%s)`, groups[i], str)
+				fmt.Fprintf(&reg, `(?P<%s>(?:%s))`, groups[i], r.Replace(str))
 			} else {
 				fmt.Fprintf(&reg, `(?:%s)`, str)
 			}
 		} else {
 			if g {
-				fmt.Fprintf(&reg, `(?P<%s>%s)|`, groups[i], str)
+				fmt.Fprintf(&reg, `(?P<%s>(?:%s))|`, groups[i], r.Replace(str))
 			} else {
 				fmt.Fprintf(&reg, `(?:%s)|`, str)
 			}

@@ -24,13 +24,7 @@ func CreateRegexActions(rfs []string, nxs []string, ips []struct{*common.Endpoin
 		name := fmt.Sprintf(`IP%d`, i+1)
 		ipNames[&name] = ent.Endpoint
 		var subs strings.Builder
-		for j, str := range ent.Exps {
-			if len(ent.Exps) == j + 1 {
-				fmt.Fprintf(&subs, `(?:%s)`, str)
-			} else {
-				fmt.Fprintf(&subs, `(?:%s)|`, str)
-			}
-		}
+		fmt.Fprintf(&subs, `(?:%s)`, strings.Join(ent.Exps, reg_delimiter))
 		if len(ips) == i + 1 {
 			fmt.Fprintf(&reg, `(?P<%s>(?:%s))`, name, subs.String())
 		} else {
@@ -41,29 +35,13 @@ func CreateRegexActions(rfs []string, nxs []string, ips []struct{*common.Endpoin
 		fmt.Fprintf(&reg, `|`)
 	}
 	if len(rfs) != 0 {
-		var sub_rfs strings.Builder
-		for i, str := range rfs {
-			if len(rfs) == i + 1 {
-				fmt.Fprintf(&sub_rfs, `(?:%s)`, str)
-			} else {
-				fmt.Fprintf(&sub_rfs, `(?:%s)|`, str)
-			}
-		}
-		fmt.Fprintf(&reg, `(?P<RF>(?:%s))`, sub_rfs.String()) 
+		fmt.Fprintf(&reg, `(?P<RF>(?:(?:%s)))`, strings.Join(rfs, reg_delimiter)) 
 	}
 	if len(nxs) != 0 && (len(ips) != 0 || len(rfs) != 0) {
 		fmt.Fprintf(&reg, `|`)
 	}
 	if len(nxs) != 0 {
-		var sub_nxs strings.Builder
-		for i, str := range nxs {
-			if len(nxs) == i + 1 {
-				fmt.Fprintf(&sub_nxs, `(?:%s)`, str)
-			} else {
-				fmt.Fprintf(&sub_nxs, `(?:%s)|`, str)
-			}
-		}
-		fmt.Fprintf(&reg, `(?P<NX>(?:%s))`, sub_nxs.String())
+		fmt.Fprintf(&reg, `(?P<NX>(?:(?:%s)))`, strings.Join(nxs, reg_delimiter))
 	}
 	actions := &Regex_Actions{Regexp:regexp.MustCompile(reg.String())}
 	actions.Refused = actions.SubexpIndex("RF")

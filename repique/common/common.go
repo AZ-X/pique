@@ -49,7 +49,7 @@ type RegisteredServer struct {
 
 /*---------------------------------------------------------------------------------------
 
-    Network related
+    Network related types, funcs authored by repique
 
 /*--------------------------------------------------------------------------------------*/
 
@@ -275,12 +275,9 @@ func WriteDP(conn net.Conn, p []byte, clients ...*net.Addr) error {
 
 /*---------------------------------------------------------------------------------------
 
-    Others
+    Others adopted from original dnscrypt-proxy (below) ww
 
 /*--------------------------------------------------------------------------------------*/
-
-
-
 
 func Min(a, b int) int {
 	if a < b {

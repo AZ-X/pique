@@ -53,7 +53,7 @@
 ## Field 'priority' will be worked with future version as how choosing a preferred server on throttle of tryouts
 ## --for group 'B' 'server11'>'server12'>'server13'
 ## --for group 'A&B`' 'server11'>'server12'>'server13'>'server1'>'server2'>'server3'
-## Field 'match' is an instance of regular expression to match any domain name 
+## Field 'match' is an instance of regular expression to match any domain name, thus can be multi-part separated by semicolon
 ## --which could be used as a selection from all groups
 ## --if no group defined, server_names is a default group which priority=false and match='*'
 ##========================================================
@@ -67,7 +67,7 @@
 #{ name='A&B`-regex', groups=['A', 'B'], match='google\.com\.$' },
 #{ name='CA', servers=['serverC'], match='\.ca\.$' },
 #{ name='DE', tag='de', match='\.de\.$' },
-#{ name='Swiss', tag='ch', match='\.(ch|swiss)\.$' },
+#{ name='Swiss', tag='ch', match='\.swiss\.$;\.ch\.$' },
 #{ name='foo', tag='foo', match='porn' },
 #{ name='all', servers=['*'] },
 #]

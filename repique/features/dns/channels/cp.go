@@ -33,6 +33,7 @@ const (
 
 type clockEntry struct {
 	*common.EPRing
+	rf, nx              bool
 }
 
 type inCacheResponse struct {
@@ -98,7 +99,11 @@ func (cp *CP) Init(cfg *Config, f FChannelByName) {
 					if !found {
 						cloaking = make(map[string][]*common.Endpoint)
 					}
-					if ip.IP.To4() != nil {
+					if rf {
+						cloaking["rf"] = nil
+					} else if rf {
+						cloaking["nx"] = nil
+					} else if ip.IP.To4() != nil {
 						cloaking["v4"] = append(cloaking["v4"], ip)
 					} else {
 						cloaking["v6"] = append(cloaking["v6"], ip)
@@ -135,14 +140,26 @@ func (cp *CP) Init(cfg *Config, f FChannelByName) {
 		if len(cloaks) != 0 {
 			cp.clock_cache = conceptions.NewCloakCache()
 			for name,r := range cloaks {
+				_, rf := r["rf"]
+				_, nx := r["nx"]
+				if rf || nx {
+					key := preComputeCacheKey(dns.TypeA, name)
+					value := clockEntry{rf:rf, nx:nx,}
+					cp.clock_cache.Add(key, value)
+					if cfg.BlockIPv6 != nil && !*cfg.BlockIPv6 {
+						key = preComputeCacheKey(dns.TypeAAAA, name)
+						cp.clock_cache.Add(key, value)
+					}
+				}
+				// always override nx or rf if ip exists 
 				if len(r["v4"]) > 0 {
 					key := preComputeCacheKey(dns.TypeA, name)
-					value := clockEntry{EPRing:common.LinkEPRing(r["v4"]...),} 
+					value := clockEntry{EPRing:common.LinkEPRing(r["v4"]...),}
 					cp.clock_cache.Add(key, value)
 				}
 				if len(r["v6"]) > 0 {
 					key := preComputeCacheKey(dns.TypeAAAA, name)
-					value := clockEntry{EPRing:common.LinkEPRing(r["v6"]...),} 
+					value := clockEntry{EPRing:common.LinkEPRing(r["v6"]...),}
 					cp.clock_cache.Add(key, value)
 				}
 			}
@@ -189,6 +206,24 @@ func (cp *CP) setIPResponse(s *Session, ip *common.Endpoint) {
 	s.Response.Answer = []dns.RR{rr}
 }
 
+func (cp *CP) setNegativeResponse(s *Session, rf, nx bool) {
+	s.Response = &dns.Msg{}
+	if nx {
+		s.Response.SetRcode(s.Request, dns.RcodeNameError)
+	}
+	//`refused`(default)
+	if rf {
+		s.Response.SetRcode(s.Request, dns.RcodeRefused)
+	}
+	if cp.BlackTTL != nil {
+		s.Response.Answer = append(s.Response.Answer, &dns.CNAME{Hdr:dns.RR_Header{
+		Dot,
+		dns.TypeCNAME,
+		dns.ClassINET,
+		*cp.BlackTTL*60, 0}, Target:s.Name})
+	}
+}
+
 func (cp *CP) match(s *Session, target *string) bool {
 	if cp.actions != nil {
 		matches := cp.actions.FindStringSubmatchIndex(*target)
@@ -200,27 +235,16 @@ func (cp *CP) match(s *Session, target *string) bool {
 				}
 			}
 			if cp.actions.Refused > 0 && matches[cp.actions.Refused*2] != -1 {
-				s.Response = &dns.Msg{}
-				s.Response.SetRcode(s.Request, dns.RcodeRefused)
-				goto SetNGTTL
+				cp.setNegativeResponse(s, true, false)
+				return true
 			}
 			if cp.actions.NXDOMAIN > 0 && matches[cp.actions.NXDOMAIN*2] != -1 {
-				s.Response = &dns.Msg{}
-				s.Response.SetRcode(s.Request, dns.RcodeNameError)
-				goto SetNGTTL
+				cp.setNegativeResponse(s, false, true)
+				return true
 			}
 		}
 	}
 	return false
-SetNGTTL:
-	if cp.BlackTTL != nil {
-		s.Response.Answer = append(s.Response.Answer, &dns.CNAME{Hdr:dns.RR_Header{
-		Dot,
-		dns.TypeCNAME,
-		dns.ClassINET,
-		*cp.BlackTTL*60, 0}, Target:s.Name})
-	}
-	return true
 }
 
 func (cp *CP) Handle(s *Session) Channel {
@@ -245,8 +269,12 @@ CP1:{
 		cachedAny, ok := cp.clock_cache.Get(*s.hash_key)
 		if ok {
 			ce := cachedAny.(clockEntry)
-			ce.EPRing = ce.Next()
-			cp.setIPResponse(s, ce.Endpoint)
+			if ce.rf || ce.nx {
+				cp.setNegativeResponse(s, ce.rf, ce.nx)
+			} else {
+				ce.EPRing = ce.Next()
+				cp.setIPResponse(s, ce.Endpoint)
+			}
 			goto CP1_NOK
 		}
 	}

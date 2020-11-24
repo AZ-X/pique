@@ -29,7 +29,6 @@ type globals struct {
 
 var (
 	_globals = globals{
-		logLevel:       SeverityLast,
 		appName:        "-",
 		lastMessage:    "",
 		lastOccurrence: time.Now(),
@@ -43,9 +42,6 @@ const (
 	SeverityNotice
 	SeverityWarning
 	SeverityError
-	SeverityCritical
-	SeverityFatal
-	SeverityLast
 )
 
 const (
@@ -59,8 +55,6 @@ var SeverityName = []string{
 	SeverityNotice:   "NOTICE",
 	SeverityWarning:  "WARNING",
 	SeverityError:    "ERROR",
-	SeverityCritical: "CRITICAL",
-	SeverityFatal:    "FATAL",
 }
 
 func Debugf(format string, args ...interface{}) {
@@ -89,14 +83,6 @@ func Errorf(format string, args ...interface{}) error {
 	return msg
 }
 
-func Criticalf(format string, args ...interface{}) {
-	logf(SeverityCritical, format, args...)
-}
-
-func Fatalf(format string, args ...interface{}) {
-	logf(SeverityFatal, format, args...)
-}
-
 func Debug(message interface{}) {
 	log(SeverityDebug, message)
 }
@@ -117,13 +103,6 @@ func Error(message interface{}) {
 	log(SeverityError, message)
 }
 
-func Critical(message interface{}) {
-	log(SeverityCritical, message)
-}
-
-func Fatal(message interface{}) {
-	log(SeverityFatal, message)
-}
 
 func (s *Severity) get() Severity {
 	return Severity(atomic.LoadInt32((*int32)(s)))
@@ -157,7 +136,7 @@ func Init(appName string, logLevel Severity, syslogFacility string) error {
 	_globals.syslogFacility = syslogFacility
 	_globals.useSyslog = flag.Bool("syslog", false, "Send logs to the local system logger (Eventlog on Windows, syslog on Unix)")
 	_globals.fileName = flag.String("logfile", "", "Write logs to file")
-	flag.Var(&_globals.logLevel, "loglevel", fmt.Sprintf("Log level (%d-%d)", SeverityDebug, SeverityFatal))
+	flag.Var(&_globals.logLevel, "loglevel", fmt.Sprintf("Log level (%d-%d)", SeverityDebug, SeverityError))
 	return nil
 }
 
@@ -252,9 +231,6 @@ func logf(severity Severity, format string, args ...interface{}) *string {
 			os.Stderr.WriteString(line)
 		}
 		return &line
-	}
-	if severity >= SeverityFatal {
-		os.Exit(255)
 	}
 	return nil
 }

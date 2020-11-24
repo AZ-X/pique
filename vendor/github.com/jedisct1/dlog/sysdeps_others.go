@@ -14,8 +14,6 @@ var severityToSyslogPriority = []syslog.Priority{
 	SeverityNotice:   syslog.LOG_NOTICE,
 	SeverityWarning:  syslog.LOG_WARNING,
 	SeverityError:    syslog.LOG_ERR,
-	SeverityCritical: syslog.LOG_CRIT,
-	SeverityFatal:    syslog.LOG_ALERT,
 }
 
 type serverConn interface {

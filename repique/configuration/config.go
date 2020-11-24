@@ -135,7 +135,7 @@ func findConfigFile(configFile *string) (string, error) {
 func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	foundConfigFile, err := findConfigFile(flags.ConfigFile)
 	if err != nil {
-		dlog.Fatalf("failed to load the configuration file [%s]", *flags.ConfigFile)
+		panic("failed to load the configuration file " + *flags.ConfigFile)
 	}
 	config := &Config{}
 	proxy.ProxyStartup = &dns.ProxyStartup{}
@@ -150,7 +150,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	if err := cdFileDir(foundConfigFile); err != nil {
 		return err
 	}
-	if config.LogLevel >= 0 && config.LogLevel < int(dlog.SeverityLast) {
+	if config.LogLevel >= 0 && config.LogLevel <= int(dlog.SeverityError) {
 		dlog.SetLogLevel(dlog.Severity(config.LogLevel))
 	}
 	if config.UseSyslog {
@@ -190,14 +190,14 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	if len(config.ProxyURI) > 0 {
 		globalProxy, err := url.Parse(config.ProxyURI)
 		if err != nil {
-			dlog.Fatalf("failed to parse the proxy URL [%v]", config.ProxyURI)
+			panic("failed to parse the proxy URL " + config.ProxyURI)
 		}
 		proxy.XTransport.Proxies = conceptions.InitProxies()
 		var ep *common.Endpoint
 		if len(config.ProxyIP) > 0 {
 			
 			if ep, err = common.ResolveEndpoint(config.ProxyIP); err !=nil {
-				dlog.Fatalf("failed to parse the proxy IP [%v]", config.ProxyIP)
+				panic("failed to parse the proxy IP " + config.ProxyIP)
 			}
 		}
 		proxy.XTransport.Proxies.AddGlobalProxy(globalProxy, ep)
@@ -213,7 +213,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	dlog.Noticef("dnscrypt-protocol bind to %s", proxy.MainProto)
 	proxy.CertRefreshDelay = time.Duration(common.Max(60, config.CertRefreshDelay)) * time.Minute
 	if len(config.ListenAddresses) == 0 {
-		dlog.Fatal("check local IP/port configuration")
+		panic("check local IP/port configuration")
 	}
 
 	lbStrategy := dns.DefaultLBStrategy
@@ -438,7 +438,7 @@ func (config *Config) loadChannels(proxy *dns.Proxy) {
 				proxy.ChannelMgr.Cfgs[idx+1] = &cfg
 				shares = append(shares, idx+1)
 			} else {
-				dlog.Fatal("missing main cfg for channels")
+				panic("missing main cfg for channels")
 			}
 		}
 	}
@@ -472,11 +472,11 @@ func (config *Config) loadSources(proxy *dns.Proxy) error {
 			continue
 		}
 		if len(staticConfig.Stamp) == 0 {
-			dlog.Fatalf("missing stamp for the static [%s] definition", serverName)
+			panic("missing stamp for the static definition: " + serverName)
 		}
 		stamp, err := stamps.NewServerStampFromString(staticConfig.Stamp)
 		if err != nil {
-			dlog.Fatalf("stamp error for the static [%s] definition: [%v]", serverName, err)
+			panic(dlog.Errorf("stamp error for the static definition: %s %v", serverName, err))
 		}
 		proxy.RegisteredServers = append(proxy.RegisteredServers, common.RegisteredServer{Name: serverName, Stamp: &stamp})
 	}
@@ -507,13 +507,11 @@ func (config *Config) loadSource(proxy *dns.Proxy, requiredProps stamps.ServerIn
 	}
 	source, err := NewSource(cfgSourceName, proxy.XTransport, cfgSource.URLs, cfgSource.MinisignKeyStr, cfgSource.CacheFile, cfgSource.FormatStr, time.Duration(cfgSource.RefreshDelay)*time.Hour)
 	if err != nil {
-		dlog.Criticalf("failed to retrieve source [%s]: [%s]", cfgSourceName, err)
 		return err
 	}
 	registeredServers, err := source.Parse(cfgSource.Prefix)
 	if err != nil {
 		if len(registeredServers) == 0 {
-			dlog.Criticalf("failed to use source [%s]: [%s]", cfgSourceName, err)
 			return err
 		}
 		dlog.Warnf("error in source [%s]: [%s] -- continuing with reduced server count [%d]", cfgSourceName, err, len(registeredServers))
@@ -552,13 +550,11 @@ func (config *Config) loadSource(proxy *dns.Proxy, requiredProps stamps.ServerIn
 			case config.SourceDNSCrypt && proto == "DNSCrypt":
 			case config.SourceDoH && proto == "DoH":
 				if err := proxy.XTransport.BuildTransport(registeredserver, nil); err != nil {
-					dlog.Fatal(err)
-					return err;
+					panic(err)
 				}
 			case config.SourceDoT && proto == "DoT":
 				if err := proxy.XTransport.BuildTLS(registeredserver); err != nil {
-					dlog.Fatal(err)
-					return err;
+					panic(err)
 				}
 			default:continue
 			}

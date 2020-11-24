@@ -261,9 +261,8 @@ func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conc
 				return th.Name, nil, err
 			}
 		}
-		if strings.HasSuffix(addr, th.DomainName) {
-			dlog.Criticalf("mismatch addr for TransportHolding(%s): [%s]", th.Name, addr)
-			return th.Name, nil, errors.New("mismatch TransportHolding")
+		if !strings.HasPrefix(addr, th.DomainName) {
+			panic(dlog.Errorf("mismatch addr for TransportHolding(%s): [%s]", th.Name, addr))
 		}
 		epring := th.IPs.Load().(*common.EPRing)
 		addr = epring.String()
@@ -282,7 +281,7 @@ func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conc
 func (XTransport *XTransport) FetchDoT(name string, serverProto string, ctx *common.TLSContext, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
 	th, found := XTransport.Transports[name]
 	if !found {
-		dlog.Fatalf("name [%s] not found for Transports", name)
+		panic(name + " not found for Transports")
 		return nil, errors.New("name not found for Transports")
 	}
 	return XTransport.fetchDoT(th, serverProto, ctx, body, Timeout, cbs...)
@@ -352,7 +351,7 @@ Go:
 func (XTransport *XTransport) FetchHTTPS(name string, path string, method string, doh bool, ctx *HTTPSContext, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
 	th, found := XTransport.Transports[name]
 	if !found {
-		dlog.Fatalf("name [%s] not found for Transports", name)
+		panic(name + "name not found for Transports")
 		return nil, errors.New("name not found for Transports")
 	}
 	return XTransport.fetchHTTPS(th, path, method, doh, ctx, body, Timeout, cbs...)

@@ -328,7 +328,7 @@ func routes(proxy *Proxy, name string) (*[]*common.Endpoint, error) {
 		}
 		if relayCandidateStamp == nil {
 			err := dlog.Errorf("Undefined relay [%v] for server [%v]", relayName, name)
-			dlog.Fatal(err) //os.Exit(255)
+			panic(err) //os.Exit(255)
 			return nil, err
 		}
 		if relayCandidateStamp.Proto == stamps.StampProtoTypeDNSCrypt ||
@@ -350,7 +350,7 @@ func fetchDNSCryptServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStam
 	if len(stamp.ServerPk) != ed25519.PublicKeySize {
 		serverPk, err := hex.DecodeString(strings.Replace(string(stamp.ServerPk), ":", "", -1))
 		if err != nil || len(serverPk) != ed25519.PublicKeySize {
-			dlog.Fatalf("unsupported public key for [%s]: [%s]", name, stamp.ServerPk)
+			panic(dlog.Errorf("unsupported public key for %s key=%v", name, stamp.ServerPk))
 		}
 		dlog.Warnf("public key [%s] shouldn't be hex-encoded any more", string(stamp.ServerPk))
 		stamp.ServerPk = serverPk

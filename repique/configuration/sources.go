@@ -98,7 +98,7 @@ func (source *Source) Parse(prefix string) ([]common.RegisteredServer, error) {
 	if source.format == SourceFormatV2 {
 		return source.parseV2to3(prefix)
 	}
-	dlog.Fatal("unexpected source format")
+	panic("unexpected source format")
 	return []common.RegisteredServer{}, nil
 }
 

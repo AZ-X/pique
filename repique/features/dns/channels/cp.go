@@ -101,7 +101,7 @@ func (cp *CP) Init(cfg *Config, f FChannelByName) {
 					}
 					if rf {
 						cloaking["rf"] = nil
-					} else if rf {
+					} else if nx {
 						cloaking["nx"] = nil
 					} else if ip.IP.To4() != nil {
 						cloaking["v4"] = append(cloaking["v4"], ip)

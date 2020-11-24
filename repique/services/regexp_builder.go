@@ -24,13 +24,13 @@ func CreateRegexBuilder(regexes []string, groups []string) *Regexp_builder {
 	for i, str := range regexes {
 		if len(regexes) == i + 1 {
 			if g {
-				fmt.Fprintf(&reg, `(?P<%s>(?:%s))`, groups[i], r.Replace(str))
+				fmt.Fprintf(&reg, `(?P<%s>(?:%s))`, groups[i], r.Replace(strings.Trim(str, " ;")))
 			} else {
 				fmt.Fprintf(&reg, `(?:%s)`, str)
 			}
 		} else {
 			if g {
-				fmt.Fprintf(&reg, `(?P<%s>(?:%s))|`, groups[i], r.Replace(str))
+				fmt.Fprintf(&reg, `(?P<%s>(?:%s))|`, groups[i], r.Replace(strings.Trim(str, " ;")))
 			} else {
 				fmt.Fprintf(&reg, `(?:%s)|`, str)
 			}

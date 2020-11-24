@@ -69,7 +69,7 @@ func (proxy *Proxy) addDNSListener(listenAddrStr string, idx int) {
 	
 	listenAddr, err := common.ResolveEndpoint(listenAddrStr)
 	if err != nil {
-		dlog.Fatal(err)
+		panic(err)
 	}
 	listenUDPAddr := &net.UDPAddr{IP:listenAddr.IP, Port:listenAddr.Port, Zone:listenAddr.Zone,}
 	listenTCPAddr := &net.TCPAddr{IP:listenAddr.IP, Port:listenAddr.Port, Zone:listenAddr.Zone,}
@@ -77,10 +77,10 @@ func (proxy *Proxy) addDNSListener(listenAddrStr string, idx int) {
 	// if 'UserName' is not set, continue as before
 	if len(proxy.UserName) <= 0 {
 		if err := proxy.udpListenerFromAddr(listenUDPAddr, idx); err != nil {
-			dlog.Fatal(err)
+			panic(err)
 		}
 		if err := proxy.tcpListenerFromAddr(listenTCPAddr, idx); err != nil {
-			dlog.Fatal(err)
+			panic(err)
 		}
 		return
 	}
@@ -90,20 +90,20 @@ func (proxy *Proxy) addDNSListener(listenAddrStr string, idx int) {
 		// parent
 		listenerUDP, err := net.ListenUDP("udp", listenUDPAddr)
 		if err != nil {
-			dlog.Fatal(err)
+			panic(err)
 		}
 		listenerTCP, err := net.ListenTCP("tcp", listenTCPAddr)
 		if err != nil {
-			dlog.Fatal(err)
+			panic(err)
 		}
 
 		fdUDP, err := listenerUDP.File() // On Windows, the File method of UDPConn is not implemented.
 		if err != nil {
-			dlog.Fatalf("failed to switch to a different user: %v", err)
+			panic(dlog.Errorf("failed to switch to a different user: [%v]", err))
 		}
 		fdTCP, err := listenerTCP.File() // On Windows, the File method of TCPListener is not implemented.
 		if err != nil {
-			dlog.Fatalf("failed to switch to a different user: %v", err)
+			panic(dlog.Errorf("failed to switch to a different user: [%v]", err))
 		}
 		defer listenerUDP.Close()
 		defer listenerTCP.Close()
@@ -115,13 +115,13 @@ func (proxy *Proxy) addDNSListener(listenAddrStr string, idx int) {
 	// Child
 	listenerUDP, err := net.FilePacketConn(os.NewFile(uintptr(3+FileDescriptorNum), "listenerUDP"))
 	if err != nil {
-		dlog.Fatalf("failed to switch to a different user: %v", err)
+		panic(dlog.Errorf("failed to switch to a different user: [%v]", err))
 	}
 	FileDescriptorNum++
 
 	listenerTCP, err := net.FileListener(os.NewFile(uintptr(3+FileDescriptorNum), "listenerTCP"))
 	if err != nil {
-		dlog.Fatalf("failed to switch to a different user: %v", err)
+		panic(dlog.Errorf("failed to switch to a different user: [%v]", err))
 	}
 	FileDescriptorNum++
 
@@ -173,8 +173,7 @@ func (proxy *Proxy) StartProxy() {
 						s.ServerName = &name
 					}
 				default:
-					dlog.Fatalf("unsupported server protocol:[%s]", serverInfo.Info.Proto())
-					goto IntFault
+					panic("unsupported server protocol:[%s]" + serverInfo.Info.Proto())
 			}
 			var err error
 			s.RawIn, err = serverInfo.Info.Query(proxy, s.RawOut)

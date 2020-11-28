@@ -41,6 +41,10 @@ type inCacheResponse struct {
 	expiration time.Time
 }
 
+type CPError Error
+func (e *CPError) Error() string {
+	return "black_cloaking_routine matches CNAME: " + e.Ex
+}
 
 // caches and patterns; unitized handling
 type CP struct {
@@ -187,8 +191,7 @@ func computeCacheKey(s *Session) *[32]byte {
 		tmp[4] = 1
 	}
 	h.Write(tmp[:])
-	normalizedRawQName := []byte(s.Name)
-	h.Write(normalizedRawQName)
+	h.Write([]byte(s.Name))
 	var sum [32]byte
 	h.Sum(sum[:0])
 	return &sum
@@ -302,12 +305,16 @@ CP2:{
 			continue
 		}
 		if cp.match(s, &rr.(*dns.CNAME).Target) {
+			s.LastError = &CPError{Ex:rr.(*dns.CNAME).Target}
 			s.LastState = CP2_NOK
 			goto StateN
 		}
 	}
-	if cp.cache != nil {
-		cp.cache.Add(*s.hash_key, inCacheResponse{expiration:time.Now().Add(time.Minute * time.Duration(*cp.CacheTTL)), Msg:s.Response,})
+	switch s.Response.Rcode {
+	case dns.RcodeSuccess, dns.RcodeNameError:
+		if cp.cache != nil {
+			cp.cache.Add(*s.hash_key, inCacheResponse{expiration:time.Now().Add(time.Minute * time.Duration(*cp.CacheTTL)), Msg:s.Response,})
+		}
 	}
 	s.LastState = CP2_OK
 	goto StateN

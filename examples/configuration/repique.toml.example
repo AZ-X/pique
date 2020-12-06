@@ -308,6 +308,13 @@ blocked_query_response = 'nxdomain'
 sinkhole_ipv6 = true
 
 
+## Monitor changes of contents of black_cloaking_routine after program start, reload and effect them on the fly; be careful to use this feature, any mistake of changes (including deleting of that file) will panic the running program.
+## This feature won't affect cache of things. It's the most powerful implementation of fields.
+## To keep scalar binary size of the program, this configuration is limited to Windows platform.
+
+# windows_filemon = true
+
+
 ## Path to the file of all possible rules against QNAME AND CNAME (For details, Read "example_black_cloaking.txt" carefully)
 
 # black_cloaking_routine = 'routine.txt'

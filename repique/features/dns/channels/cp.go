@@ -21,6 +21,7 @@ import (
 	"github.com/AZ-X/pique/repique/common"
 	"github.com/AZ-X/pique/repique/services"
 	"github.com/AZ-X/pique/repique/conceptions"
+	"github.com/AZ-X/pique/repique/behaviors"
 	
 	"github.com/jedisct1/dlog"
 	"github.com/miekg/dns"
@@ -62,9 +63,19 @@ func (cp *CP) Name() string {
 func (cp *CP) Init(cfg *Config, f FChannelByName) {
 	cp.Config = cfg
 	cp.f = f
+	cp._init(false)
+	if cp.BlackCloaking != nil && cp.BlackCloakingMon != nil && *cp.BlackCloakingMon {
+		behaviors.RegisterFswatcher(*cp.BlackCloaking, func(){
+			dlog.Infof("reloading black_cloaking_routine={%s}", *cp.BlackCloaking)
+			cp._init(true)
+		})
+	}
+}
+
+func (cp *CP) _init(reloading bool) {
 	ttl := DefaultTTL
-	if cfg.BlackCloaking != nil {
-		bin, err := ioutil.ReadFile(*cfg.BlackCloaking)
+	if cp.BlackCloaking != nil {
+		bin, err := ioutil.ReadFile(*cp.BlackCloaking)
 		if err != nil {
 			panic(err)
 		}
@@ -150,7 +161,7 @@ func (cp *CP) Init(cfg *Config, f FChannelByName) {
 					key := preComputeCacheKey(dns.TypeA, name)
 					value := clockEntry{rf:rf, nx:nx,}
 					cp.clock_cache.Add(key, value)
-					if cfg.BlockIPv6 != nil && !*cfg.BlockIPv6 {
+					if cp.BlockIPv6 != nil && !*cp.BlockIPv6 {
 						key = preComputeCacheKey(dns.TypeAAAA, name)
 						cp.clock_cache.Add(key, value)
 					}
@@ -167,17 +178,17 @@ func (cp *CP) Init(cfg *Config, f FChannelByName) {
 					cp.clock_cache.Add(key, value)
 				}
 			}
-			if cfg.CloakTTL == nil {
-				cfg.CloakTTL = &ttl
+			if cp.CloakTTL == nil {
+				cp.CloakTTL = &ttl
 			}
 		}
 	}
-	if cfg.CacheSize != nil {
-		size := 1<<math.Ilogb(float64(*cfg.CacheSize))
+	if !reloading && cp.CacheSize != nil {
+		size := 1<<math.Ilogb(float64(*cp.CacheSize))
 		dlog.Debugf("accurate cache size: %d", size)
 		cp.cache = conceptions.NewCache(size)
-		if cfg.CacheTTL == nil {
-			cfg.CacheTTL = &ttl
+		if cp.CacheTTL == nil {
+			cp.CacheTTL = &ttl
 		}
 	}
 }

@@ -18,7 +18,7 @@ func CreateRegexBuilder(regexes []string, groups []string) *Regexp_builder {
 	var r = strings.NewReplacer(common.Delimiter, reg_delimiter)
 	g := len(groups) > 0
 	if g && len(regexes) != len (groups) {
-		panic("length of groups should equal to regexes")
+		panic("size of groups should equate to which of regexes")
 	}
 	fmt.Fprintf(&reg, `(?i)`)
 	for i, str := range regexes {

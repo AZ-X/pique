@@ -115,6 +115,7 @@ type Config struct {
 	BlackTTL                 *uint32                      `toml:"black_ttl"` //a.k.a. TTL of negative responses; no default
 	NodataTTL                *uint32                      `toml:"nodata_ttl"` // default an hour; sinkhole_ipv6 pops nodata RR
 	BlackCloaking            *string                      `toml:"black_cloaking_routine"`
+	BlackCloakingMon         *bool                        `toml:"windows_filemon"`
 	BlockedQueryResponse     string                       `toml:"blocked_query_response"`
 	QueryLog                 *QueryLogConfig              `toml:"query_log"`
 }

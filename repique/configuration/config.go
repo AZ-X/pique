@@ -32,9 +32,8 @@ const (
 type Config struct {
 	*Main
 	ChannelsSections         map[string]channels.Config  `toml:"channels_sections"`
-	StaticsConfig            map[string]StaticConfig     `toml:"static"`
-	AnonymizedDNS            AnonymizedDNSConfig         `toml:"anonymized_dns"`
 	SourcesConfig            map[string]SourceConfig     `toml:"sources"`
+	AnonymizedDNS            AnonymizedDNSConfig         `toml:"anonymized_dns"`
 }
 
 type Main struct {
@@ -68,10 +67,6 @@ type Main struct {
 	LBStrategy               string                      `toml:"lb_strategy"`
 	Groups                   []GroupsConfig              `toml:"groups"`
 	GroupsListener           []ListenerAssociation       `toml:"listener_association"`
-}
-
-type StaticConfig struct {
-	Stamp string
 }
 
 type SourceConfig struct {
@@ -460,25 +455,6 @@ func (config *Config) loadSources(proxy *dns.Proxy) error {
 		if err := config.loadSource(proxy, requiredProps, cfgSourceName, &cfgSource); err != nil {
 			return err
 		}
-	}
-	if len(config.ServerNames) == 0 {
-		for serverName := range config.StaticsConfig {
-			config.ServerNames = append(config.ServerNames, serverName)
-		}
-	}
-	for _, serverName := range config.ServerNames {
-		staticConfig, ok := config.StaticsConfig[serverName]
-		if !ok {
-			continue
-		}
-		if len(staticConfig.Stamp) == 0 {
-			panic("missing stamp for the static definition: " + serverName)
-		}
-		stamp, err := stamps.NewServerStampFromString(staticConfig.Stamp)
-		if err != nil {
-			panic(dlog.Errorf("stamp error for the static definition: %s %v", serverName, err))
-		}
-		proxy.RegisteredServers = append(proxy.RegisteredServers, common.RegisteredServer{Name: serverName, Stamp: &stamp})
 	}
 	rand.Shuffle(len(proxy.RegisteredServers), func(i, j int) {
 		proxy.RegisteredServers[i], proxy.RegisteredServers[j] = proxy.RegisteredServers[j], proxy.RegisteredServers[i]

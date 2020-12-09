@@ -181,7 +181,7 @@ Go:
 
 type DialFn func(network, address string) (net.Conn, error)
 
-func GetDialer(network string, ifi *string, Timeout time.Duration, KeepAlive time.Duration) (*net.Dialer, error) {
+func GetDialer(network string, ifi *string, timeout time.Duration, keepAlive time.Duration) (*net.Dialer, error) {
 	var addr net.Addr
 	var err error
 	if ifi != nil {
@@ -189,12 +189,12 @@ func GetDialer(network string, ifi *string, Timeout time.Duration, KeepAlive tim
 			return nil, err
 		}
 	}
-	return &net.Dialer{Timeout: Timeout, LocalAddr:addr, KeepAlive:KeepAlive, FallbackDelay:-1,}, nil
+	return &net.Dialer{Timeout: timeout, LocalAddr:addr, KeepAlive:keepAlive, FallbackDelay:-1,}, nil
 }
 
 var ErrUnknownOptType error = errors.New("unsupported opts for Dial")
 
-func Dial(network, address string, ifi *string, Timeout time.Duration, KeepAlive time.Duration, opts ...interface{}) (net.Conn, error) {
+func Dial(network, address string, ifi *string, timeout time.Duration, keepAlive time.Duration, opts ...interface{}) (net.Conn, error) {
 	var ctx context.Context
 	for _, opt := range opts {
 		switch opt := opt.(type) {
@@ -205,7 +205,7 @@ func Dial(network, address string, ifi *string, Timeout time.Duration, KeepAlive
 			default: return nil, ErrUnknownOptType
 		}
 	}
-	if d, err := GetDialer(network, ifi, Timeout, KeepAlive); err == nil {
+	if d, err := GetDialer(network, ifi, timeout, keepAlive); err == nil {
 		if ctx == nil {
 			return d.Dial(network, address)
 		}

@@ -77,8 +77,8 @@
 # The GAFAM
 NX /google /doubleclick /crashlytics /gstatic /firebaseio 
 NX /facebook /tfbnw /fbcdn
-RF /(wns)|(wdcp)|(wdcpalt)\.windows\.com\.$ # Win32/HostsFileHijack wiki/Criticism_of_Microsoft
-RF /1drv\.com\.$ # Win32/HostsFileHijack wiki/Criticism_of_Microsoft
+RF /(wns)|(wdcp)|(wdcpalt)\.windows\.com\.$ /1drv\.com\.$ # Win32/HostsFileHijack wiki/Criticism_of_Microsoft
+RF /geo\.yahoo\.com\.$ /udc\.yahoo\.com\.$
 
 # Criticism of other software companies:
 # wiki Criticism of Facebook

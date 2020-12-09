@@ -323,7 +323,7 @@ Go:
 	var packet []byte
 	for tries := 2; tries > 0; tries-- {
 		if err = common.WriteDP(pc, *binQuery); err != nil {
-			dlog.Debug(err)
+			common.Program_dbg_full_log(err)
 			common.Program_dbg_full_log("dnscrypt Query E03")
 			continue
 		}
@@ -376,7 +376,7 @@ func unpad(packet []byte) ([]byte, error) {
 func computeSharedKey(cryptoConstruction CryptoConstruction, scalar, serverPk *[PublicKeySize]byte, name *string) (sharedKey *[PublicKeySize]byte) {
 	goto Go
 Fault:
-	dlog.Debugf("[%s] is using weak public key, the program will be panicked", *name)
+	dlog.Warnf("[%s] is using weak public key, the program will be panicked", *name)
 	panic(*name + " weak public key")
 Go:
 	if xKey, err := unclassified.Curve25519_X25519(scalar[:], serverPk[:]); err != nil {

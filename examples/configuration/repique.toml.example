@@ -395,19 +395,6 @@ nodata_ttl = 720
   minisign_key = '========>COPY PUB KEY HERE<========'
   prefix = ''
 
-  #[sources.'public-resolvers']
-  #cache_file = 'public-resolvers.md'
-  #minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
-  #prefix = ''
-
-  ## Anonymized DNS relays
-  ## get from urls = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v2/relays.md', 'https://download.dnscrypt.info/resolvers-list/v2/relays.md']
-  
-  #[sources.'relays']
-  #cache_file = 'relays.md'
-  #minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
-  #prefix = ''
-
 
 ################################
 #        Anonymized DNS        #
@@ -419,18 +406,6 @@ nodata_ttl = 720
 ##
 ## A route maps a server name ("server_name") to one or more relays that will be
 ## used to connect to that server.
-##
-## A relay can be specified as a DNS Stamp (either a relay stamp, or a
-## DNSCrypt stamp), an IP:port, a hostname:port, or a server name.
-##
-## The following example routes "example-server-1" via `anon-example-1` or `anon-example-2`,
-## and "example-server-2" via the relay whose relay DNS stamp
-## is "sdns://gRIxMzcuNzQuMjIzLjIzNDo0NDM".
-##
-## !!! THESE ARE JUST EXAMPLES !!!
-##
-## Review the list of available relays from the "relays.md" file, and, for each
-## server you want to use, define the relays you want connections to go through.
 ##
 ## Carefully choose relays and servers so that they are run by different entities.
 ## rapin: Carefully choose relays and servers because all these protocols
@@ -453,12 +428,3 @@ nodata_ttl = 720
 # routes = [
 #   { server_name='*', via=['*'] },
 #]
-
-
-## Optional, local, static list of additional servers
-## Mostly useful for testing your own servers.
-
-[static]
-
-  # [static.'myserver']
-  # stamp = 'sdns:AQcAAAAAAAAAAAAQMi5kbnNjcnlwdC1jZXJ0Lg'

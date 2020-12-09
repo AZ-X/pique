@@ -267,15 +267,99 @@ func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conc
 		epring := th.IPs.Load().(*common.EPRing)
 		addr = epring.String()
 		th.IPs.Store(epring.Next())
-		if dialer, err := common.GetDialer("tcp", XTransport.LocalInterface, 2000*time.Millisecond, alive); err != nil {
+		if dialer, err := common.GetDialer("tcp", XTransport.LocalInterface, 1000*time.Millisecond, alive); err != nil {
 			return th.Name, nil, err
 		} else {
-			conn, err := tls.DialWithDialer(dialer, netw, addr, cfg)
-			return th.Name, conn, err
+			var conn net.Conn
+			var err error
+			if conn, err = dialer.Dial(netw, addr); err != nil {
+				conn, err = parallelDialWithDialer(dialer, netw, addr)
+			}
+			if err == nil {
+				return th.Name, tls.Client(conn, cfg), nil
+			}
+			return th.Name, nil, err
 		}
 	}
 	return nil
 }
+
+//memory grows; await on goose's fixing
+const parallel_dial_total = 5
+//func parallelTLSDialWithDialer(dialer *net.Dialer, network, addr string, config *tls.Config) (net.Conn, error) {
+//	tlsDialer := &tls.Dialer{NetDialer:dialer, Config:config}
+//	ctx, cancel := context.WithCancel(context.Background())
+//	var result chan net.Conn = make(chan net.Conn)
+//	var done chan error = make(chan error, parallel_dial_total)
+//	var p = func() {
+//		conn, err := tlsDialer.DialContext(ctx, network, addr)
+//		if err == nil {
+//			result <- conn
+//		}
+//		done <- err
+//	}
+//	for i := 0; i < parallel_dial_total; i++ {
+//		go p()
+//	}
+//	var err error
+//	var conn net.Conn
+//	for i := 0; i < parallel_dial_total; {
+//		select {
+//		case err = <- done: i++
+//		case c := <- result:
+//			if conn == nil {
+//				cancel()
+//				conn = c
+//			} else {
+//				c.Close()
+//				c = nil
+//			}
+//		}
+//	}
+//	close(result)
+//	close(done)
+//	if conn != nil {
+//		err = nil
+//	}
+//	return conn, err
+//}
+func parallelDialWithDialer(dialer *net.Dialer, network, addr string) (net.Conn, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var result chan net.Conn = make(chan net.Conn)
+	var done chan error = make(chan error, parallel_dial_total)
+	var p = func() {
+		conn, err := dialer.DialContext(ctx, network, addr)
+		if err == nil {
+			result <- conn
+		}
+		done <- err
+	}
+	for i := 0; i < parallel_dial_total; i++ {
+		go p()
+	}
+	var err error
+	var conn net.Conn
+	for i := 0; i < parallel_dial_total; {
+		select {
+		case err = <- done: i++
+		case c := <- result:
+			if conn == nil {
+				cancel()
+				conn = c
+			} else {
+				c.Close()
+				c = nil
+			}
+		}
+	}
+	close(result)
+	close(done)
+	if conn != nil {
+		err = nil
+	}
+	return conn, err
+}
+
 
 // I don't foresee any benefit from dtls, so let's wait for DNS over QUIC 
 func (XTransport *XTransport) FetchDoT(name string, serverProto string, ctx *common.TLSContext, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
@@ -424,7 +508,7 @@ Go:
 		}
 	}
 	if err != nil {
-		dlog.Debugf("request error-[%s]", err)
+		common.Program_dbg_full_log("request error-[%s]", err)
 		if strings.Contains(err.Error(), "handshake failure") {
 			dlog.Error("HTTPS handshake failure")
 		}

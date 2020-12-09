@@ -65,7 +65,6 @@ func main() {
 func (app *App) AppMain() {
 	if err := configuration.ConfigLoad(app.proxy, app.flags); err != nil {
 		panic(err)
-		os.Exit(1)
 	}
 	pid, err := behaviors.NewPidFile()
 	if err != nil {

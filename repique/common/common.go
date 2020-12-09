@@ -181,6 +181,10 @@ Go:
 
 type DialFn func(network, address string) (net.Conn, error)
 
+type Dialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
+
 func GetDialer(network string, ifi *string, timeout time.Duration, keepAlive time.Duration) (*net.Dialer, error) {
 	var addr net.Addr
 	var err error
@@ -207,12 +211,52 @@ func Dial(network, address string, ifi *string, timeout time.Duration, keepAlive
 	}
 	if d, err := GetDialer(network, ifi, timeout, keepAlive); err == nil {
 		if ctx == nil {
-			return d.Dial(network, address)
+			return ParallelDialWithDialer(context.Background(), d, network, address, parallel_dial_total)
 		}
-		return d.DialContext(ctx, network, address)
+		return ParallelDialWithDialer(ctx, d, network, address, parallel_dial_total)
 	} else {
 		return nil, err
 	}
+}
+
+const parallel_dial_total = 2
+
+//memory grows; await on goose's fixing
+func ParallelDialWithDialer(ctx context.Context, dialer Dialer, network, addr string, races int) (net.Conn, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	var result chan net.Conn = make(chan net.Conn)
+	var done chan error = make(chan error, races)
+	var p = func() {
+		conn, err := dialer.DialContext(ctx, network, addr)
+		if err == nil {
+			result <- conn
+		}
+		done <- err
+	}
+	for i := 0; i < races; i++ {
+		go p()
+	}
+	var err error
+	var conn net.Conn
+	for i := 0; i < races; {
+		select {
+		case err = <- done: i++
+		case c := <- result:
+			if conn == nil {
+				cancel()
+				conn = c
+			} else {
+				c.Close()
+				c = nil
+			}
+		}
+	}
+	close(result)
+	close(done)
+	if conn != nil {
+		err = nil
+	}
+	return conn, err
 }
 
 // for DNS Packet

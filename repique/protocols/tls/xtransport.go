@@ -37,6 +37,8 @@ const (
 var (
 //go:linkname varDefaultCipherSuitesTLS13 crypto/tls.varDefaultCipherSuitesTLS13
 varDefaultCipherSuitesTLS13 []uint16
+//go:linkname supportedSignatureAlgorithms crypto/tls.supportedSignatureAlgorithms
+supportedSignatureAlgorithms []tls.SignatureScheme
 )
 
 //go:linkname defaultCipherSuitesTLS13 crypto/tls.defaultCipherSuitesTLS13
@@ -90,6 +92,17 @@ func NewXTransport() *XTransport {
 	dlog.Debugf("default CipherSuites=%v", varDefaultCipherSuitesTLS13)
 	varDefaultCipherSuitesTLS13 = []uint16{TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256}
 	dlog.Debugf("init CipherSuites=%v", varDefaultCipherSuitesTLS13)
+	dlog.Debugf("default SignatureAlgorithms=%v", supportedSignatureAlgorithms)
+	supportedSignatureAlgorithms = []tls.SignatureScheme{
+	tls.Ed25519,
+	tls.ECDSAWithP256AndSHA256,
+	tls.ECDSAWithP384AndSHA384,
+	tls.ECDSAWithP521AndSHA512,
+	tls.PSSWithSHA384,
+	tls.PSSWithSHA512,
+	}
+	dlog.Debugf("init SignatureAlgorithms=%v", supportedSignatureAlgorithms)
+
 	return &XTransport
 }
 

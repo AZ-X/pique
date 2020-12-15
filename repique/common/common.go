@@ -292,12 +292,12 @@ Ret:
 // for DNS Packet
 func WriteDP(conn net.Conn, p []byte, clients ...*net.Addr) error {
 	Program_dbg_full_log("[Writing - RAW packet length]: %d", len(p))
+	var err error
 	if _, ok := conn.(net.PacketConn); ok {
 		if len(p) > MaxDNSUDPPacketSize {
 			
 			return errors.New("Packet too large")
 		}
-		var err error
 		if len(clients) > 0 {
 			_, err = conn.(net.PacketConn).WriteTo(p, *clients[0])
 		} else {
@@ -313,7 +313,13 @@ func WriteDP(conn net.Conn, p []byte, clients ...*net.Addr) error {
 	l := make([]byte, 2)
 	binary.BigEndian.PutUint16(l, uint16(len(p)))
 
-	_, err := (&net.Buffers{l, p}).WriteTo(conn)
+	if _, ok := conn.(*net.TCPConn); ok {
+		_, err = (&net.Buffers{l, p}).WriteTo(conn)
+	} else {
+		// tls,net,private method,mess up  @type buffersWriter interface -> writeBuffers(*Buffers) (int64, error)
+		l = append(l, p...)
+		_, err = conn.Write(l)
+	}
 	return err
 }
 

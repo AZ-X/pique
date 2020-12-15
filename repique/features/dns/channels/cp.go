@@ -15,6 +15,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 	
 
@@ -33,7 +34,7 @@ const (
 )
 
 type clockEntry struct {
-	*common.EPRing
+	*atomic.Value //*common.EPRing
 	rf, nx              bool
 }
 
@@ -169,12 +170,14 @@ func (cp *CP) _init(reloading bool) {
 				// always override nx or rf if ip exists 
 				if len(r["v4"]) > 0 {
 					key := preComputeCacheKey(dns.TypeA, name)
-					value := clockEntry{EPRing:common.LinkEPRing(r["v4"]...),}
+					value := clockEntry{Value:&atomic.Value{},}
+					value.Store(common.LinkEPRing(r["v4"]...))
 					cp.clock_cache.Add(key, value)
 				}
 				if len(r["v6"]) > 0 {
 					key := preComputeCacheKey(dns.TypeAAAA, name)
-					value := clockEntry{EPRing:common.LinkEPRing(r["v6"]...),}
+					value := clockEntry{Value:&atomic.Value{},}
+					value.Store(common.LinkEPRing(r["v6"]...))
 					cp.clock_cache.Add(key, value)
 				}
 			}
@@ -286,8 +289,9 @@ CP1:{
 			if ce.rf || ce.nx {
 				cp.setNegativeResponse(s, ce.rf, ce.nx)
 			} else {
-				ce.EPRing = ce.Next()
-				cp.setIPResponse(s, ce.Endpoint)
+				ep := ce.Load().(*common.EPRing)
+				ce.Store(ep.Next())
+				cp.setIPResponse(s,ep.Endpoint)
 			}
 			goto CP1_NOK
 		}

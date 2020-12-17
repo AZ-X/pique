@@ -86,13 +86,14 @@ func (l *Logger) Handle(s *Session) Channel {
 	}
 ConsoleLog:
 	answer := EMPTY
-	for _, rr := range s.Response.Answer {
+	for i := len(s.Response.Answer); i > 0; i-- {
+		rr := s.Response.Answer[i-1]
 		switch rr.Header().Rrtype {
 		case dns.TypeA:
-			answer = rr.(*dns.A).A.String()
+			answer = rr.(*dns.A).A.String() + " v4"
 			break
 		case dns.TypeAAAA:
-			answer = rr.(*dns.AAAA).AAAA.String()
+			answer = rr.(*dns.AAAA).AAAA.String()  + " v6"
 			break
 		}
 	}

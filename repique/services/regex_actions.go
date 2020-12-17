@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	
+
 	"github.com/AZ-X/pique/repique/common"
 )
 

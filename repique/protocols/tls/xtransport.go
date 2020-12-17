@@ -128,7 +128,8 @@ func (XTransport *XTransport) BuildTransport(server common.RegisteredServer, _ *
 	if XTransport.Transport == nil {
 		transport := &http.Transport{
 		ForceAttemptHTTP2:      true,//formal servers (DOH, DOT, https-gits, etc.) should provide H>1.1 infrastructure with tls>1.2
-		DisableKeepAlives:      XTransport.KeepAlive <= 0,
+		DisableKeepAlives:      XTransport.KeepAlive < 0,
+		//DisableKeepAlives:    true,   // in case some of horrible issues inside stdlib :)
 		DisableCompression:     true,
 		MaxIdleConns:           5,
 		MaxConnsPerHost:        0,
@@ -160,7 +161,7 @@ func (XTransport *XTransport) BuildTransport(server common.RegisteredServer, _ *
 				}
 				return nil, err
 			}
-			return c, c.(*tls.Conn).Handshake()
+			return c, nil // in case dialConn do Handshake there
 		}
 		XTransport.Transport = transport
 	}
@@ -232,6 +233,9 @@ func (th *TransportHolding) BuildTLS(XTransport *XTransport) (cfg *tls.Config) {
 			case stamps.SNIBlotUpTypeMoniker: cfg.ServerName = th.SNIShadow
 		}
 		cfg.VerifyPeerCertificate = func(certificates [][]byte, _ [][]*x509.Certificate) error {
+			if len(certificates) < 2 {
+				return errors.New("VerifyPeerCertificate: invaild certificates chain")
+			}
 			certs := make([]*x509.Certificate, len(certificates))
 			for i, asn1Data := range certificates {
 				cert, err := x509.ParseCertificate(asn1Data)
@@ -245,18 +249,22 @@ func (th *TransportHolding) BuildTLS(XTransport *XTransport) (cfg *tls.Config) {
 				DNSName:       th.SNIShadow, //SNIShadow must be a known trusted alias of the host
 				Intermediates: x509.NewCertPool(),
 			}
-			for _, cert := range certs {
+			
+			for _, cert := range certs[1:] {
 				opts.Intermediates.AddCert(cert)
 			}
-			for _, cert := range certs {
-				_, err := cert.Verify(opts)
-				if err == nil {
-					return nil
-				} else {
-					dlog.Debugf("[%v]", err)
+			_, err := certs[0].Verify(opts)
+			if err != nil {
+				switch err := err.(type) {
+				case x509.CertificateInvalidError:
+					return dlog.Errorf("[%v][%v(%v)]:%v", *th.Name, err.Cert.Subject, err.Cert.NotAfter, err)
+				case x509.HostnameError:
+					return dlog.Errorf("[%v]%v", *th.Name, err)
+				case x509.UnknownAuthorityError, x509.SystemRootsError:
+					return err
 				}
 			}
-			return errors.New("VerifyPeerCertificate failed")
+			return nil
 		}
 	}
 	return cfg
@@ -290,10 +298,7 @@ func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conc
 				conn, err = common.ParallelDialWithDialer(ctx, &tls.Dialer{NetDialer:dialer, Config:cfg}, netw, addr, parallel_dial_total)
 				return th.Name, conn, err
 			}
-			if err == nil {
-				return th.Name, tls.Client(conn, cfg), nil
-			}
-			return th.Name, nil, err
+			return th.Name, tls.Client(conn, cfg), nil
 		}
 	}
 	return nil
@@ -429,7 +434,7 @@ Go:
 		Method: method,
 		URL:    url,
 		Header: header,
-		Close:  XTransport.KeepAlive <= 0,
+		Close:  XTransport.KeepAlive < 0,
 	}
 	if ctx == nil {
 		ctx = th.Context

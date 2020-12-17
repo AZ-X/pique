@@ -492,9 +492,11 @@ func fetchDoTServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	for tries := retry; tries > 0; tries-- {
 		now := time.Now()
 		if bin, err = proxy.DoTQuery(name, nil, body, matchCert); err != nil {
-		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-			continue
-		}
+			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
+				continue
+			} else {
+				break
+			}
 		}
 		rtt = time.Since(now)
 		msg := &dns.Msg{}
@@ -589,7 +591,11 @@ func fetchDoHServerInfo(proxy *Proxy, name string, stamp *stamps.ServerStamp, is
 	for tries := retry; tries > 0; tries-- {
 		now := time.Now()
 		if bin, err = proxy.DoHQuery(name, info, nil, body, matchCert); err != nil {
-			continue
+			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
+				continue
+			} else {
+				break
+			}
 		}
 		rtt = time.Since(now)
 		msg := &dns.Msg{}

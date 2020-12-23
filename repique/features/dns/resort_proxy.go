@@ -138,7 +138,11 @@ func (proxy *Proxy) StartProxy() {
 	proxy.IsRefreshing.Store(false)
 	if len(proxy.UserName) == 0 || proxy.Child {
 		proxy.Wg = &sync.WaitGroup{}
-		remoteF := func(s *channels.Session) error {
+		shares := make([]int, len(proxy.ListenAddresses))
+		for idx, _ := range proxy.ListenAddresses {
+			shares[idx] = idx+1
+		}
+		proxy.Registers(shares, &stub{handler: func(s *channels.Session) error {
 			goto Go
 		IntFault:
 			return channels.Error_Stub_Internal
@@ -189,14 +193,9 @@ func (proxy *Proxy) StartProxy() {
 			elapsed := time.Since(timer).Nanoseconds() / 1000000
 			serverInfo.rtt.Add(float64(elapsed))
 			return nil
-		}
-		shares := make([]int, len(proxy.ListenAddresses))
-		for idx, _ := range proxy.ListenAddresses {
-			shares[idx] = idx+1
-		}
-		proxy.Registers(shares, &remote{handler:remoteF})
+		}})
 	}
-	
+
 	for idx, listenAddrStr := range proxy.ListenAddresses {
 		proxy.addDNSListener(listenAddrStr, idx+1)
 	}
@@ -342,21 +341,19 @@ func (proxy *Proxy) DoTQuery(name string, ctx *common.TLSContext, request *[]byt
 }
 
 
-type remote struct {
-	f channels.FChannelByName
+type stub struct {
 	handler func(*channels.Session) error
 }
 
-func (r *remote) Name() string {
-	return channels.Channel_Remote
+func (s *stub) Name() string {
+	return channels.Channel_Stub
 }
 
-func (a *remote) Init(cfg *channels.Config, f channels.FChannelByName) {
-	a.f = f
+func (_ *stub) Init(cfg *channels.Config, f channels.FChannelByName) {
 }
 
-func (a *remote) Handle(s *channels.Session) channels.Channel {
-	if err := a.handler(s); err == nil {
+func (_s *stub) Handle(s *channels.Session) channels.Channel {
+	if err := _s.handler(s); err == nil {
 		s.LastState = channels.R_OK
 	} else {
 		s.LastError = err
@@ -366,13 +363,14 @@ func (a *remote) Handle(s *channels.Session) channels.Channel {
 			s.LastState = channels.R_NOK
 		}
 	}
-	return a.f(channels.StateNChannel[s.LastState])
+	s.State |= s.LastState
+	return nil
 }
 
 // how different
 var svrName = channels.NonSvrName
 func (proxy *Proxy) processIncomingQuery(clientProto string, query []byte, clientAddr *net.Addr, clientPc net.Conn, idx int) {
-	session := &channels.Session{RawIn:&query, Listener:idx, ServerName:&svrName, IsUDPClient:clientProto == "udp"}
+	session := &channels.Session{RawIn:&query, Listener:idx, ServerName:&svrName, IsUDPClient:clientProto == "udp", Rep_job:&sync.Once{}}
 	proxy.Handle(session)
 	if err := common.WriteDP(clientPc, *session.RawOut, clientAddr); err != nil {
 		dlog.Debug(err)

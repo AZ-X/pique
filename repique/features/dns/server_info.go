@@ -249,6 +249,14 @@ func (serversInfo *ServersInfo) getOne(s *channels.Session) *ServerInfo {
 	if serversCount <= 0 {
 		return nil
 	}
+	if s.ServerName != nil && *s.ServerName != channels.NonSvrName {
+		for _, svr := range servers {
+			if svr.Name == *s.ServerName {
+				return svr
+			}
+		}
+		return nil
+	}
 	var candidate int
 	switch serversInfo.LbStrategy {
 	case LBStrategyFirst:

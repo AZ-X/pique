@@ -425,6 +425,6 @@ nodata_ttl = 720
 #    { server_name='example-server-2', via=['sdns://gRIxMzcuNzQuMjIzLjIzNDo0NDM'] }
 # ]
 
-# routes = [
-#   { server_name='*', via=['*'] },
-#]
+ routes = [
+   { server_name='*', via=['*'] },
+]

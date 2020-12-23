@@ -1,6 +1,7 @@
 package channels
 
 import (
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -68,4 +69,7 @@ type Session struct {
 	LastError                              error
 	IsUDPClient                            bool
 	ID                                     uint16
+	Rep_job                                *sync.Once
 }
+
+

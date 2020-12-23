@@ -50,10 +50,10 @@
 # can also be mapped to domain names or regular expressions using all of the possibilities
 
 # RF /\.google\.com\.$
-# RF /^ads?\..*$
+# RF /^ads?\.
 
 # NX /\.google\.com\.$
-# NX /^ads?\..*$
+# NX /^ads?\.
 #///////////////////////////////////////////////////////////////////////////////////////////////
 # Controls of DNS cache; No Cache=NC (No Retrieve but Store)
 # Indicate to query upstreams instead of using cache
@@ -131,18 +131,18 @@ RF /geo\.yahoo\.com\.$ /udc\.yahoo\.com\.$
 
 # github&aws......fruIT&apple.....hoo.^$^
 
-NX /^ad\..*
-NX /^ads\..*
-NX /^banner\..*
-NX /^banners\..*
-NX /^creatives\..*
-NX /^oas\..*
-NX /^oascentral\..*        # inline comments are allowed after whitespaces and a pound sign
-NX /^stats\..*
-NX /^tag\..*
-NX /^telemetry\..*
-NX /^tracker\..*
-NX /.*\.local\.$
+NX /^ad\.
+NX /^ads\.
+NX /^banner\.
+NX /^banners\.
+NX /^creatives\.
+NX /^oas\.
+NX /^oascentral\.        # inline comments are allowed after whitespaces and a pound sign
+NX /^stats\.
+NX /^tag\.
+NX /^telemetry\.
+NX /^tracker\.
+NX /\.local\.$
 NX /eth0.\.me\.$
 NX /.*\.workgroup\.$
 NX /\.in-addr\.arpa\.$
@@ -154,3 +154,6 @@ NX /\.in-addr\.arpa\.$
 8.8.8.8                        dns.google.com.
 8.8.4.4                        dns.google.com.
 #[2001:4860:4860::]             dns.google.com. # NO_IPV6
+
+PL time.windows.com. time.nist.gov. time-nw.nist.gov. time-a.nist.gov. time-b.nist.gov. pool.ntp.org.
+

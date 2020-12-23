@@ -15,6 +15,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	
@@ -31,11 +32,14 @@ import (
 const (
 	RF                  = "RF"
 	NX                  = "NX"
+	NC                  = "NC"
+	PL                  = "PL"
 )
 
 type clockEntry struct {
 	*atomic.Value //*common.EPRing
-	rf, nx              bool
+	rf, nx, nc            bool
+	pll, plh              *int
 }
 
 type inCacheResponse struct {
@@ -55,6 +59,9 @@ type CP struct {
 	actions        *services.Regex_Actions
 	clock_cache    *conceptions.CloakCache
 	cache          *conceptions.Cache
+	startup        *sync.Once
+	pll, plh       *int
+	preloadings    []*string //domains
 }
 
 func (cp *CP) Name() string {
@@ -83,6 +90,8 @@ func (cp *CP) _init(reloading bool) {
 		cloaks := make(map[string]map[string][]*common.Endpoint)
 		var nxs, rfs []string
 		ips := make([]struct{*common.Endpoint; Exps []string}, 0)
+		pls := make(map[string][]*string)
+		startup := "#"
 		exp := regexp.MustCompile(`(?m)^(?:[ ]*(?P<target>[\w.:\[\]\%]+)[ ]+(?P<patterns>[^ #\n]{1}[^ \r\n]+(?:[ ]+[^ #\n]{1}[^ \r\n]+)*))?[ ]*(?:[ ]+#(?P<comment>[^\r\n]*))?(?:\r)?$|(?:^[ ]*#(?P<commentline>[^\r\n]*)(?:\r)?$)|(?:^(?P<unrecognized>[^\r\n]*)(?:\r)?$)`)
 		exp.Longest()
 		whitespaces := regexp.MustCompile(`[ ]+`)
@@ -96,11 +105,13 @@ func (cp *CP) _init(reloading bool) {
 				continue
 			}
 			var err error
-			var rf, nx bool
+			var rf, nx, nc, pl bool
 			var ip *common.Endpoint
 			switch match[exp.SubexpIndex("target")] {
 			case RF: rf = true
 			case NX: nx = true
+			case NC: nc = true
+			case PL: pl = true
 			default: if ip, err = common.ResolveEndpoint(match[exp.SubexpIndex("target")]); err != nil {
 					dlog.Errorf("at line %d, err:%v", line+1, err)
 					panic("unrecognized ip address found in black_cloaking_routine, check it before use")
@@ -108,9 +119,20 @@ func (cp *CP) _init(reloading bool) {
 			}
 			patterns := whitespaces.Split(match[exp.SubexpIndex("patterns")], -1)
 			var exps []string
+			var pl_name *string
+			var pl_domains []*string
 			for _, str := range patterns {
 				pattern := strings.TrimPrefix(str, `/`)
 				if len(pattern) == len(str) {
+					if pl {
+						pattern := strings.TrimSuffix(pattern, `#`)
+						if len(pattern) == len(str) {
+							pl_domains = append(pl_domains, &pattern)
+						} else {
+							pl_name = &pattern
+						}
+						continue
+					}
 					cloaking, found := cloaks[pattern]
 					if !found {
 						cloaking = make(map[string][]*common.Endpoint)
@@ -119,6 +141,8 @@ func (cp *CP) _init(reloading bool) {
 						cloaking["rf"] = nil
 					} else if nx {
 						cloaking["nx"] = nil
+					} else if nc {
+						cloaking["nc"] = nil
 					} else if ip.IP.To4() != nil {
 						cloaking["v4"] = append(cloaking["v4"], ip)
 					} else {
@@ -130,6 +154,8 @@ func (cp *CP) _init(reloading bool) {
 						rfs= append(rfs, pattern)
 					} else if nx {
 						nxs= append(nxs, pattern)
+					} else if nc || pl {
+						panic("pattern to NC/PL: only fully qualified domain names are supported")
 					} else {
 						exps = append(exps, pattern)
 					}
@@ -137,6 +163,16 @@ func (cp *CP) _init(reloading bool) {
 			}
 			if len(exps) != 0 {
 				ips = append(ips, struct{*common.Endpoint; Exps []string}{ip,exps})
+			}
+			if len(pl_domains) != 0 {
+				if pl_name == nil {
+					pl_name = &startup
+				}
+				if entry, ok := pls[*pl_name]; ok {
+					pls[*pl_name] = append(entry, pl_domains...)
+				} else {
+					pls[*pl_name] = pl_domains
+				}
 			}
 		}
 		if len(rfs) != 0 || len(nxs) != 0 || len(ips) != 0 {
@@ -158,16 +194,17 @@ func (cp *CP) _init(reloading bool) {
 			for name,r := range cloaks {
 				_, rf := r["rf"]
 				_, nx := r["nx"]
-				if rf || nx {
+				_, nc := r["nc"]
+				if rf || nx || nc {
 					key := preComputeCacheKey(dns.TypeA, name)
-					value := clockEntry{rf:rf, nx:nx,}
+					value := clockEntry{rf:rf, nx:nx, nc:nc}
 					cp.clock_cache.Add(key, value)
 					if cp.BlockIPv6 != nil && !*cp.BlockIPv6 {
 						key = preComputeCacheKey(dns.TypeAAAA, name)
 						cp.clock_cache.Add(key, value)
 					}
 				}
-				// always override nx or rf if ip exists 
+				// always override nx or rf or nc if ip exists 
 				if len(r["v4"]) > 0 {
 					key := preComputeCacheKey(dns.TypeA, name)
 					value := clockEntry{Value:&atomic.Value{},}
@@ -179,6 +216,31 @@ func (cp *CP) _init(reloading bool) {
 					value := clockEntry{Value:&atomic.Value{},}
 					value.Store(common.LinkEPRing(r["v6"]...))
 					cp.clock_cache.Add(key, value)
+				}
+			}
+			var pll, plh *int = new(int), new(int)
+			for name, ds := range pls {
+				*pll = *plh
+				if name == startup {
+					*plh = *pll + len(ds)
+					cp.pll = pll
+					cp.plh = plh
+					cp.startup = &sync.Once{}
+					cp.preloadings = append(cp.preloadings, ds...)
+				} else {
+					if len(ds) < 2 {
+						panic("pattern to PL: check domains for " + name)
+					}
+					*plh = *pll + len(ds) - 1
+					leading := *ds[0]
+					key := preComputeCacheKey(dns.TypeA, leading)
+					value := clockEntry{pll:pll, plh:plh}
+					cp.clock_cache.Add(key, value)
+					if cp.BlockIPv6 != nil && !*cp.BlockIPv6 {
+						key = preComputeCacheKey(dns.TypeAAAA, leading)
+						cp.clock_cache.Add(key, value)
+					}
+					cp.preloadings = append(cp.preloadings, ds[1:]...)
 				}
 			}
 			if cp.CloakTTL == nil {
@@ -264,6 +326,24 @@ func (cp *CP) match(s *Session, target *string) bool {
 	return false
 }
 
+func preloading(r Channel, domains []*string, ipv6 bool, idx int) {
+	tmp := &Session{Listener:idx, ServerName:&svrName, Rep_job:&sync.Once{}}
+	tmp.LastState = A1_OK
+	for _, str := range domains {
+		domain := *str
+		var s Session = *tmp
+		s.Request = &dns.Msg{}
+		t := dns.TypeA
+		if ipv6 {
+			t = dns.TypeAAAA
+		}
+		s.Request.SetQuestion(domain, t)
+		s.Request.Id = 0
+		s.Question = &s.Request.Question[0]
+		Handle(r, &s)
+	}
+}
+
 func (cp *CP) Handle(s *Session) Channel {
 	if s.LastState == A1_OK {
 		goto CP1
@@ -288,6 +368,13 @@ CP1:{
 			ce := cachedAny.(clockEntry)
 			if ce.rf || ce.nx {
 				cp.setNegativeResponse(s, ce.rf, ce.nx)
+			} else if ce.nc {
+				goto CP1_match
+			} else if ce.pll != nil && cp.cache != nil {
+				domains := cp.preloadings[*ce.pll:*ce.plh]
+				ipv6 := s.Qtype == dns.TypeAAAA
+				go preloading(cp, domains, ipv6, s.Listener)
+				goto CP1_cache
 			} else {
 				ep := ce.Load().(*common.EPRing)
 				ce.Store(ep.Next())
@@ -296,6 +383,7 @@ CP1:{
 			goto CP1_NOK
 		}
 	}
+CP1_cache:
 	if cp.cache != nil {
 		cachedAny, ok := cp.cache.Get(*s.hash_key)
 		if ok {
@@ -307,6 +395,7 @@ CP1:{
 			goto CP1_NOK
 		}
 	}
+CP1_match:
 	if cp.match(s, &s.Name) {
 		goto CP1_NOK
 	}
@@ -314,6 +403,16 @@ CP1:{
 	goto StateN
 	}
 CP2:{
+	if cp.startup != nil {
+		// post-remote
+		cp.startup.Do(func() {
+			domains := cp.preloadings[*cp.pll:*cp.plh]
+			go preloading(cp, domains, false, s.Listener)
+			if cp.BlockIPv6 != nil && !*cp.BlockIPv6 {
+				go preloading(cp, domains, true, s.Listener)
+			}
+		})
+	}
 	for _, rr := range s.Response.Answer {
 		header := rr.Header()
 		if header.Class != dns.ClassINET || header.Rrtype != dns.TypeCNAME {

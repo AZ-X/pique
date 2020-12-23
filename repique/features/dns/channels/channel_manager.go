@@ -17,7 +17,8 @@ const (
 	Channel_Validation   = "V"
 	Channel_Amender      = "A"
 	Channel_CP           = "CP" // caches and patterns; unitized handling
-	Channel_Remote       = "Resolver" // server selection & query over recursive resolvers
+	Channel_Stub         = "Stub" // query over recursive resolvers
+	Channel_Remote       = "Resolver" // server selection
 	Channel_Logger       = "Log"
 
 	Dot                  = "."
@@ -67,12 +68,14 @@ func (mgr *ChannelMgr) InitChannels(individual []int, shares []int) {
 		mgr.Register(idx, &Logger{})
 		mgr.Register(idx, &CP{})
 		mgr.Register(idx, &Validation{})
+		mgr.Register(idx, &Remote{})
 	}
 	if len(shares) != 0 {
 		mgr.Registers(shares, &Amender{})
 		mgr.Registers(shares, &Logger{})
 		mgr.Registers(shares, &CP{})
 		mgr.Registers(shares, &Validation{})
+		mgr.Registers(shares, &Remote{})
 	}
 }
 
@@ -97,7 +100,11 @@ func (mgr *ChannelMgr) Registers(shares []int, ch Channel) {
 // can bypass default only if initial state != star
 const handler_safe_throttle = 20
 func (mgr *ChannelMgr) Handle(session *Session) {
-	for channel, counter := mgr.channels_list[session.Listener][Channel_Starter], 0; counter < handler_safe_throttle && channel != nil; counter++ {
+	Handle(mgr.channels_list[session.Listener][Channel_Starter], session)
+}
+
+func Handle(ch Channel, session *Session) {
+	for channel, counter := ch, 0; counter < handler_safe_throttle && channel != nil; counter++ {
 		channel = channel.Handle(session)
 	}
 }

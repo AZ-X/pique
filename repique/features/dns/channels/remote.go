@@ -17,30 +17,43 @@ var (
 	Error_Stub_Timeout  = &Error{Ex:"remote: timeout"}
 )
 
+type Remote struct {
+	f FChannelByName
+	cache_enabled bool
+}
 
-//type Remote struct {
-//	f channels.FChannelByName
-//	handler func(*channels.Session) error
-//}
-//
-//func (r *Remote) Name() string {
-//	return channels.Channel_Remote
-//}
-//
-//func (a *Remote) Init(cfg *channels.Config, f channels.FChannelByName) {
-//	a.f = f
-//}
-//
-//func (a *Remote) Handle(s *channels.Session) channels.Channel {
-//	if err := a.handler(s); err == nil {
-//		s.LastState = channels.R_OK
-//	} else {
-//		s.LastError = err
-//		if s.Response != nil {
-//			s.LastState = channels.RCP_NOK
-//		} else {
-//			s.LastState = channels.R_NOK
-//		}
-//	}
-//	return a.f(channels.StateNChannel[s.LastState])
-//}
+func (r *Remote) Name() string {
+	return Channel_Remote
+}
+
+func (r *Remote) Init(cfg *Config, f FChannelByName) {
+	r.f = f
+	r.cache_enabled = cfg.CacheSize != nil
+}
+
+func (r *Remote) Handle(s *Session) Channel {
+	r.f(Channel_Stub).Handle(s)
+	if r.cache_enabled && s.LastState != R_OK {
+		s.Rep_job.Do(func () {
+			var dup Session = *s
+			go repeatRequest(r, &dup)
+		})
+	}
+	return r.f(StateNChannel[s.LastState])
+}
+
+const cache_insurance = 10
+var svrName = NonSvrName
+func repeatRequest(r Channel, s *Session) {
+	for i:=0; i < cache_insurance; i++ {
+		if i >= cache_insurance/2 {
+			s.ServerName = &svrName
+		}
+		Handle(r, s)
+		if s.State&R_OK == R_OK {
+			break
+		}
+	}
+}
+
+

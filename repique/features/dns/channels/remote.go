@@ -36,7 +36,8 @@ func (r *Remote) Handle(s *Session) Channel {
 	if r.cache_enabled && s.LastState != R_OK {
 		s.Rep_job.Do(func () {
 			var dup Session = *s
-			go repeatRequest(r, &dup)
+			dup.LastState = A1_OK
+			go repeatRequest(r.f(Channel_CP), &dup)
 		})
 	}
 	return r.f(StateNChannel[s.LastState])
@@ -45,12 +46,14 @@ func (r *Remote) Handle(s *Session) Channel {
 const cache_insurance = 10
 var svrName = NonSvrName
 func repeatRequest(r Channel, s *Session) {
+	state := s.LastState
 	for i:=0; i < cache_insurance; i++ {
 		if i >= cache_insurance/2 {
 			s.ServerName = &svrName
 		}
+		s.LastState = state
 		Handle(r, s)
-		if s.State&R_OK == R_OK {
+		if s.State&R_OK == R_OK || s.State&CP1_NOK == CP1_NOK {
 			break
 		}
 	}

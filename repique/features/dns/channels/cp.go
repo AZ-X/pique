@@ -127,6 +127,9 @@ func (cp *CP) _init(reloading bool) {
 					if pl {
 						pattern := strings.TrimSuffix(pattern, `#`)
 						if len(pattern) == len(str) {
+							if !dns.IsFqdn(pattern) {
+								panic("pattern to PL: only fully qualified domain names are supported ->"+pattern)
+							}
 							pl_domains = append(pl_domains, &pattern)
 						} else {
 							pl_name = &pattern
@@ -221,6 +224,15 @@ func (cp *CP) _init(reloading bool) {
 			var pll, plh *int = new(int), new(int)
 			for name, ds := range pls {
 				*pll = *plh
+				mistake_proofing := make(map[string]interface{}, len(ds)+1)
+				mistake_proofing[name] = nil
+				for _, str := range ds {
+					key := *str
+					if _, found := mistake_proofing[key]; found {
+						panic("pattern to PL: check duplicate domains for " + name + " - " + key)
+					}
+					mistake_proofing[key] = nil
+				}
 				if name == startup {
 					*plh = *pll + len(ds)
 					cp.pll = pll
@@ -356,6 +368,7 @@ StateN:
 	s.State |= s.LastState
 	return cp.f(StateNChannel[s.LastState])
 CP1_NOK:
+	*s.ServerName = NonSvrName
 	s.LastState = CP1_NOK
 	goto StateN
 CP1:{

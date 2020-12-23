@@ -104,8 +104,8 @@ func (mgr *ChannelMgr) Handle(session *Session) {
 }
 
 func Handle(ch Channel, session *Session) {
-	for channel, counter := ch, 0; counter < handler_safe_throttle && channel != nil; counter++ {
-		channel = channel.Handle(session)
+	for counter := 0; counter < handler_safe_throttle && ch != nil; counter++ {
+		ch = ch.Handle(session)
 	}
 }
 

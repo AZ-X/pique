@@ -323,7 +323,7 @@ Go:
 	var packet []byte
 	for tries := 2; tries > 0; tries-- {
 		if err = common.WriteDP(pc, *binQuery); err != nil {
-			common.Program_dbg_full_log(err)
+			common.Program_dbg_full_log(err.Error())
 			common.Program_dbg_full_log("dnscrypt Query E03")
 			continue
 		}

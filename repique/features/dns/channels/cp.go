@@ -221,6 +221,7 @@ func (cp *CP) _init(reloading bool) {
 					cp.clock_cache.Add(key, value)
 				}
 			}
+			cp.preloadings = nil
 			var pll, plh *int = new(int), new(int)
 			for name, ds := range pls {
 				*pll = *plh
@@ -235,29 +236,39 @@ func (cp *CP) _init(reloading bool) {
 				}
 				if name == startup {
 					*plh = *pll + len(ds)
-					cp.pll = pll
-					cp.plh = plh
+					l, h := *pll, *plh
+					cp.pll = &l
+					cp.plh = &h
 					cp.startup = &sync.Once{}
 					cp.preloadings = append(cp.preloadings, ds...)
+					for _, str := range cp.preloadings[*cp.pll:*cp.plh] {
+						common.Program_dbg_full_log("PL startup %s", *str)
+					}
 				} else {
 					if len(ds) < 2 {
 						panic("pattern to PL: check domains for " + name)
 					}
 					*plh = *pll + len(ds) - 1
+					l, h := *pll, *plh
 					leading := *ds[0]
 					key := preComputeCacheKey(dns.TypeA, leading)
-					value := clockEntry{pll:pll, plh:plh}
+					value := clockEntry{pll:&l, plh:&h}
 					cp.clock_cache.Add(key, value)
 					if cp.BlockIPv6 != nil && !*cp.BlockIPv6 {
 						key = preComputeCacheKey(dns.TypeAAAA, leading)
 						cp.clock_cache.Add(key, value)
 					}
 					cp.preloadings = append(cp.preloadings, ds[1:]...)
+					for _, str := range cp.preloadings[*value.pll:*value.plh] {
+						common.Program_dbg_full_log("PL leading:%s - %s", leading, *str)
+					}
 				}
 			}
 			if cp.CloakTTL == nil {
 				cp.CloakTTL = &ttl
 			}
+		} else {
+			cp.clock_cache = nil //reloading
 		}
 	}
 	if !reloading && cp.CacheSize != nil {
@@ -384,9 +395,12 @@ CP1:{
 			} else if ce.nc {
 				goto CP1_match
 			} else if ce.pll != nil && cp.cache != nil {
-				domains := cp.preloadings[*ce.pll:*ce.plh]
-				ipv6 := s.Qtype == dns.TypeAAAA
-				go preloading(cp, domains, ipv6, s.Listener)
+				s.Rep_job.Do(func() {
+					domains := cp.preloadings[*ce.pll:*ce.plh]
+					ipv6 := s.Qtype == dns.TypeAAAA
+					common.Program_dbg_full_log("start preloading...")
+					go preloading(cp, domains, ipv6, s.Listener)
+				})
 				goto CP1_cache
 			} else {
 				ep := ce.Load().(*common.EPRing)

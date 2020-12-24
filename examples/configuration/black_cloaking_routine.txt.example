@@ -57,7 +57,7 @@
 #///////////////////////////////////////////////////////////////////////////////////////////////
 # Controls of DNS cache; No Cache=NC (No Retrieve but Store)
 # Indicate to query upstreams instead of using cache
-# When combining with WINDOWS_FILEMON, it could be considered as disabling and refreshing certain entries in cache temporarily
+# When combining with WINDOWS_FILEMON, it could be considered as discarding and refreshing certain entries in cache temporarily
 # Notice: only fully qualified domain names are supported
 
 

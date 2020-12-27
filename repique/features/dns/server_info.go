@@ -83,28 +83,26 @@ type ServerInfo struct {
 	rtt                *mm.ConcurrentMovingAverage
 }
 
-type LBStrategy int
+type RenceMethod int
 
 const (
-	LBStrategyNone = LBStrategy(iota)
-	LBStrategyP2
-	LBStrategyPH
-	LBStrategyFirst
-	LBStrategyRandom
+	RenceMethodNone = RenceMethod(iota)
+	RenceMethodFirst
+	RenceMethodPH
+	RenceMethodRandom
 )
 
-const DefaultLBStrategy = LBStrategyP2
 
 type ServersInfo struct {
 	inner             []*ServerInfo
 	innerFuncs        *map[int]func(qName *string)[]*ServerInfo
 	innerGroups       *map[int]map[int][]*ServerInfo
 	RegisteredServers []common.RegisteredServer
-	LbStrategy        LBStrategy
+	RenceMethod
 }
 
 func NewServersInfo() *ServersInfo {
-	return &ServersInfo{LbStrategy: DefaultLBStrategy, RegisteredServers: make([]common.RegisteredServer, 0)}
+	return &ServersInfo{RegisteredServers: make([]common.RegisteredServer, 0)}
 }
 
 func (serversInfo *ServersInfo) registerServer(name string, stamp *stamps.ServerStamp) {
@@ -258,15 +256,11 @@ func (serversInfo *ServersInfo) getOne(s *channels.Session) *ServerInfo {
 		return nil
 	}
 	var candidate int
-	switch serversInfo.LbStrategy {
-	case LBStrategyFirst:
+	switch serversInfo.RenceMethod {
+	case RenceMethodFirst:
 		candidate = 0
-	case LBStrategyPH:
-		candidate = rand.Intn(common.Max(common.Min(serversCount, 2), serversCount/2))
-	case LBStrategyRandom:
-		candidate = rand.Intn(serversCount)
 	default:
-		candidate = rand.Intn(common.Min(serversCount, 2))
+		candidate = rand.Intn(serversCount)
 	}
 	serverInfo := servers[candidate]
 	dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms", s.ID, s.Name, serverInfo.Name, int(serverInfo.rtt.Avg()))

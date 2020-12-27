@@ -40,20 +40,11 @@ type Main struct {
 	LogLevel                 int                         `toml:"log_level"`
 	LogFile                  *string                     `toml:"log_file"`
 	UseSyslog                bool                        `toml:"use_syslog"`
-	OfflineMode              bool                        `toml:"offline_mode"`
 	ForceTCP                 bool                        `toml:"force_tcp"`
-	SourceRequireDNSSEC      bool                        `toml:"require_dnssec"`
-	SourceRequireNoLog       bool                        `toml:"require_nolog"`
-	SourceRequireNoFilter    bool                        `toml:"require_nofilter"`
-	SourceDNSCrypt           bool                        `toml:"dnscrypt_servers"`
-	SourceDoH                bool                        `toml:"doh_servers"`
-	SourceDoT                bool                        `toml:"dot_servers"`
-	SourceIPv4               bool                        `toml:"ipv4_servers"`
-	SourceIPv6               bool                        `toml:"ipv6_servers"`
 	TLSDisableSessionTickets bool                        `toml:"tls_disable_session_tickets"`
 	NetprobeTimeout          int                         `toml:"netprobe_Timeout"`
 	CertRefreshDelay         int                         `toml:"cert_refresh_delay"`
-	Timeout                  int                         `toml:"Timeout"`
+	Timeout                  int                         `toml:"timeout"`
 	KeepAlive                int                         `toml:"keepalive"`
 	ServerNames              []string                    `toml:"server_names"`
 	DisabledServerNames      []string                    `toml:"disabled_server_names"`
@@ -64,7 +55,7 @@ type Main struct {
 	LocalInterface           string                      `toml:"network_interface"`
 	NetprobeAddress          string                      `toml:"netprobe_address"`
 	UserName                 string                      `toml:"user_name"`
-	LBStrategy               string                      `toml:"lb_strategy"`
+	RenceMethod              string                      `toml:"rence_method"`
 	Groups                   []GroupsConfig              `toml:"groups"`
 	GroupsListener           []ListenerAssociation       `toml:"listener_association"`
 }
@@ -210,25 +201,16 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	if len(config.ListenAddresses) == 0 {
 		panic("check local IP/port configuration")
 	}
+	proxy.ServersInfo = &dns.ServersInfo{}
 
-	lbStrategy := dns.DefaultLBStrategy
-	switch strings.ToLower(config.LBStrategy) {
-	case "":
-		// default
-	case "p2":
-		lbStrategy = dns.LBStrategyP2
-	case "ph":
-		lbStrategy = dns.LBStrategyPH
+	switch strings.ToLower(config.RenceMethod) {
 	case "fastest":
 	case "first":
-		lbStrategy = dns.LBStrategyFirst
-	case "random":
-		lbStrategy = dns.LBStrategyRandom
+		proxy.ServersInfo.RenceMethod = dns.RenceMethodFirst
+	case "random": fallthrough
 	default:
-		dlog.Warnf("unknown load balancing strategy: [%s]", config.LBStrategy)
+		proxy.ServersInfo.RenceMethod = dns.RenceMethodRandom
 	}
-	proxy.ServersInfo = &dns.ServersInfo{}
-	proxy.ServersInfo.LbStrategy = lbStrategy
 
 	if configRoutes := config.AnonymizedDNS.Routes; configRoutes != nil {
 		routes := make(map[string][]string)
@@ -241,16 +223,16 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	if err := behaviors.NetProbe(config.NetprobeAddress, proxy.LocalInterface, config.NetprobeTimeout); err != nil {
 		return err
 	}
-	if !config.OfflineMode {
-		if err := config.loadSources(proxy); err != nil {
-			return err
-		}
-		if len(proxy.RegisteredServers) == 0 {
-			return errors.New("No servers configured")
-		}
-		config.loadTags(proxy)
-		config.loadGroupsAssociation(proxy)
+
+	if err := config.loadSources(proxy); err != nil {
+		return err
 	}
+	if len(proxy.RegisteredServers) == 0 {
+		return errors.New("No servers configured")
+	}
+	config.loadTags(proxy)
+	config.loadGroupsAssociation(proxy)
+
 	config.loadChannels(proxy)
 	if proxy.Routes != nil && len(*proxy.Routes) > 0 {
 		hasSpecificRoutes := false
@@ -442,15 +424,6 @@ func (config *Config) loadChannels(proxy *dns.Proxy) {
 
 func (config *Config) loadSources(proxy *dns.Proxy) error {
 	var requiredProps stamps.ServerInformalProperties
-	if config.SourceRequireDNSSEC {
-		requiredProps |= stamps.ServerInformalPropertyDNSSEC
-	}
-	if config.SourceRequireNoLog {
-		requiredProps |= stamps.ServerInformalPropertyNoLog
-	}
-	if config.SourceRequireNoFilter {
-		requiredProps |= stamps.ServerInformalPropertyNoFilter
-	}
 	for cfgSourceName, cfgSource := range config.SourcesConfig {
 		if err := config.loadSource(proxy, requiredProps, cfgSourceName, &cfgSource); err != nil {
 			return err
@@ -505,30 +478,18 @@ func (config *Config) loadSource(proxy *dns.Proxy, requiredProps stamps.ServerIn
 		if includesName(config.DisabledServerNames, registeredserver.Name) {
 			continue
 		}
-		if config.SourceIPv4 || config.SourceIPv6 {
-			isIPv4, isIPv6 := true, false
-			if registeredserver.Stamp.Proto == stamps.StampProtoTypeDoH {
-				isIPv4, isIPv6 = true, true
-			}
-			if strings.HasPrefix(registeredserver.Stamp.ServerAddrStr, "[") {
-				isIPv4, isIPv6 = false, true
-			}
-			if !(config.SourceIPv4 == isIPv4 || config.SourceIPv6 == isIPv6) {
-				continue
-			}
-		}
 		if registeredserver.Stamp.Proto.String() == "Anonymized DNSCrypt" {
 			dlog.Debugf("applying [%s] to the set of available relays", registeredserver.Name)
 			proxy.RegisteredRelays = append(proxy.RegisteredRelays, registeredserver)
 		} else {
 			proto := registeredserver.Stamp.Proto.String()
 			switch {
-			case config.SourceDNSCrypt && proto == "DNSCrypt":
-			case config.SourceDoH && proto == "DoH":
+			case proto == "DNSCrypt":
+			case proto == "DoH":
 				if err := proxy.XTransport.BuildTransport(registeredserver, nil); err != nil {
 					panic(err)
 				}
-			case config.SourceDoT && proto == "DoT":
+			case proto == "DoT":
 				if err := proxy.XTransport.BuildTLS(registeredserver); err != nil {
 					panic(err)
 				}

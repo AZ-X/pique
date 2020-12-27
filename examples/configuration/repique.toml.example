@@ -134,39 +134,9 @@ max_clients = 250
 
 # user_name = 'nobody'
 
-
-## Require servers (from static + remote sources) to satisfy specific properties
-
-# Use servers reachable over IPv4
-ipv4_servers = true
-
-# Use servers reachable over IPv6 -- Do not enable if you don't have IPv6 connectivity
-ipv6_servers = false
-
-# Use servers implementing the DNS-over-HTTPS protocol
-doh_servers = true
-
-# Use servers implementing the DNS-over-TLS protocol
-dot_servers = true
-
-# Use servers implementing the DNSCrypt protocol
-# You only need it if you are not aware of local dnssec validation or use it for untrusted zones
-# or you just exclusively use this program as a last hop stub resolver
-dnscrypt_servers = true
-
-## Require servers defined by remote sources to satisfy specific properties
-
-# Server must support DNS security extensions (DNSSEC)
-# You cannot trust any validation result online unless you deployed additional program locally to perform validation
-require_dnssec = false
-
-# Server must not log user queries (declarative)
-require_nolog = true
-
-# Server must not enforce its own blacklist (for parental control, ads blocking...)
-require_nofilter = true
-
-# Server names to avoid even if they match all criteria
+# The program won't filter on servers because of your own selection
+# The only thing you might want to do is disable some in a large set temporarily
+# READ https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
 disabled_server_names = []
 
 
@@ -207,9 +177,10 @@ timeout = 5000
 keepalive = 30
 
 
-## Load-balancing strategy: 'p2' (default), 'ph', 'first' or 'random'
-
-# lb_strategy = 'p2'
+## Rence Method(indicate how to select upstreams): 'first' or 'random'(default)
+## The only thing called 'Strategy' is to put this in your mind: make a decision to speed first or privacy first
+## If you want speedy responses, choose 'first'; otherwise choose 'random'
+rence_method = 'random'
 
 
 ## Log level (0-6, default: 2 - 0 is very verbose, 6 only contains fatal errors)
@@ -269,13 +240,6 @@ netprobe_timeout = 60
 ## but nothing will be sent at all.
 
 netprobe_address = '9.9.9.9:53'
-
-
-## Offline mode - Do not use any remote encrypted servers.
-## The proxy will remain fully functional to respond to queries that
-## plugins can handle directly (static or dynamic cloaking ...)
-
-# offline_mode = false
 
 
 #######################################################################
@@ -395,6 +359,11 @@ nodata_ttl = 720
   minisign_key = '========>COPY PUB KEY HERE<========'
   prefix = ''
 
+## Offline mode - Do not use any upstreams.
+## The proxy will remain fully functional to respond to queries within the scope of black_cloaking_routine
+## How to use "offline mode"???
+## young age can say remove/comments all sources and groups related
+
 
 ################################
 #        Anonymized DNS        #
@@ -422,7 +391,6 @@ nodata_ttl = 720
 
 # routes = [
 #    { server_name='example-server-1', via=['anon-example-1', 'anon-example-2'] },
-#    { server_name='example-server-2', via=['sdns://gRIxMzcuNzQuMjIzLjIzNDo0NDM'] }
 # ]
 
  routes = [

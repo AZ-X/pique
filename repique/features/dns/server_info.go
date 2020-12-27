@@ -88,7 +88,6 @@ type RenceMethod int
 const (
 	RenceMethodNone = RenceMethod(iota)
 	RenceMethodFirst
-	RenceMethodPH
 	RenceMethodRandom
 )
 

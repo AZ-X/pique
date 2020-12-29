@@ -11,7 +11,8 @@
 # The standard format is: TARGET PATTERN [PATTERN2] [PATTERN3] ...
 #
 # Where TARGET is in dotted-quad notation for IPv4 or in colon-separated groups for IPv6 or shortenings in specialty
-# TARGET could be a special action, see ***********OTHER TARGETS*********** below
+# TARGET could be a special action
+# See ***********OTHER TARGETS*********** below
 # IPv6 address must be enclosed in square brackets
 # Where PATTERN or PATTERNs are strings separated by white spaces.
 #
@@ -43,28 +44,43 @@
 
 
 # *********************************OTHER TARGETS************************************************
-# *********************************OTHER TARGETS************************************************
+#                                  OTHER TARGETS
 # *********************************OTHER TARGETS************************************************
 #///////////////////////////////////////////////////////////////////////////////////////////////
 # Negative responses for NXDOMAIN=NX and REFUSED=RF entries 
+# Format is: RF [PATTERN1](DOMAIN/REGEX) [PATTERN2](DOMAIN/REGEX) ...
+# Format is: NX [PATTERN1](DOMAIN/REGEX) [PATTERN2](DOMAIN/REGEX) ...
+
 # can also be mapped to domain names or regular expressions using all of the possibilities
 
+# e.g.
 # RF /\.google\.com\.$
 # RF /^ads?\.
 
 # NX /\.google\.com\.$
 # NX /^ads?\.
+
+
 #///////////////////////////////////////////////////////////////////////////////////////////////
 # Controls of DNS cache; No Cache=NC (No Retrieve but Store)
+# Format is: NC [PATTERN1](DOMAIN) [PATTERN2](DOMAIN) ...
+
 # Indicate to query upstreams instead of using cache
 # When combining with WINDOWS_FILEMON, it could be considered as discarding and refreshing certain entries in cache temporarily
 # Notice: only fully qualified domain names are supported
 
-
+# e.g.
 # NC www.google.com.
 # NC www.microsoft.com.
+
+
 #///////////////////////////////////////////////////////////////////////////////////////////////
 # Preloading of DNS cache; Preloading=PL
+# Format is: PL [PATTERN1](DOMAIN) [PATTERN2](DOMAIN) ...
+# Format is: PL anyname#(GROUP NAME) [PATTERN2](DOMAIN) [PATTERN3](DOMAIN) ... 
+# Format is: PL [PATTERN1](DOMAIN) anyname#(GROUP NAME) [PATTERN3](DOMAIN) ...
+# Format is: PL [PATTERN1](DOMAIN) [PATTERN2](DOMAIN) anyname#(GROUP NAME) ...
+
 # Named preloading groups: any name ends with '#'
 # Indicate to query upstreams for predefined domains when certain query is ongoing
 # IT MIGHT BE A POWERFUL THING WHEN YOU ARE STILL PLAYING 'Cyberpunk 2077' OR TYING UP GROUPS OF CLOUD APPS
@@ -73,7 +89,9 @@
 # A line without named preloading groups is considered to a startup preloading group
 # Named preloading groups are taking action when first domain matched
 # Startup preloading group is taking action when program started or reloaded(WINDOWS_FILEMON) and any domain matched
+# Leading is the first PATTERN for a group (multiline)
 
+# e.g.
 # group name: e00; matching leading domain(trigger): www.example00.com; preloading domains: www.example0[1-8].com
 # PL e00# www.example00.com. www.example01.com. www.example02.com. www.example03.com.
 # PL e00# www.example05.com. www.example06.com. www.example07.com. www.example08.com.
@@ -85,9 +103,35 @@
 
 # startup preloading group
 # PL www.google.com. www.microsoft.com.
+#
+# same as 
+#
+# PL www.google.com. 
+# PL wwww.microsoft.com.
+
+
+#///////////////////////////////////////////////////////////////////////////////////////////////
+# Alias of DNS QNAME; Alias=AS
+# Format is: AS TARGET(DOMAIN) [PATTERN2](REGEX) [PATTERN3](REGEX) ...
+
+# Indicate to query upstreams by using a target domain instead of matched domains
+# IT IS USEFUL WHEN BYPASSING CERTAIN IP/CDN DISTRIBUTING/TEST (WEBS PRAISE IT AS LOAD BALANCE)
+# YOU USE IT ONLY IF YOU HAVE DONE A CONFIDENT CHECKUP
+# Notice: only regular expressions are supported (matching)
+# Be careful: the program DO NOT check self-loop; it sucks in case of that.
+
+# e.g.
+# mapping x.example.com y.example.com z.example.com to a.example.com
+# mapping x.example00.com y.example00.com z.example00.com to a.example.com as well
+# AS a.example.com. /[xyz]\.example\.com\.$ /[xyz]\.example00\.com\.$
+
+# self-loop: x.example00.com -> a.example.com -> x.example00.com
+# AS a.example.com.  /[xyz]\.example00\.com\.$
+# AS x.example00.com. /[abc]\.example\.com\.$
+
 #///////////////////////////////////////////////////////////////////////////////////////////////
 # *********************************OTHER TARGETS END**********************************************
-# *********************************OTHER TARGETS END**********************************************
+#                                  OTHER TARGETS END
 # *********************************OTHER TARGETS END**********************************************
 
 
@@ -156,4 +200,4 @@ NX /\.in-addr\.arpa\.$
 #[2001:4860:4860::]             dns.google.com. # NO_IPV6
 
 PL time.windows.com. time.nist.gov. time-nw.nist.gov. time-a.nist.gov. time-b.nist.gov. pool.ntp.org.
-
+AS pool.ntp.org. [01]\.pool\.ntp\.org\.$ [0-3]\.vendor\.pool\.ntp\.org\.$

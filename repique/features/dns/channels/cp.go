@@ -379,7 +379,7 @@ StateN:
 	s.State |= s.LastState
 	return cp.f(StateNChannel[s.LastState])
 CP1_NOK:
-	*s.ServerName = NonSvrName
+	s.ServerName = &svrName
 	s.LastState = CP1_NOK
 	goto StateN
 CP1:{

@@ -34,6 +34,7 @@ const (
 	NX                  = "NX"
 	NC                  = "NC"
 	PL                  = "PL"
+	AS                  = "AS"
 )
 
 type clockEntry struct {
@@ -62,6 +63,7 @@ type CP struct {
 	startup        *sync.Once
 	pll, plh       *int
 	preloadings    []*string //domains
+	true, false    bool
 }
 
 func (cp *CP) Name() string {
@@ -69,6 +71,7 @@ func (cp *CP) Name() string {
 }
 
 func (cp *CP) Init(cfg *Config, f FChannelByName) {
+	cp.true, cp.false = true, false
 	cp.Config = cfg
 	cp.f = f
 	cp._init(false)
@@ -89,7 +92,8 @@ func (cp *CP) _init(reloading bool) {
 		}
 		cloaks := make(map[string]map[string][]*common.Endpoint)
 		var nxs, rfs []string
-		ips := make([]struct{*common.Endpoint; Exps []string}, 0)
+		ips := make([]struct{Tag interface{}; Exps []string}, 0)
+		dms := make([]struct{Tag interface{}; Exps []string}, 0)
 		pls := make(map[string][]*string)
 		startup := "#"
 		exp := regexp.MustCompile(`(?m)^(?:[ ]*(?P<target>[\w.:\[\]\%]+)[ ]+(?P<patterns>[^ #\n]{1}[^ \r\n]+(?:[ ]+[^ #\n]{1}[^ \r\n]+)*))?[ ]*(?:[ ]+#(?P<comment>[^\r\n]*))?(?:\r)?$|(?:^[ ]*#(?P<commentline>[^\r\n]*)(?:\r)?$)|(?:^(?P<unrecognized>[^\r\n]*)(?:\r)?$)`)
@@ -105,13 +109,14 @@ func (cp *CP) _init(reloading bool) {
 				continue
 			}
 			var err error
-			var rf, nx, nc, pl bool
+			var rf, nx, nc, pl, as bool
 			var ip *common.Endpoint
 			switch match[exp.SubexpIndex("target")] {
 			case RF: rf = true
 			case NX: nx = true
 			case NC: nc = true
 			case PL: pl = true
+			case AS: as = true
 			default: if ip, err = common.ResolveEndpoint(match[exp.SubexpIndex("target")]); err != nil {
 					dlog.Errorf("at line %d, err:%v", line+1, err)
 					panic("unrecognized ip address found in black_cloaking_routine, check it before use")
@@ -121,7 +126,8 @@ func (cp *CP) _init(reloading bool) {
 			var exps []string
 			var pl_name *string
 			var pl_domains []*string
-			for _, str := range patterns {
+			var as_domain *string
+			for i, str := range patterns {
 				pattern := strings.TrimPrefix(str, `/`)
 				if len(pattern) == len(str) {
 					if pl {
@@ -146,6 +152,11 @@ func (cp *CP) _init(reloading bool) {
 						cloaking["nx"] = nil
 					} else if nc {
 						cloaking["nc"] = nil
+					} else if as {
+						if i != 0 {
+							panic("pattern to AS: only REGEX matches are supported")
+						}
+						as_domain = &pattern
 					} else if ip.IP.To4() != nil {
 						cloaking["v4"] = append(cloaking["v4"], ip)
 					} else {
@@ -165,7 +176,11 @@ func (cp *CP) _init(reloading bool) {
 				}
 			}
 			if len(exps) != 0 {
-				ips = append(ips, struct{*common.Endpoint; Exps []string}{ip,exps})
+				if as {
+					dms = append(dms, struct{Tag interface{}; Exps []string}{as_domain, exps})
+				} else {
+					ips = append(ips, struct{Tag interface{}; Exps []string}{ip,exps})
+				}
 			}
 			if len(pl_domains) != 0 {
 				if pl_name == nil {
@@ -178,8 +193,11 @@ func (cp *CP) _init(reloading bool) {
 				}
 			}
 		}
-		if len(rfs) != 0 || len(nxs) != 0 || len(ips) != 0 {
-			cp.actions = services.CreateRegexActions(rfs, nxs, ips)
+		if len(rfs) != 0 || len(nxs) != 0 || len(ips) != 0 || len(dms) != 0 {
+			anycast := make([]struct{Tag interface{}; Exps []string}, len(ips) + len(dms))
+			copy(anycast, ips)
+			copy(anycast[len(ips):], dms)
+			cp.actions = services.CreateRegexActions(rfs, nxs, anycast)
 		}
 		preComputeCacheKey := func(qtype uint16, name string) [32]byte {
 			h := sha512.New512_256()
@@ -326,27 +344,36 @@ func (cp *CP) setNegativeResponse(s *Session, rf, nx bool) {
 	}
 }
 
-func (cp *CP) match(s *Session, target *string) bool {
+func (cp *CP) match(s *Session, target *string, cp2 bool) *bool {
 	if cp.actions != nil {
 		matches := cp.actions.FindStringSubmatchIndex(*target)
 		if matches != nil {
-			for idx, ip := range cp.actions.IPAddress {
+			for idx, any := range cp.actions.Anycast {
 				if matches[idx*2] != -1 {
-					cp.setIPResponse(s, ip)
-					return true
+					if ip, ok := any.(*common.Endpoint); ok {
+						cp.setIPResponse(s, ip)
+						return &cp.true
+					}
+					domain := any.(*string)
+					if cp2 {
+						return cp.match(s, domain, cp2)
+					}
+					s.Request.Question[0] = s.Request.Question[0] // QAQ QWQ QVQ - pretty go style
+					s.Request.Question[0].Name = *domain
+					return nil
 				}
 			}
 			if cp.actions.Refused > 0 && matches[cp.actions.Refused*2] != -1 {
 				cp.setNegativeResponse(s, true, false)
-				return true
+				return &cp.true
 			}
 			if cp.actions.NXDOMAIN > 0 && matches[cp.actions.NXDOMAIN*2] != -1 {
 				cp.setNegativeResponse(s, false, true)
-				return true
+				return &cp.true
 			}
 		}
 	}
-	return false
+	return &cp.false
 }
 
 func preloading(r Channel, domains []*string, ipv6 bool, idx int) {
@@ -423,8 +450,12 @@ CP1_cache:
 		}
 	}
 CP1_match:
-	if cp.match(s, &s.Name) {
-		goto CP1_NOK
+	if matched := cp.match(s, &s.Request.Question[0].Name, false); matched != nil {
+		if *matched {
+			goto CP1_NOK
+		}
+	} else {
+		goto CP1
 	}
 	s.LastState = CP1_OK
 	goto StateN
@@ -445,7 +476,7 @@ CP2:{
 		if header.Class != dns.ClassINET || header.Rrtype != dns.TypeCNAME {
 			continue
 		}
-		if cp.match(s, &rr.(*dns.CNAME).Target) {
+		if matched := cp.match(s, &rr.(*dns.CNAME).Target, true); *matched {
 			s.LastError = &CPError{Ex:rr.(*dns.CNAME).Target}
 			s.LastState = CP2_NOK
 			goto StateN

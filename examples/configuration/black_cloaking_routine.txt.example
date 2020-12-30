@@ -200,4 +200,4 @@ NX /\.in-addr\.arpa\.$
 #[2001:4860:4860::]             dns.google.com. # NO_IPV6
 
 PL time.windows.com. time.nist.gov. time-nw.nist.gov. time-a.nist.gov. time-b.nist.gov. pool.ntp.org.
-AS pool.ntp.org. [01]\.pool\.ntp\.org\.$ [0-3]\.vendor\.pool\.ntp\.org\.$
+AS pool.ntp.org. /[01]\.pool\.ntp\.org\.$ /[0-3]\.vendor\.pool\.ntp\.org\.$

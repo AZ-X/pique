@@ -110,7 +110,7 @@ ConsoleLog:
 		if s.Response.Rcode != dns.RcodeSuccess {
 			answer = fmt.Sprintf("%s %s", answer, dns.RcodeToString[s.Response.Rcode])
 		}
-		if s.State&CP1_NOK == CP1_NOK || s.State&CP2_NOK == CP2_NOK {
+		if s.State&CP1_NOK == CP1_NOK || s.State&CP2_NOK == CP2_NOK || s.Question == nil || *s.Question != s.Request.Question[0] {
 			answer = fmt.Sprintf("%s(R)", answer)
 		}
 		if len(s.Response.Ns) > 0 {

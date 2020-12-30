@@ -12,32 +12,32 @@ type Regex_Actions struct {
 	*regexp.Regexp
 	Refused               int
 	NXDOMAIN              int
-	IPAddress             map[int]*common.Endpoint
+	Anycast               map[int]interface{}
 }
 
-// ips|rfs|nxs -lpcre???
-func CreateRegexActions(rfs []string, nxs []string, ips []struct{*common.Endpoint;Exps []string}) *Regex_Actions {
+// ips-dms|rfs|nxs -lpcre???
+func CreateRegexActions(rfs []string, nxs []string, anycast []struct{Tag interface{};Exps []string}) *Regex_Actions {
 	var reg strings.Builder
-	var ipNames = make(map[*string]*common.Endpoint)
+	var anycastNames = make(map[*string]interface{})
 	fmt.Fprintf(&reg, `(?i)`)
-	for i, ent := range ips {
-		name := fmt.Sprintf(`IP%d`, i+1)
-		ipNames[&name] = ent.Endpoint
+	for i, ent := range anycast {
+		name := fmt.Sprintf(`Tag%d`, i+1)
+		anycastNames[&name] = ent.Tag
 		var subs strings.Builder
 		fmt.Fprintf(&subs, `(?:%s)`, strings.Join(ent.Exps, reg_delimiter))
-		if len(ips) == i + 1 {
+		if len(anycast) == i + 1 {
 			fmt.Fprintf(&reg, `(?P<%s>(?:%s))`, name, subs.String())
 		} else {
 			fmt.Fprintf(&reg, `(?P<%s>(?:%s))|`, name, subs.String())
 		}
 	}
-	if len(ips) != 0 && len(rfs) != 0 {
+	if len(anycast) != 0 && len(rfs) != 0 {
 		fmt.Fprintf(&reg, `|`)
 	}
 	if len(rfs) != 0 {
 		fmt.Fprintf(&reg, `(?P<RF>(?:(?:%s)))`, strings.Join(rfs, reg_delimiter)) 
 	}
-	if len(nxs) != 0 && (len(ips) != 0 || len(rfs) != 0) {
+	if len(nxs) != 0 && (len(anycast) != 0 || len(rfs) != 0) {
 		fmt.Fprintf(&reg, `|`)
 	}
 	if len(nxs) != 0 {
@@ -46,9 +46,9 @@ func CreateRegexActions(rfs []string, nxs []string, ips []struct{*common.Endpoin
 	actions := &Regex_Actions{Regexp:regexp.MustCompile(reg.String())}
 	actions.Refused = actions.SubexpIndex("RF")
 	actions.NXDOMAIN = actions.SubexpIndex("NX")
-	actions.IPAddress = make(map[int]*common.Endpoint)
-	for k, v := range ipNames {
-		actions.IPAddress[actions.SubexpIndex(*k)] = v
+	actions.Anycast = make(map[int]interface{})
+	for k, v := range anycastNames {
+		actions.Anycast[actions.SubexpIndex(*k)] = v
 	}
 	common.Program_dbg_full_log("regex => %s", actions.String())
 	return actions

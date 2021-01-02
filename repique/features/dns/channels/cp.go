@@ -156,6 +156,9 @@ func (cp *CP) _init(reloading bool) {
 						if i != 0 {
 							panic("pattern to AS: only REGEX matches are supported")
 						}
+						if !dns.IsFqdn(pattern) {
+								panic("pattern to AS: only fully qualified domain names are supported ->"+pattern)
+						}
 						as_domain = &pattern
 					} else if ip.IP.To4() != nil {
 						cloaking["v4"] = append(cloaking["v4"], ip)
@@ -377,7 +380,7 @@ func (cp *CP) match(s *Session, target *string, cp2 bool) *bool {
 }
 
 func preloading(r Channel, domains []*string, ipv6 bool, idx int) {
-	tmp := &Session{Listener:idx, ServerName:&svrName, Rep_job:&sync.Once{}}
+	tmp := &Session{Listener:idx, ServerName:&svrName}
 	tmp.LastState = A1_OK
 	for _, str := range domains {
 		domain := *str
@@ -422,7 +425,10 @@ CP1:{
 			} else if ce.nc {
 				goto CP1_match
 			} else if ce.pll != nil && cp.cache != nil {
-				s.Rep_job.Do(func() {
+				if s.pl_job == nil {
+					s.pl_job = &sync.Once{}
+				}
+				s.pl_job.Do(func() {
 					domains := cp.preloadings[*ce.pll:*ce.plh]
 					ipv6 := s.Qtype == dns.TypeAAAA
 					common.Program_dbg_full_log("start preloading...")

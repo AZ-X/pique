@@ -145,7 +145,7 @@
 # Listeners can share one file or use their independent one.
 
 
-## Example of both invalid and valid patterns:
+## Example of both invalid and valid regex patterns:
 ##
 ##
 ## *.example.com      | warning: program panics because '*' is not quantifiable

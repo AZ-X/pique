@@ -9,6 +9,7 @@ A minimal implementation of dynamic sequence routine
 *******************************************************/
 
 import (
+	"sync"
 )
 
 var (
@@ -34,7 +35,10 @@ func (r *Remote) Init(cfg *Config, f FChannelByName) {
 func (r *Remote) Handle(s *Session) Channel {
 	r.f(Channel_Stub).Handle(s)
 	if r.cache_enabled && s.LastState != R_OK {
-		s.Rep_job.Do(func () {
+		if s.rep_job == nil {
+			s.rep_job = &sync.Once{}
+		}
+		s.rep_job.Do(func () {
 			var dup Session = *s
 			dup.LastState = A1_OK
 			go repeatRequest(r.f(Channel_CP), &dup)

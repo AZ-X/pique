@@ -69,7 +69,8 @@ type Session struct {
 	LastError                              error
 	IsUDPClient                            bool
 	ID                                     uint16
-	Rep_job                                *sync.Once
+	rep_job                                *sync.Once
+	pl_job                                 *sync.Once
 }
 
 

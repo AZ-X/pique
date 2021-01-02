@@ -370,7 +370,7 @@ func (_s *stub) Handle(s *channels.Session) channels.Channel {
 // how different
 var svrName = channels.NonSvrName
 func (proxy *Proxy) processIncomingQuery(clientProto string, query []byte, clientAddr *net.Addr, clientPc net.Conn, idx int) {
-	session := &channels.Session{RawIn:&query, Listener:idx, ServerName:&svrName, IsUDPClient:clientProto == "udp", Rep_job:&sync.Once{}}
+	session := &channels.Session{RawIn:&query, Listener:idx, ServerName:&svrName, IsUDPClient:clientProto == "udp"}
 	proxy.Handle(session)
 	if err := common.WriteDP(clientPc, *session.RawOut, clientAddr); err != nil {
 		dlog.Debug(err)

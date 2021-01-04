@@ -13,6 +13,7 @@ import (
 	"time"
 	
 	"github.com/AZ-X/pique/repique/common"
+	"github.com/AZ-X/pique/repique/protocols/socks5"
 )
 
 type RealProxy struct {
@@ -102,7 +103,7 @@ func (np *NestedProxy) getDialContext(trans bool) ProxyDialContext {
 			}
 			cm := uri.Scheme
 			switch cm {
-			case "socks5":
+			case "socks5": _ = &socks5.SocksDialer{}
 			case "http", "https":proxyHTTP(ctx, uri.User, "", conn)
 			
 			}
@@ -166,18 +167,6 @@ func proxyHTTP(ctx context.Context, u *url.Userinfo, host string, conn net.Conn)
 		return err
 	}
 	return nil
-}
-
-
-
-func (np *NestedProxy) GetTransportProxy() (ProxyDialContext, TransportProxy) {
-	var pdc ProxyDialContext
-	var tp TransportProxy
-	pdc = np.getDialContext(true)
-	tp = func(*http.Request) (*url.URL, error) {
-		return nil, nil
-	}
-	return pdc, tp
 }
 
 //global proxy stamps and non-global individual proxy stamps binding to resolvers Ex

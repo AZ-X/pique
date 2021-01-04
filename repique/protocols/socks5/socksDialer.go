@@ -8,32 +8,49 @@ package socks5
 
 import (
 	"bytes"
-	"container/list"
 	"context"
 	"encoding/binary"
 	"errors"
 	"io"
 	"io/ioutil"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 	_ "unsafe"
 )
 
+/*******************************************************
 
-const (
-	socksAuthMethodNotRequired         socksAuthMethod = 0x00 // no authentication required
-	socksAuthMethodUserNamePassword    socksAuthMethod = 0x02 // use UserName/password
-)
+Socks5 Client Library (implement 'UDP ASSOCIATE' in rfc1928)
+
+*******************************************************/
 
 // A Command represents a SOCKS command.
+//go:linkname socksCommand net/http.socksCommand
 type socksCommand int
 // An AuthMethod represents a SOCKS authentication method.
+
+// Wire protocol constants.
+const (
+	SocksCmdConnect socksCommand = 0x01 // establishes an active-open forward proxy connection
+	SockscmdBind    socksCommand = 0x02 // establishes a passive-open forward proxy connection
+	SockscmdUDP     socksCommand = 0x03 // establishes a udp associate connection
+
+	SocksAuthMethodNotRequired         socksAuthMethod = 0x00 // no authentication required
+	SocksAuthMethodUsernamePassword    socksAuthMethod = 0x02 // use username/password
+
+)
+
+
+//go:linkname socksCommand.String net/http.socksCommand.String
+func (cmd socksCommand) String() string
+
+//go:linkname socksAuthMethod net/http.socksAuthMethod
 type socksAuthMethod int
 
 // A Dialer holds SOCKS-specific options.
-type socksDialer struct {
+//go:linkname SocksDialer net/http.socksDialer
+type SocksDialer struct {
 	cmd          socksCommand // either CmdConnect or cmdBind
 	proxyNetwork string       // network between a proxy server and a client
 	proxyAddress string       // proxy server address
@@ -53,12 +70,11 @@ type socksDialer struct {
 	Authenticate func(context.Context, io.ReadWriter, socksAuthMethod) error
 }
 
-type socksUserNamePassword struct {
+//go:linkname SocksUserNamePassword net/http.socksUserNamePassword
+type SocksUserNamePassword struct {
 	UserName string
 	Password string
 }
-
-
 
 var (
 	ErrBadAddrType = errors.New("Bad address type")
@@ -87,91 +103,65 @@ const (
 	AddrIPv6         = 4
 )
 
-type Addr struct {
+// An Addr represents a SOCKS-specific address.
+// Either Name or IP is used exclusively.
+//go:linkname socksAddr net/http.socksAddr
+type socksAddr struct {
+	Name string // fully-qualified domain name
+	IP   net.IP
+	Port int
+}
+
+//go:linkname (*socksAddr).Network net/http.(*socksAddr).Network
+func (a *socksAddr) Network() string
+
+//go:linkname (*socksAddr).String net/http.(*socksAddr).String
+func (a *socksAddr) String() string
+
+type SocksAddr struct {
+	socksAddr
 	Type uint8
-	Host string
-	Port uint16
 }
 
-func NewAddr(sa string) (addr *Addr, err error) {
-	host, sport, err := net.SplitHostPort(sa)
-	if err != nil {
-		return nil, err
-	}
-	port, err := strconv.ParseUint(sport, 10, 16)
-	if err != nil {
-		return nil, err
-	}
-
-	addr = &Addr{
-		Type: AddrDomain,
-		Host: host,
-		Port: uint16(port),
-	}
-
-	if ip := net.ParseIP(host); ip != nil {
-		if ip.To4() != nil {
-			addr.Type = AddrIPv4
-		} else {
-			addr.Type = AddrIPv6
-		}
-	}
-
-	return
-}
-
-func (addr *Addr) Decode(b []byte) error {
+func DecodeAddr(addr *SocksAddr, b []byte) error {
 	addr.Type = b[0]
 	pos := 1
 	switch addr.Type {
 	case AddrIPv4:
-		addr.Host = net.IP(b[pos : pos+net.IPv4len]).String()
+		addr.IP = net.IP(b[pos : pos+net.IPv4len])
 		pos += net.IPv4len
 	case AddrIPv6:
-		addr.Host = net.IP(b[pos : pos+net.IPv6len]).String()
+		addr.IP = net.IP(b[pos : pos+net.IPv6len])
 		pos += net.IPv6len
 	case AddrDomain:
 		addrlen := int(b[pos])
 		pos++
-		addr.Host = string(b[pos : pos+addrlen])
+		addr.Name = string(b[pos : pos+addrlen])
 		pos += addrlen
 	default:
 		return ErrBadAddrType
 	}
-
-	addr.Port = binary.BigEndian.Uint16(b[pos:])
-
+	addr.Port = int(binary.BigEndian.Uint16(b[pos:]))
 	return nil
 }
 
-func (addr *Addr) Encode(b []byte) (int, error) {
+func EncodeAddr(addr *SocksAddr, b []byte) (int, error) {
 	b[0] = addr.Type
 	pos := 1
 	switch addr.Type {
 	case AddrIPv4:
-		ip4 := net.ParseIP(addr.Host).To4()
-		if ip4 == nil {
-			ip4 = net.IPv4zero.To4()
-		}
-		pos += copy(b[pos:], ip4)
-	case AddrDomain:
-		b[pos] = byte(len(addr.Host))
-		pos++
-		pos += copy(b[pos:], []byte(addr.Host))
+		pos += copy(b[pos:], addr.IP.To4())
 	case AddrIPv6:
-		ip16 := net.ParseIP(addr.Host).To16()
-		if ip16 == nil {
-			ip16 = net.IPv6zero.To16()
-		}
-		pos += copy(b[pos:], ip16)
+		pos += copy(b[pos:], addr.IP.To16())
+	case AddrDomain:
+		b[pos] = byte(len(addr.Name))
+		pos++
+		pos += copy(b[pos:], []byte(addr.Name))
 	default:
-		b[0] = AddrIPv4
-		copy(b[pos:pos+4], net.IPv4zero.To4())
-		pos += 4
+		return 0, ErrBadAddrType
 	}
-	binary.BigEndian.PutUint16(b[pos:], addr.Port)
+	binary.BigEndian.PutUint16(b[pos:], uint16(addr.Port))
 	pos += 2
-
 	return pos, nil
 }
 
@@ -186,10 +176,10 @@ UDP request
 type UDPHeader struct {
 	Rsv  uint16
 	Frag uint8
-	Addr *Addr
+	Addr *SocksAddr
 }
 
-func NewUDPHeader(rsv uint16, frag uint8, addr *Addr) *UDPHeader {
+func NewUDPHeader(rsv uint16, frag uint8, addr *SocksAddr) *UDPHeader {
 	return &UDPHeader{
 		Rsv:  rsv,
 		Frag: frag,
@@ -206,9 +196,9 @@ func (h *UDPHeader) Write(w io.Writer) error {
 
 	addr := h.Addr
 	if addr == nil {
-		addr = &Addr{}
+		addr = &SocksAddr{}
 	}
-	length, _ := addr.Encode(b[3:])
+	length, _ := EncodeAddr(addr, b[3:])
 
 	_, err := w.Write(b[:3+length])
 	return err
@@ -216,13 +206,13 @@ func (h *UDPHeader) Write(w io.Writer) error {
 
 type UDPDatagram struct {
 	Header *UDPHeader
-	Data   []byte
+	Data   *bytes.Reader
 }
 
 func NewUDPDatagram(header *UDPHeader, data []byte) *UDPDatagram {
 	return &UDPDatagram{
 		Header: header,
-		Data:   data,
+		Data:   bytes.NewReader(data),
 	}
 }
 
@@ -272,8 +262,8 @@ func ReadUDPDatagram(r io.Reader) (*UDPDatagram, error) {
 		n = hlen + dlen
 	}
 
-	header.Addr = new(Addr)
-	if err := header.Addr.Decode(b[3:hlen]); err != nil {
+	header.Addr = new(SocksAddr)
+	if err := DecodeAddr(header.Addr, b[3:hlen]); err != nil {
 		return nil, err
 	}
 
@@ -282,19 +272,19 @@ func ReadUDPDatagram(r io.Reader) (*UDPDatagram, error) {
 
 	d := &UDPDatagram{
 		Header: header,
-		Data:   data,
+		Data:   bytes.NewReader(data),
 	}
 
 	return d, nil
 }
 
-func (d *UDPDatagram) Write(w io.Writer) error {
+func (d *UDPDatagram) Write(w io.Writer) (int, error) {
 	buf, err := d.WriteBuf()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = buf.WriteTo(w)
-	return err
+	c, err := buf.WriteTo(w)
+	return int(c), err
 }
 
 func (d *UDPDatagram) WriteBuf() (*bytes.Buffer, error) {
@@ -306,65 +296,89 @@ func (d *UDPDatagram) WriteBuf() (*bytes.Buffer, error) {
 	if err := h.Write(buf); err != nil {
 		return nil, err
 	}
-	if _, err := buf.Write(d.Data); err != nil {
+	if _, err := d.Data.WriteTo(buf); err != nil {
 		return nil, err
 	}
 	return buf, nil
 }
 
-
-
-type SocksConn struct {
-	conn         net.Conn
-	udp          net.Conn
-	addrs        list.List
+type UdpSocksConn struct {
+	tcp             net.Conn
+	udp             net.Conn
+	raw             *UDPDatagram
+	target          *SocksAddr
 }
 
-func (c *SocksConn) LocalAddr() net.Addr {
-	return c.conn.LocalAddr()
+func NewUdpSocksConn(addr *SocksAddr, tcpconn, udpconn net.Conn) *UdpSocksConn {
+	return &UdpSocksConn{tcp:tcpconn, udp:udpconn, target:addr}
 }
 
-func (c *SocksConn) RemoteAddr() net.Addr {
-	return c.conn.RemoteAddr()
+func (c *UdpSocksConn) LocalAddr() net.Addr {
+	return c.tcp.LocalAddr()
 }
 
-func (c *SocksConn) SetDeadline(t time.Time) error {
-	return c.conn.SetDeadline(t)
+func (c *UdpSocksConn) RemoteAddr() net.Addr {
+	return c.tcp.RemoteAddr()
 }
 
-func (c *SocksConn) SetReadDeadline(t time.Time) error {
-	return c.conn.SetReadDeadline(t)
+func (c *UdpSocksConn) SetDeadline(t time.Time) error {
+	return c.udp.SetDeadline(t)
 }
 
-func (c *SocksConn) SetWriteDeadline(t time.Time) error {
-	return c.conn.SetWriteDeadline(t)
+func (c *UdpSocksConn) SetReadDeadline(t time.Time) error {
+	return c.udp.SetReadDeadline(t)
 }
 
-func (c *SocksConn) Close() error {
-	return c.conn.Close()
+func (c *UdpSocksConn) SetWriteDeadline(t time.Time) error {
+	return c.udp.SetWriteDeadline(t)
 }
 
-func (c *SocksConn) Read(b []byte) (n int, err error) {
-if c.udp != nil {
-
-
+func (c *UdpSocksConn) Close() error {
+	return c.tcp.Close()
 }
 
-	return 0, nil
+func (c *UdpSocksConn) Read(b []byte) (n int, err error) {
+	if p, err := ReadUDPDatagram(c.udp); err != nil {
+		return 0, err
+	} else {
+		c.raw = p
+		return c.raw.Data.Read(b)
+	}
 }
 
-func (c *SocksConn) Write(b []byte) (n int, err error) {
-	return 0, nil
+func (c *UdpSocksConn) Write(b []byte) (n int, err error) {
+	p := NewUDPDatagram(NewUDPHeader(0, 0, c.target), b)
+	return p.Write(c.udp)
 }
 
-//go:linkname (*socksDialer).connect http.(*socksDialer).connect
-func (d *socksDialer) connect(ctx context.Context, c net.Conn, address string) (_ net.Addr, ctxErr error)
+//go:linkname (*SocksDialer).connect net/http.(*socksDialer).connect
+func (d *SocksDialer) connect(ctx context.Context, c net.Conn, address string) (_ net.Addr, ctxErr error)
 
-//go:linkname (*socksUserNamePassword).Authenticate http.(*socksUserNamePassword).Authenticate
-func (up *socksUserNamePassword) Authenticate(ctx context.Context, rw io.ReadWriter, auth socksAuthMethod) error
+//go:linkname (*SocksUserNamePassword).Authenticate net/http.(*socksUserNamePassword).Authenticate
+func (up *SocksUserNamePassword) Authenticate(ctx context.Context, rw io.ReadWriter, auth socksAuthMethod) error
 
-func (d *socksDialer) Connect(ctx context.Context, network, c net.Conn, address string) (net.Conn, error) {
-	return nil, nil
+func (d *SocksDialer) SetCMD(cmd socksCommand) {
+	d.cmd = cmd
+}
+
+func (d *SocksDialer) Connect(ctx context.Context, c net.Conn, network, address string) (*SocksAddr, error) {
+	if c == nil || ctx == nil {
+		panic("fault on calling (d *SocksDialer).Connect")
+	}
+	a, err := d.connect(ctx, c, address)
+	if err != nil {
+		c.Close()
+		return nil, &net.OpError{Op: d.cmd.String(), Net: network, Source: c.LocalAddr(), Addr: c.RemoteAddr(), Err: err}
+	}
+	sa := &SocksAddr{socksAddr:*a.(*socksAddr)}
+	if len(sa.Name) > 0 {
+		sa.Type = AddrDomain
+	} else if len(sa.IP) == net.IPv4len {
+		sa.Type = AddrIPv4
+	} else {
+		sa.Type = AddrIPv6
+	}
+	return sa, nil
 }
 
 

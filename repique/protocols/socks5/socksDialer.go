@@ -26,15 +26,14 @@ Socks5 Client Library (implement 'UDP ASSOCIATE' in rfc1928)
 *******************************************************/
 
 // A Command represents a SOCKS command.
-//go:linkname socksCommand net/http.socksCommand
-type socksCommand int
-// An AuthMethod represents a SOCKS authentication method.
+//go:linkname SocksCommand net/http.socksCommand
+type SocksCommand int
 
 // Wire protocol constants.
 const (
-	SocksCmdConnect socksCommand = 0x01 // establishes an active-open forward proxy connection
-	SockscmdBind    socksCommand = 0x02 // establishes a passive-open forward proxy connection
-	SockscmdUDP     socksCommand = 0x03 // establishes a udp associate connection
+	SocksCmdConnect SocksCommand = 0x01 // establishes an active-open forward proxy connection
+	SockscmdBind    SocksCommand = 0x02 // establishes a passive-open forward proxy connection
+	SockscmdUDP     SocksCommand = 0x03 // establishes a udp associate connection
 
 	SocksAuthMethodNotRequired         socksAuthMethod = 0x00 // no authentication required
 	SocksAuthMethodUsernamePassword    socksAuthMethod = 0x02 // use username/password
@@ -42,16 +41,18 @@ const (
 )
 
 
-//go:linkname socksCommand.String net/http.socksCommand.String
-func (cmd socksCommand) String() string
+//go:linkname SocksCommand.String net/http.socksCommand.String
+func (cmd SocksCommand) String() string
 
 //go:linkname socksAuthMethod net/http.socksAuthMethod
 type socksAuthMethod int
 
+type SocksAuthMethod socksAuthMethod
+
 // A Dialer holds SOCKS-specific options.
 //go:linkname SocksDialer net/http.socksDialer
 type SocksDialer struct {
-	cmd          socksCommand // either CmdConnect or cmdBind
+	cmd          SocksCommand // either CmdConnect or cmdBind
 	proxyNetwork string       // network between a proxy server and a client
 	proxyAddress string       // proxy server address
 
@@ -62,7 +63,7 @@ type SocksDialer struct {
 	// AuthMethods specifies the list of request authentication
 	// methods.
 	// If empty, SOCKS client requests only AuthMethodNotRequired.
-	AuthMethods []socksAuthMethod
+	AuthMethods []SocksAuthMethod
 
 	// Authenticate specifies the optional authentication
 	// function. It must be non-nil when AuthMethods is not empty.
@@ -70,8 +71,8 @@ type SocksDialer struct {
 	Authenticate func(context.Context, io.ReadWriter, socksAuthMethod) error
 }
 
-//go:linkname SocksUserNamePassword net/http.socksUserNamePassword
-type SocksUserNamePassword struct {
+//go:linkname SocksUsernamePassword net/http.socksUserNamePassword
+type SocksUsernamePassword struct {
 	UserName string
 	Password string
 }
@@ -220,9 +221,6 @@ func ReadUDPDatagram(r io.Reader) (*UDPDatagram, error) {
 	b := lPool.Get().([]byte)
 	defer lPool.Put(b)
 
-	// when r is a streaming (such as TCP connection), we may read more than the required data,
-	// but we don't know how to handle it. So we use io.ReadFull to instead of io.ReadAtLeast
-	// to make sure that no redundant data will be discarded.
 	n, err := io.ReadFull(r, b[:5])
 	if err != nil {
 		return nil, err
@@ -313,6 +311,19 @@ func NewUdpSocksConn(addr *SocksAddr, tcpconn, udpconn net.Conn) *UdpSocksConn {
 	return &UdpSocksConn{tcp:tcpconn, udp:udpconn, target:addr}
 }
 
+func (c *UdpSocksConn) SetRealUDP(udp net.Conn) {
+	last := c
+	r, ok := c.udp.(*UdpSocksConn)
+	for ;; {
+		if ok && r != nil {
+			last = r
+			r, ok = r.udp.(*UdpSocksConn)
+		} else {
+			last.udp = udp
+		}
+	}
+}
+
 func (c *UdpSocksConn) LocalAddr() net.Addr {
 	return c.tcp.LocalAddr()
 }
@@ -354,10 +365,10 @@ func (c *UdpSocksConn) Write(b []byte) (n int, err error) {
 //go:linkname (*SocksDialer).connect net/http.(*socksDialer).connect
 func (d *SocksDialer) connect(ctx context.Context, c net.Conn, address string) (_ net.Addr, ctxErr error)
 
-//go:linkname (*SocksUserNamePassword).Authenticate net/http.(*socksUserNamePassword).Authenticate
-func (up *SocksUserNamePassword) Authenticate(ctx context.Context, rw io.ReadWriter, auth socksAuthMethod) error
+//go:linkname (*SocksUsernamePassword).Authenticate net/http.(*socksUsernamePassword).Authenticate
+func (up *SocksUsernamePassword) Authenticate(ctx context.Context, rw io.ReadWriter, auth socksAuthMethod) error
 
-func (d *SocksDialer) SetCMD(cmd socksCommand) {
+func (d *SocksDialer) SetCMD(cmd SocksCommand) {
 	d.cmd = cmd
 }
 

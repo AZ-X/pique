@@ -312,7 +312,7 @@ func (proxy *Proxy) ExchangeDnScRypt(serverInfo *DNSCryptInfo, request *[]byte) 
 		if !proxies.HasValue() {
 			pc, err = common.Dial(network, address, proxy.LocalInterface, proxy.Timeout, -1)
 		} else {
-			pc, err = proxies.GetDialContext()(nil, network, address)
+			pc, err = proxies.GetDialContext()(nil, proxy.LocalInterface, network, address)
 		}
 		if err == nil {
 			err = pc.SetDeadline(time.Now().Add(serverInfo.Timeout))

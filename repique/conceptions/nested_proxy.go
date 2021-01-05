@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"container/list"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"net"
@@ -16,17 +17,15 @@ import (
 	"github.com/AZ-X/pique/repique/protocols/socks5"
 )
 
-type RealProxy struct {
-	list.Element
-	Value              *url.URL
-	EP                 *common.Endpoint
+type realProxy struct {
+	*url.URL
+	*common.Endpoint
 	IsGlobal           bool
 }
 
-type ProxyDialContext func(ctx context.Context, network, addr string) (net.Conn, error)
-type TransportProxy func(*http.Request) (*url.URL, error)
+type ProxyDialContext func(ctx context.Context, ifi *string, network, addr string) (net.Conn, error)
 
-//it could be dynamic in case of an advanced runtime
+// socks5 and http(s) proxy chain
 type NestedProxy struct {
 	*list.List
 }
@@ -46,69 +45,131 @@ func (np *NestedProxy) UDPProxies() bool {
 		return true
 	}
 	for e := np.Front(); e != nil; e = e.Next() {
-		rp := e.Value.(RealProxy)
-		if rp.Value.Scheme != "socks5" {
+		rp := e.Value.(*realProxy)
+		if rp.Scheme != "socks5" {
 			return false
 		}
 	}
 	return true
 }
 
-
 //first 'ProxyURI' in toml then global proxy stamps by order
-func (np *NestedProxy) AddGlobalProxy(e *url.URL, ep *common.Endpoint) {
-	ep.Port, _ = strconv.Atoi(e.Port())
-	var rp = &RealProxy{ Value: e, EP: ep, IsGlobal: true,}
-	rp.Element.Value = rp
+func (np *NestedProxy) AddGlobalProxy(uri *url.URL, ep *common.Endpoint) {
+	ep.Port, _ = strconv.Atoi(uri.Port())
+	var rp = &realProxy{URL: uri, Endpoint: ep, IsGlobal: true,}
 	np.PushFront(rp)
 }
 
-func (np *NestedProxy) AddProxy(e *url.URL, ep *common.Endpoint) {
-	ep.Port, _ = strconv.Atoi(e.Port())
-	var rp = &RealProxy{ Value: e, EP: ep, IsGlobal: false,}
-	rp.Element.Value = rp
+func (np *NestedProxy) AddProxy(uri *url.URL, ep *common.Endpoint) {
+	ep.Port, _ = strconv.Atoi(uri.Port())
+	var rp = &realProxy{URL: uri, Endpoint: ep, IsGlobal: false,}
 	np.PushBack(rp)
 }
 
 func (np *NestedProxy) GetDialContext() ProxyDialContext {
-	return np.getDialContext(false)
-}
-
-var zeroDialer net.Dialer
-func (np *NestedProxy) getDialContext(trans bool) ProxyDialContext {
 	var pdc ProxyDialContext
 	var err error
-	pdc = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		var conn net.Conn
+	pdc = func(ctx context.Context, ifi *string, network, addr string) (net.Conn, error) {
+		var connTCP net.Conn
+		var connUDP net.Conn
+		var udp bool = network == "udp"
 		if ctx == nil {
-			ctx = context.TODO()
+			ctx = context.Background()
 		}
-		for e := np.Front(); e != nil && (!trans || e!= np.Back()); e = e.Next() {
-			rp := e.Value.(RealProxy)
-			uri := rp.Value
-			hostname := uri.Hostname()
-			isFirst := e.Prev() == nil
+		if udp && !np.UDPProxies() {
+			panic("unsupported network on calling NestedProxy:getDialContext")
+		}
+		pilotConnect := func(rp *realProxy) error {
 			var ep *common.Endpoint
-			if ep, err = common.ResolveEndpoint(hostname); err != nil {
-				ep = rp.EP
+			if ep, err = common.ResolveEndpoint(rp.Host); err != nil {
+				ep = rp.Endpoint
 			}
-			if isFirst && ep == nil {
-				 err = errors.New("check code: IP of primary proxy is not granted assignments")
-				return nil, err
+			if ep == nil {
+				 return errors.New("check code: IP of primary proxy is not granted assignments")
 			}
-			if isFirst {
-				if conn, err = zeroDialer.DialContext(ctx, network, addr); err != nil {
-					return nil, err
+			// A proxy should be fast; If its latency time can't be guaranteed, drop it.
+			if connTCP, err = common.Dial("tcp", ep.String(), ifi, 500*time.Millisecond, -1); err != nil {
+				return err
+			}
+			return nil
+		}
+		var connect func(el *list.Element, opts ...string) error
+		connect = func(el *list.Element, opts ...string) error {
+			var target string
+			if len(opts) > 0 {
+				target = opts[0]
+			} else 	if ne := el.Next(); ne != nil {
+				target = ne.Value.(*realProxy).Host
+			} else {
+				target = addr
+			}
+			rp := el.Value.(*realProxy)
+			if el.Prev() == nil {
+				if err = pilotConnect(rp); err != nil {
+					return err
 				}
 			}
-			cm := uri.Scheme
-			switch cm {
-			case "socks5": _ = &socks5.SocksDialer{}
-			case "http", "https":proxyHTTP(ctx, uri.User, "", conn)
-			
+			switch rp.Scheme {
+			case "socks5":
+						sd := &socks5.SocksDialer{}
+						if rp.User != nil {
+							password, _ := rp.User.Password()
+							sunp := &socks5.SocksUsernamePassword{UserName:rp.User.Username(),Password:password,}
+							sd.Authenticate = sunp.Authenticate
+							sd.AuthMethods = []socks5.SocksAuthMethod{socks5.SocksAuthMethod(socks5.SocksAuthMethodUsernamePassword)}
+						}
+						var cmd socks5.SocksCommand
+						if len(opts) == 0 && (!udp || el.Next() != nil) {
+							cmd = socks5.SocksCmdConnect
+						} else {
+							cmd = socks5.SockscmdUDP
+						}
+						sd.SetCMD(cmd)
+						var sa *socks5.SocksAddr
+						if sa, err = sd.Connect(ctx, connTCP, network, target); err == nil {
+							if cmd == socks5.SockscmdUDP {
+								connUDP = socks5.NewUdpSocksConn(sa, connTCP, connUDP)
+								if el.Prev() == nil {
+									var realUDP net.Conn
+									if realUDP, err = common.Dial("udp", sa.String(), ifi, 500*time.Millisecond, -1); err != nil {
+										return err
+									}
+									connUDP.(*socks5.UdpSocksConn).SetRealUDP(realUDP)
+								}
+								reversed := make([]*list.Element, 0)
+								for e := el; e != nil; e = e.Prev() {
+									reversed = append(reversed, e)
+								}
+								for i := len(reversed); i > 0; i-- {
+									connect(reversed[i])
+								}
+								connect(reversed[0], sa.String())
+							}
+						} else {
+							return err
+						}
+			case "https":
+						cfg := &tls.Config{
+							MinVersion: tls.VersionTLS12,
+							CurvePreferences: []tls.CurveID{tls.X25519},
+							NextProtos: []string{"h2"},
+							ServerName: rp.Hostname(),
+						}
+						connTCP = tls.Client(connTCP, cfg)
+						fallthrough
+			case "http": proxyHTTP(ctx, rp.User, target, connTCP)
+			}
+			return nil
+		}
+		for e := np.Front(); e != nil; e = e.Next() {
+			if err = connect(e); err != nil {
+				return nil, err
 			}
 		}
-		return nil, nil
+		if udp {
+			return connUDP, nil
+		}
+		return connTCP, nil
 	}
 	return pdc
 }
@@ -180,7 +241,7 @@ func (np *NestedProxy) Merge(peer *NestedProxy) *NestedProxy {
 
 	mnp := &NestedProxy{}
 	mnp.Init()
-	if el := np.Front(); el != nil && el.Value.(RealProxy).IsGlobal {
+	if el := np.Front(); el != nil && el.Value.(realProxy).IsGlobal {
 		mnp.PushBackList(np.List)
 		mnp.PushBackList(peer.List)
 	} else {

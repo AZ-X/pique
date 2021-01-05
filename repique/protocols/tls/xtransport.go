@@ -276,7 +276,7 @@ func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conc
 	th.Context = &HTTPSContext{Context:context.Background(),}
 	th.Context.TLSContextDial = func(ctx context.Context, netw, addr string) (*string, net.Conn, error) {
 		if XTransport.Proxies != nil {
-			if plainConn, err := XTransport.Proxies.GetDialContext()(ctx, netw, addr); err == nil {
+			if plainConn, err := XTransport.Proxies.GetDialContext()(ctx, XTransport.LocalInterface, netw, addr); err == nil {
 				return th.Name, tls.Client(plainConn, cfg), nil
 			} else {
 				return th.Name, nil, err
@@ -333,7 +333,7 @@ Go:
 	if proxies == nil {
 		conn, err = common.Dial(proto, th.IPs.Load().(*common.EPRing).String(), XTransport.LocalInterface, Timeout, XTransport.KeepAlive, ctx)
 	} else {
-		conn, err = XTransport.Proxies.GetDialContext()(ctx, "tcp", th.IPs.Load().(*common.EPRing).String())
+		conn, err = XTransport.Proxies.GetDialContext()(ctx, XTransport.LocalInterface, "tcp", th.IPs.Load().(*common.EPRing).String())
 	}
 	if err != nil {
 		goto Error

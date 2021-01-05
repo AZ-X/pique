@@ -148,20 +148,22 @@ disabled_server_names = []
 force_tcp = false
 
 
-## SOCKS5/HTTP/HTTPS proxy 
-## NOTICE: proxies from environment are ignored 
+## SOCKS5/HTTP/HTTPS proxy
+## NOTICE: proxies from environment are ignored
+## NOTICE: port should not be omitted
 
 # proxy_uri = 'socks5://127.0.0.1:9050'
 # proxy_uri = 'http://127.0.0.1:8888'
-# proxy_uri = 'https://127.0.0.1:8888'
+# proxy_uri = 'https://127.0.0.1:443'
 
 
-## SOCKS5/HTTP/HTTPS IP of hostname of proxy
+## SOCKS5/HTTP/HTTPS IP and port of hostname of proxy
 ## leave this section comment off unless you want to use hostname e.g. proxy_uri = 'socks5://hostname:9050'
-## since repique nerver use any insecure DNS and sys DNS loops
+## NOTICE: repique nerver use any insecure DNS and sys DNS loops as bootstrap
+## NOTICE: port should not be omitted
 
-# proxy_ip = '127.0.0.1'
-# proxy_ip = '[fe80::1%eth0]'
+# proxy_ip = '127.0.0.1:443'
+# proxy_ip = '[fe80::1%eth0]:443'
 
 
 ## How long a DNS query will wait for a response, in milliseconds.

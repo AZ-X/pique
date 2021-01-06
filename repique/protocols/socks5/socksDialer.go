@@ -345,7 +345,8 @@ func (c *UdpSocksConn) SetWriteDeadline(t time.Time) error {
 }
 
 func (c *UdpSocksConn) Close() error {
-	return c.tcp.Close()
+	_ = c.tcp.Close()
+	return c.udp.Close()
 }
 
 func (c *UdpSocksConn) Read(b []byte) (n int, err error) {
@@ -362,6 +363,8 @@ func (c *UdpSocksConn) Write(b []byte) (n int, err error) {
 	return p.Write(c.udp)
 }
 
+//Notice: port number and address of all zeros for 'UDP ASSOCIATE' do not work with this dated method in std libs
+// otherwise parallel of dial and auth process is helpful to tunnel
 //go:linkname (*SocksDialer).connect net/http.(*socksDialer).connect
 func (d *SocksDialer) connect(ctx context.Context, c net.Conn, address string) (_ net.Addr, ctxErr error)
 

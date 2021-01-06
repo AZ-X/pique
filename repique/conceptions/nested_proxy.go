@@ -116,7 +116,7 @@ func (np *NestedProxy) GetDialContext() ProxyDialContext {
 							password, _ := rp.User.Password()
 							sunp := &socks5.SocksUsernamePassword{UserName:rp.User.Username(),Password:password,}
 							sd.Authenticate = sunp.Authenticate
-							sd.AuthMethods = []socks5.SocksAuthMethod{socks5.SocksAuthMethod(socks5.SocksAuthMethodUsernamePassword)}
+							sd.AuthMethods = []socks5.SocksAuthMethod{socks5.SocksAuthMethodUsernamePassword}
 						}
 						var cmd socks5.SocksCommand
 						if len(opts) == 0 && (!udp || el.Next() != nil) {
@@ -135,15 +135,20 @@ func (np *NestedProxy) GetDialContext() ProxyDialContext {
 										return err
 									}
 									connUDP.(*socks5.UdpSocksConn).SetRealUDP(realUDP)
+									return nil
 								}
 								reversed := make([]*list.Element, 0)
 								for e := el; e != nil; e = e.Prev() {
 									reversed = append(reversed, e)
 								}
 								for i := len(reversed); i > 0; i-- {
-									connect(reversed[i])
+									if err = connect(reversed[i]); err != nil {
+										return err
+									}
 								}
-								connect(reversed[0], sa.String())
+								if err = connect(reversed[0], sa.String()); err != nil {
+									return err
+								}
 							}
 						} else {
 							return err

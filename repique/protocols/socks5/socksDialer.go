@@ -35,8 +35,8 @@ const (
 	SockscmdBind    SocksCommand = 0x02 // establishes a passive-open forward proxy connection
 	SockscmdUDP     SocksCommand = 0x03 // establishes a udp associate connection
 
-	SocksAuthMethodNotRequired         socksAuthMethod = 0x00 // no authentication required
-	SocksAuthMethodUsernamePassword    socksAuthMethod = 0x02 // use username/password
+	SocksAuthMethodNotRequired         SocksAuthMethod = 0x00 // no authentication required
+	SocksAuthMethodUsernamePassword    SocksAuthMethod = 0x02 // use username/password
 
 )
 

@@ -1,3 +1,6 @@
+![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)
+
+
 # ![repique dnscrypt-proxy-r2-legacy](https://github.com/AZ-X/MEDIA/blob/master/PNG/RD.png?raw=true)
 
 [additional tooling](https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md/wiki)

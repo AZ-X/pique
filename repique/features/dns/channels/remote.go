@@ -54,6 +54,7 @@ func repeatRequest(r Channel, s *Session) {
 	for i:=0; i < cache_insurance; i++ {
 		if i >= cache_insurance/2 {
 			s.ServerName = &svrName
+			s.ExtraServerName = nil
 		}
 		s.LastState = state
 		Handle(r, s)

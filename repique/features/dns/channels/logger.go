@@ -119,7 +119,11 @@ ConsoleLog:
 		if len(s.Response.Extra) > 0 {
 			answer = fmt.Sprintf("%s Ex%d", answer, len(s.Response.Extra))
 		}
-		dlog.Debugf("ID: %5d O: |%-25s| [%s]", s.ID, answer, *s.ServerName)
+		if s.ExtraServerName != nil {
+			dlog.Debugf("ID: %5d O: |%-25s| [%s%s]", s.ID, answer, *s.ServerName, *s.ExtraServerName)
+		} else {
+			dlog.Debugf("ID: %5d O: |%-25s| [%s]", s.ID, answer, *s.ServerName)
+		}
 	}
 	s.LastState = L_OK
 	s.State |= s.LastState

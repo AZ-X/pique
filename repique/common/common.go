@@ -17,7 +17,7 @@ import (
 	
 	stamps "stammel"
 )
-//only if raw msg dumping
+//only if deep debug e.g. raw msg dumping
 const Program_dbg_full = false
 
 func Program_dbg_full_log(args ...interface{}) {

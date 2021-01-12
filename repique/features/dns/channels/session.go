@@ -64,6 +64,7 @@ type Session struct {
 	Request, Response                      *dns.Msg
 	hash_key                               *[32]byte
 	ServerName                             *string
+	ExtraServerName                        *string // for debug display of 'Anonymized' sever idx
 	Listener                               int
 	Stopwatch                              time.Time //not started yet
 	LastError                              error

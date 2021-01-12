@@ -173,8 +173,8 @@ func (proxy *Proxy) StartProxy() {
 				case "DNSCrypt":
 					info := (serverInfo.Info).(*DNSCryptInfo)
 					if info.RelayAddr!= nil {
-						name := *s.ServerName + common.STAR + info.RelayAddr.Load().(*common.EPRing).Order()
-						s.ServerName = &name
+						name := common.STAR + info.RelayAddr.Load().(*common.EPRing).Order()
+						s.ExtraServerName = &name
 					}
 				default:
 					panic("unsupported server protocol:[%s]" + serverInfo.Info.Proto())

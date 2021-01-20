@@ -24,6 +24,8 @@ import (
 )
 
 const (
+	GET                          = "GET"
+	POST                         = "POST"
 	DOHMediaType                 = "application/dns-message"
 	DefaultKeepAlive             = 0 * time.Second
 	DefaultTimeout               = 30 * time.Second
@@ -483,10 +485,10 @@ Go:
 }
 
 func (XTransport *XTransport) Get(name string, path string, ctx *HTTPSContext, Timeout time.Duration) ([]byte, error) {
-	return XTransport.FetchHTTPS(name, path, "GET", false, ctx, nil, Timeout)
+	return XTransport.FetchHTTPS(name, path, GET, false, ctx, nil, Timeout)
 }
 
 func (XTransport *XTransport) Post(name string, path string, ctx *HTTPSContext, body *[]byte, Timeout time.Duration) ([]byte, error) {
-	return XTransport.FetchHTTPS(name, path, "POST", false, ctx, body, Timeout)
+	return XTransport.FetchHTTPS(name, path, POST, false, ctx, body, Timeout)
 }
 

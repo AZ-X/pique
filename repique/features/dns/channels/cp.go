@@ -213,7 +213,7 @@ func (cp *CP) _init(reloading bool) {
 			h.Sum(sum[:0])
 			return sum
 		}
-		if len(cloaks) != 0 {
+		if len(cloaks) != 0 || len(pls) != 0 {
 			cp.clock_cache = conceptions.NewCloakCache()
 			for name,r := range cloaks {
 				_, rf := r["rf"]
@@ -274,6 +274,10 @@ func (cp *CP) _init(reloading bool) {
 					leading := *ds[0]
 					key := preComputeCacheKey(dns.TypeA, leading)
 					value := clockEntry{pll:&l, plh:&h}
+					if cachedAny, ok := cp.clock_cache.Get(key); ok {
+						value = cachedAny.(clockEntry)
+						value.pll, value.plh = &l, &h
+					}
 					cp.clock_cache.Add(key, value)
 					if cp.BlockIPv6 != nil && !*cp.BlockIPv6 {
 						key = preComputeCacheKey(dns.TypeAAAA, leading)

@@ -48,9 +48,14 @@ type inCacheResponse struct {
 	expiration time.Time
 }
 
-type CPError Error
-func (e *CPError) Error() string {
-	return "black_cloaking_routine matches CNAME: " + e.Ex
+type Error_CP_Reason Error
+func (e *Error_CP_Reason) Error() string {
+	return e.Ex
+}
+
+func (e *Error_CP_Reason) CPCNAMEExplication() *Error_CP_Reason {
+	e.Ex = "black_cloaking_routine matches CNAME: " + e.Ex
+	return e
 }
 
 // caches and patterns; unitized handling
@@ -487,7 +492,7 @@ CP2:{
 			continue
 		}
 		if matched := cp.match(s, &rr.(*dns.CNAME).Target, true); *matched {
-			s.LastError = &CPError{Ex:rr.(*dns.CNAME).Target}
+			s.LastError = (&Error_CP_Reason{Ex:rr.(*dns.CNAME).Target}).CPCNAMEExplication()
 			s.LastState = CP2_NOK
 			goto StateN
 		}

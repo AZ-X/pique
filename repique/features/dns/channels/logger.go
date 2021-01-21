@@ -53,7 +53,7 @@ func (l *Logger) Handle(s *Session) Channel {
 		case Error_DNS_NO_IPv6, Error_Stub_Timeout, Error_Stub_SvrFault, Error_Stub_Internal: 
 				dlog.Debug(s.LastError)
 		default:
-				if _, ok := s.LastError.(*CPError); ok {
+				if _, ok := s.LastError.(*Error_CP_Reason); ok {
 					dlog.Debug(s.LastError)
 				} else {
 					dlog.Warn(s.LastError)

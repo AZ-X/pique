@@ -1,4 +1,4 @@
-![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)
+![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)![repique_release](https://github.com/AZ-X/pique/workflows/repique_release/badge.svg)
 
 # Intro: What's pique or repique
 
@@ -138,6 +138,12 @@ running on the supported OS; using any DNS server preferred; configurate forward
 ### [Download the latest release] coming soon maybe tomorrow
 
 
+## Server Name Indication :notebook_with_decorative_cover:
+
+:ghost: rfc3546 :ghost: draft-ietf-tls-rfc4366-bis-12 :ghost: rfc6066  
+```c#
+'BCI/RSA Security/Transactionware/Vodafone/Stellar Switches/Huawei USA'
+```
 ## Autobiography
 
 [discussions...](https://github.com/AZ-X/pique/discussions/11)

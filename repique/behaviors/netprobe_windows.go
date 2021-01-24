@@ -11,8 +11,8 @@ import (
 const MaxTimeout = 43200
 
 
-func NetProbe(address string, ifi *string, Timeout int) error {
-	if len(address) <= 0 || Timeout == 0 {
+func NetProbe(address string, ifi *string, timeout int) error {
+	if len(address) <= 0 || timeout == 0 {
 		return nil
 	}
 	var err error
@@ -21,14 +21,14 @@ func NetProbe(address string, ifi *string, Timeout int) error {
 		return err
 	}
 	retried := false
-	if Timeout < 0 {
-		Timeout = MaxTimeout
+	if timeout < 0 {
+		timeout = MaxTimeout
 	} else {
-		Timeout = common.Min(MaxTimeout, Timeout)
+		timeout = common.Min(MaxTimeout, timeout)
 	}
 	var localAddr net.Addr
 	if ifi != nil {
-		for tries := Timeout; tries > 0; tries-- {
+		for tries := timeout; tries > 0; tries-- {
 			if localAddr, err = common.GetInferfaceDefaultAddr(*ifi, "udp"); err != nil {
 				dlog.Debug(err)
 				time.Sleep(1 * time.Second)
@@ -38,7 +38,7 @@ func NetProbe(address string, ifi *string, Timeout int) error {
 		}
 	}
 	d := &net.Dialer{LocalAddr:localAddr, KeepAlive:-1, FallbackDelay:-1,}
-	for tries := Timeout; tries > 0; tries-- {
+	for tries := timeout; tries > 0; tries-- {
 		pc, err := d.Dial("udp", endpoint.String())
 		if err == nil {
 			// Write at least 1 byte. This ensures that sockets are ready to use for writing.
@@ -59,6 +59,6 @@ func NetProbe(address string, ifi *string, Timeout int) error {
 		dlog.Notice("network connectivity detected")
 		return nil
 	}
-	dlog.Error("Timeout while waiting for network connectivity")
+	dlog.Error("timeout while waiting for network connectivity")
 	return nil
 }

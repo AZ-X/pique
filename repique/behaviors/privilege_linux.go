@@ -57,7 +57,7 @@ func DropPrivilege(userStr string, fds []*os.File) {
 	}
 	execPath, err := exec.LookPath(args[0])
 	if err != nil {
-		panic("faild to get the path to the repique executable file: " + err)
+		panic("faild to get the path to the repique executable file: " + err.Error())
 	}
 	path, err := filepath.Abs(execPath)
 	if err != nil {
@@ -87,15 +87,15 @@ func DropPrivilege(userStr string, fds []*os.File) {
 	fdbase := maxfd + 1
 	for i, fd := range fds {
 		if err := unix.Dup2(int(fd.Fd()), int(fdbase+uintptr(i))); err != nil {
-			panic("faild to clone file descriptor: " + err)
+			panic("faild to clone file descriptor: " + err.Error())
 		}
 		if _, err := FcntlInt(fd.Fd(), unix.F_SETFD, unix.FD_CLOEXEC); err != nil {
-			panic("faild to set the close on exec flag: " + err)
+			panic("faild to set the close on exec flag: " + err.Error())
 		}
 	}
 	for i := range fds {
 		if err := unix.Dup2(int(fdbase+uintptr(i)), int(i)+3); err != nil {
-			panic("faild to reassign descriptor: " + err)
+			panic("faild to reassign descriptor: " + err.Error())
 		}
 	}
 	err = unix.Exec(path, args, os.Environ())

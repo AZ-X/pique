@@ -12,7 +12,7 @@ import (
 	"time"
 	"context"
 	"runtime"
-	
+
 	"github.com/AZ-X/pique/repique/behaviors"
 	"github.com/AZ-X/pique/repique/features/dns"
 	"github.com/AZ-X/pique/repique/features/dns/channels"
@@ -20,10 +20,11 @@ import (
 	"github.com/AZ-X/pique/repique/conceptions"
 	"github.com/AZ-X/pique/repique/protocols/tls"
 	"github.com/AZ-X/pique/repique/services"
+
 	"github.com/BurntSushi/toml"
 	"github.com/jedisct1/dlog"
-	stamps "stammel"
 	"golang.org/x/sync/semaphore"
+	stamps "stammel"
 )
 
 const (
@@ -150,7 +151,8 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 			dlog.SetFileDescriptor(os.NewFile(uintptr(3), "logFile"))
 		}
 	}
-	dlog.Noticef("repique %s built with runtime+stdlib %s", common.AppVersion, runtime.Version())
+	dlog.Noticef("repique %s built with runtime+stdlib %s on %s arch=%s",
+	common.AppVersion, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	dlog.Noticef("LogLevel %s", dlog.SeverityName[dlog.LogLevel()])
 	proxy.UserName = config.UserName
 	proxy.Child = *flags.Child

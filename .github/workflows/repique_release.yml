@@ -1,0 +1,61 @@
+name: repique_release
+
+on:
+  workflow_dispatch:
+   inputs:
+    tag:
+     description: 'Tag'
+     required: true
+     default: 'v1.1.0'
+    tagv2:
+     description: 'TagV2'
+     required: true
+     default: 'Ver. 2.1.X'
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.15
+    
+    - name: Create Release Folder
+      run: |
+        mkdir release
+
+    - name: Build Win64
+      run: make GOARCH=amd64 GOOS=windows CGO_ENABLED=0
+      
+    - name: Copy examples of configuration
+      run: cp ./examples/configuration/* ./bin
+
+    - name: Zip Win64
+      uses: edgarrc/action-7z@v1.0.4
+      with:
+        args: 7z a ./release/repique_windows_amd64.zip -r ./bin/* -mm=LZMA -mx=9 -md=32m
+    
+    - name: Clean Win64
+      run: rm -rf ./bin
+   
+    - name: Build Linux64
+      run: make GOARCH=amd64 GOOS=linux CGO_ENABLED=0
+
+    - name: Copy examples of configuration
+      run: cp ./examples/configuration/* ./bin
+    
+    - name: Tar Linux64
+      run: tar czf ./release/repique_linux_amd64.tar.gz -C ./bin . 
+
+    - uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag	: ${{ github.event.inputs.tag }}
+          title: Repique Release ${{ github.event.inputs.tagv2 }}
+          prerelease: false
+          files: |
+            ./release/*.zip
+            ./release/*.tar.gz

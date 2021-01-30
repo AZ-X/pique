@@ -2,7 +2,6 @@ package dns
 
 import (
 	"crypto/hmac"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
@@ -121,10 +120,6 @@ func TsigGenerate(m *Msg, secret, requestMAC string, timersOnly bool) ([]byte, s
 	t := new(TSIG)
 	var h hash.Hash
 	switch CanonicalName(rr.Algorithm) {
-	case HmacSHA1:
-		h = hmac.New(sha1.New, rawsecret)
-	case HmacSHA224:
-		h = hmac.New(sha256.New224, rawsecret)
 	case HmacSHA256:
 		h = hmac.New(sha256.New, rawsecret)
 	case HmacSHA384:
@@ -183,10 +178,6 @@ func tsigVerify(msg []byte, secret, requestMAC string, timersOnly bool, now uint
 
 	var h hash.Hash
 	switch CanonicalName(tsig.Algorithm) {
-	case HmacSHA1:
-		h = hmac.New(sha1.New, rawsecret)
-	case HmacSHA224:
-		h = hmac.New(sha256.New224, rawsecret)
 	case HmacSHA256:
 		h = hmac.New(sha256.New, rawsecret)
 	case HmacSHA384:

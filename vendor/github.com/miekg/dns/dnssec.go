@@ -8,7 +8,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	_ "crypto/sha1"
 	_ "crypto/sha256"
 	_ "crypto/sha512"
 	"encoding/asn1"
@@ -210,8 +209,6 @@ func (k *DNSKEY) ToDS(h uint8) *DS {
 
 	var hash crypto.Hash
 	switch h {
-	case SHA1:
-		hash = crypto.SHA1
 	case SHA256:
 		hash = crypto.SHA256
 	case SHA384:

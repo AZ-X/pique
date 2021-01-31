@@ -55,10 +55,6 @@ func (rr *TSIG) String() string {
 	return s
 }
 
-func (rr *TSIG) parse(c *zlexer, origin string) *ParseError {
-	panic("dns: internal error: parse should never be called on TSIG")
-}
-
 // The following values must be put in wireformat, so that the MAC can be calculated.
 // RFC 2845, section 3.4.2. TSIG Variables.
 type tsigWireFmt struct {

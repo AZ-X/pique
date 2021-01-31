@@ -51,11 +51,6 @@ type RR interface {
 	// will only be called if the record's RDATA is non-empty.
 	unpack(msg []byte, off int) (off1 int, err error)
 
-	// parse parses an RR from zone file format.
-	//
-	// This will only be called on a new and empty RR type with only the header populated.
-	parse(c *zlexer, origin string) *ParseError
-
 	// isDuplicate returns whether the two RRs are duplicates.
 	isDuplicate(r2 RR) bool
 }
@@ -103,10 +98,6 @@ func (h *RR_Header) pack(msg []byte, off int, compression compressionMap, compre
 
 func (h *RR_Header) unpack(msg []byte, off int) (int, error) {
 	panic("dns: internal error: unpack should never be called on RR_Header")
-}
-
-func (h *RR_Header) parse(c *zlexer, origin string) *ParseError {
-	panic("dns: internal error: parse should never be called on RR_Header")
 }
 
 // ToRFC3597 converts a known RR to the unknown RR representation from RFC 3597.

@@ -88,10 +88,6 @@ func (rr *OPT) len(off int, compression map[string]struct{}) int {
 	return l
 }
 
-func (rr *OPT) parse(c *zlexer, origin string) *ParseError {
-	panic("dns: internal error: parse should never be called on OPT")
-}
-
 func (r1 *OPT) isDuplicate(r2 RR) bool { return false }
 
 // return the old value -> delete SetVersion?

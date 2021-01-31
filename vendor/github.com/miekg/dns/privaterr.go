@@ -8,8 +8,6 @@ import "strings"
 type PrivateRdata interface {
 	// String returns the text presentaton of the Rdata of the Private RR.
 	String() string
-	// Parse parses the Rdata of the private RR.
-	Parse([]string) error
 	// Pack is used when packing a private RR into a buffer.
 	Pack([]byte) (int, error)
 	// Unpack is used when unpacking a private RR from a buffer.
@@ -65,29 +63,6 @@ func (r *PrivateRR) unpack(msg []byte, off int) (int, error) {
 	off1, err := r.Data.Unpack(msg[off:])
 	off += off1
 	return off, err
-}
-
-func (r *PrivateRR) parse(c *zlexer, origin string) *ParseError {
-	var l lex
-	text := make([]string, 0, 2) // could be 0..N elements, median is probably 1
-Fetch:
-	for {
-		// TODO(miek): we could also be returning _QUOTE, this might or might not
-		// be an issue (basically parsing TXT becomes hard)
-		switch l, _ = c.Next(); l.value {
-		case zNewline, zEOF:
-			break Fetch
-		case zString:
-			text = append(text, l.token)
-		}
-	}
-
-	err := r.Data.Parse(text)
-	if err != nil {
-		return &ParseError{"", err.Error(), l}
-	}
-
-	return nil
 }
 
 func (r1 *PrivateRR) isDuplicate(r2 RR) bool { return false }

@@ -76,103 +76,6 @@ func svcbStringToKey(s string) SVCBKey {
 	return svcb_RESERVED
 }
 
-func (rr *SVCB) parse(c *zlexer, o string) *ParseError {
-	l, _ := c.Next()
-	i, e := strconv.ParseUint(l.token, 10, 16)
-	if e != nil || l.err {
-		return &ParseError{l.token, "bad SVCB priority", l}
-	}
-	rr.Priority = uint16(i)
-
-	c.Next()        // zBlank
-	l, _ = c.Next() // zString
-	rr.Target = l.token
-
-	name, nameOk := toAbsoluteName(l.token, o)
-	if l.err || !nameOk {
-		return &ParseError{l.token, "bad SVCB Target", l}
-	}
-	rr.Target = name
-
-	// Values (if any)
-	l, _ = c.Next()
-	var xs []SVCBKeyValue
-	// Helps require whitespace between pairs.
-	// Prevents key1000="a"key1001=...
-	canHaveNextKey := true
-	for l.value != zNewline && l.value != zEOF {
-		switch l.value {
-		case zString:
-			if !canHaveNextKey {
-				// The key we can now read was probably meant to be
-				// a part of the last value.
-				return &ParseError{l.token, "bad SVCB value quotation", l}
-			}
-
-			// In key=value pairs, value does not have to be quoted unless value
-			// contains whitespace. And keys don't need to have values.
-			// Similarly, keys with an equality signs after them don't need values.
-			// l.token includes at least up to the first equality sign.
-			idx := strings.IndexByte(l.token, '=')
-			var key, value string
-			if idx < 0 {
-				// Key with no value and no equality sign
-				key = l.token
-			} else if idx == 0 {
-				return &ParseError{l.token, "bad SVCB key", l}
-			} else {
-				key, value = l.token[:idx], l.token[idx+1:]
-
-				if value == "" {
-					// We have a key and an equality sign. Maybe we have nothing
-					// after "=" or we have a double quote.
-					l, _ = c.Next()
-					if l.value == zQuote {
-						// Only needed when value ends with double quotes.
-						// Any value starting with zQuote ends with it.
-						canHaveNextKey = false
-
-						l, _ = c.Next()
-						switch l.value {
-						case zString:
-							// We have a value in double quotes.
-							value = l.token
-							l, _ = c.Next()
-							if l.value != zQuote {
-								return &ParseError{l.token, "SVCB unterminated value", l}
-							}
-						case zQuote:
-							// There's nothing in double quotes.
-						default:
-							return &ParseError{l.token, "bad SVCB value", l}
-						}
-					}
-				}
-			}
-			kv := makeSVCBKeyValue(svcbStringToKey(key))
-			if kv == nil {
-				return &ParseError{l.token, "bad SVCB key", l}
-			}
-			if err := kv.parse(value); err != nil {
-				return &ParseError{l.token, err.Error(), l}
-			}
-			xs = append(xs, kv)
-		case zQuote:
-			return &ParseError{l.token, "SVCB key can't contain double quotes", l}
-		case zBlank:
-			canHaveNextKey = true
-		default:
-			return &ParseError{l.token, "bad SVCB values", l}
-		}
-		l, _ = c.Next()
-	}
-	rr.Value = xs
-	if rr.Priority == 0 && len(xs) > 0 {
-		return &ParseError{l.token, "SVCB aliasform can't have values", l}
-	}
-	return nil
-}
-
 // makeSVCBKeyValue returns an SVCBKeyValue struct with the key or nil for reserved keys.
 func makeSVCBKeyValue(key SVCBKey) SVCBKeyValue {
 	switch key {
@@ -217,9 +120,6 @@ func (rr *HTTPS) String() string {
 	return rr.SVCB.String()
 }
 
-func (rr *HTTPS) parse(c *zlexer, o string) *ParseError {
-	return rr.SVCB.parse(c, o)
-}
 
 // SVCBKeyValue defines a key=value pair for the SVCB RR type.
 // An SVCB RR can have multiple SVCBKeyValues appended to it.
@@ -228,7 +128,6 @@ type SVCBKeyValue interface {
 	pack() ([]byte, error) // pack returns the encoded value.
 	unpack([]byte) error   // unpack sets the value.
 	String() string        // String returns the string representation of the value.
-	parse(string) error    // parse sets the value to the given string representation of the value.
 	copy() SVCBKeyValue    // copy returns a deep-copy of the pair.
 	len() int              // len returns the length of value in the wire format.
 }
@@ -275,16 +174,6 @@ func (s *SVCBMandatory) unpack(b []byte) error {
 	for i := 0; i < len(b); i += 2 {
 		// We assume strictly increasing order.
 		codes = append(codes, SVCBKey(binary.BigEndian.Uint16(b[i:])))
-	}
-	s.Code = codes
-	return nil
-}
-
-func (s *SVCBMandatory) parse(b string) error {
-	str := strings.Split(b, ",")
-	codes := make([]SVCBKey, 0, len(str))
-	for _, e := range str {
-		codes = append(codes, svcbStringToKey(e))
 	}
 	s.Code = codes
 	return nil
@@ -349,11 +238,6 @@ func (s *SVCBAlpn) unpack(b []byte) error {
 	return nil
 }
 
-func (s *SVCBAlpn) parse(b string) error {
-	s.Alpn = strings.Split(b, ",")
-	return nil
-}
-
 func (s *SVCBAlpn) len() int {
 	var l int
 	for _, e := range s.Alpn {
@@ -389,13 +273,6 @@ func (*SVCBNoDefaultAlpn) unpack(b []byte) error {
 	return nil
 }
 
-func (*SVCBNoDefaultAlpn) parse(b string) error {
-	if len(b) != 0 {
-		return errors.New("dns: svcbnodefaultalpn: no_default_alpn must have no value")
-	}
-	return nil
-}
-
 // SVCBPort pair defines the port for connection.
 // Basic use pattern for creating a port option:
 //
@@ -424,15 +301,6 @@ func (s *SVCBPort) pack() ([]byte, error) {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, s.Port)
 	return b, nil
-}
-
-func (s *SVCBPort) parse(b string) error {
-	port, err := strconv.ParseUint(b, 10, 16)
-	if err != nil {
-		return errors.New("dns: svcbport: port out of range")
-	}
-	s.Port = uint16(port)
-	return nil
 }
 
 // SVCBIPv4Hint pair suggests an IPv4 address which may be used to open connections
@@ -493,23 +361,6 @@ func (s *SVCBIPv4Hint) String() string {
 	return strings.Join(str, ",")
 }
 
-func (s *SVCBIPv4Hint) parse(b string) error {
-	if strings.Contains(b, ":") {
-		return errors.New("dns: svcbipv4hint: expected ipv4, got ipv6")
-	}
-	str := strings.Split(b, ",")
-	dst := make([]net.IP, len(str))
-	for i, e := range str {
-		ip := net.ParseIP(e).To4()
-		if ip == nil {
-			return errors.New("dns: svcbipv4hint: bad ip")
-		}
-		dst[i] = ip
-	}
-	s.Hint = dst
-	return nil
-}
-
 func (s *SVCBIPv4Hint) copy() SVCBKeyValue {
 	return &SVCBIPv4Hint{
 		append([]net.IP(nil), s.Hint...),
@@ -544,14 +395,6 @@ func (s *SVCBECHConfig) copy() SVCBKeyValue {
 
 func (s *SVCBECHConfig) unpack(b []byte) error {
 	s.ECH = append([]byte(nil), b...)
-	return nil
-}
-func (s *SVCBECHConfig) parse(b string) error {
-	x, err := fromBase64([]byte(b))
-	if err != nil {
-		return errors.New("dns: svcbechconfig: bad base64 echconfig")
-	}
-	s.ECH = x
 	return nil
 }
 
@@ -611,23 +454,6 @@ func (s *SVCBIPv6Hint) String() string {
 	return strings.Join(str, ",")
 }
 
-func (s *SVCBIPv6Hint) parse(b string) error {
-	if strings.Contains(b, ".") {
-		return errors.New("dns: svcbipv6hint: expected ipv6, got ipv4")
-	}
-	str := strings.Split(b, ",")
-	dst := make([]net.IP, len(str))
-	for i, e := range str {
-		ip := net.ParseIP(e)
-		if ip == nil {
-			return errors.New("dns: svcbipv6hint: bad ip")
-		}
-		dst[i] = ip
-	}
-	s.Hint = dst
-	return nil
-}
-
 func (s *SVCBIPv6Hint) copy() SVCBKeyValue {
 	return &SVCBIPv6Hint{
 		append([]net.IP(nil), s.Hint...),
@@ -675,36 +501,6 @@ func (s *SVCBLocal) String() string {
 		}
 	}
 	return str.String()
-}
-
-func (s *SVCBLocal) parse(b string) error {
-	data := make([]byte, 0, len(b))
-	for i := 0; i < len(b); {
-		if b[i] != '\\' {
-			data = append(data, b[i])
-			i++
-			continue
-		}
-		if i+1 == len(b) {
-			return errors.New("dns: svcblocal: svcb private/experimental key escape unterminated")
-		}
-		if isDigit(b[i+1]) {
-			if i+3 < len(b) && isDigit(b[i+2]) && isDigit(b[i+3]) {
-				a, err := strconv.ParseUint(b[i+1:i+4], 10, 8)
-				if err == nil {
-					i += 4
-					data = append(data, byte(a))
-					continue
-				}
-			}
-			return errors.New("dns: svcblocal: svcb private/experimental key bad escaped octet")
-		} else {
-			data = append(data, b[i+1])
-			i += 2
-		}
-	}
-	s.Data = data
-	return nil
 }
 
 func (s *SVCBLocal) copy() SVCBKeyValue {

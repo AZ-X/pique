@@ -61,10 +61,12 @@ const (
 	TypeKX         uint16 = 36
 	TypeCERT       uint16 = 37
 	TypeDNAME      uint16 = 39
+	TypeSINK       uint16 = 40 // Donald E. Eastlake
 	TypeOPT        uint16 = 41 // EDNS
 	TypeAPL        uint16 = 42
 	TypeDS         uint16 = 43
 	TypeSSHFP      uint16 = 44
+	TypeIPSECKEY   uint16 = 45
 	TypeRRSIG      uint16 = 46
 	TypeNSEC       uint16 = 47
 	TypeDNSKEY     uint16 = 48
@@ -114,7 +116,6 @@ const (
 
 	// valid Question.Qclass
 	ClassINET   = 1
-	ClassCSNET  = 2
 	ClassCHAOS  = 3
 	ClassHESIOD = 4
 	ClassNONE   = 254
@@ -245,17 +246,6 @@ type ANY struct {
 
 func (rr *ANY) String() string { return rr.Hdr.String() }
 
-// NULL RR. See RFC 1035.
-type NULL struct {
-	Hdr  RR_Header
-	Data string `dns:"any"`
-}
-
-func (rr *NULL) String() string {
-	// There is no presentation format; prefix string with a comment.
-	return ";" + rr.Hdr.String() + rr.Data
-}
-
 // CNAME RR. See RFC 1034.
 type CNAME struct {
 	Hdr    RR_Header
@@ -275,22 +265,6 @@ func (rr *HINFO) String() string {
 	return rr.Hdr.String() + sprintTxt([]string{rr.Cpu, rr.Os})
 }
 
-// MB RR. See RFC 1035.
-type MB struct {
-	Hdr RR_Header
-	Mb  string `dns:"cdomain-name"`
-}
-
-func (rr *MB) String() string { return rr.Hdr.String() + sprintName(rr.Mb) }
-
-// MG RR. See RFC 1035.
-type MG struct {
-	Hdr RR_Header
-	Mg  string `dns:"cdomain-name"`
-}
-
-func (rr *MG) String() string { return rr.Hdr.String() + sprintName(rr.Mg) }
-
 // MINFO RR. See RFC 1035.
 type MINFO struct {
 	Hdr   RR_Header
@@ -302,16 +276,6 @@ func (rr *MINFO) String() string {
 	return rr.Hdr.String() + sprintName(rr.Rmail) + " " + sprintName(rr.Email)
 }
 
-// MR RR. See RFC 1035.
-type MR struct {
-	Hdr RR_Header
-	Mr  string `dns:"cdomain-name"`
-}
-
-func (rr *MR) String() string {
-	return rr.Hdr.String() + sprintName(rr.Mr)
-}
-
 // MF RR. See RFC 1035.
 type MF struct {
 	Hdr RR_Header
@@ -320,16 +284,6 @@ type MF struct {
 
 func (rr *MF) String() string {
 	return rr.Hdr.String() + sprintName(rr.Mf)
-}
-
-// MD RR. See RFC 1035.
-type MD struct {
-	Hdr RR_Header
-	Md  string `dns:"cdomain-name"`
-}
-
-func (rr *MD) String() string {
-	return rr.Hdr.String() + sprintName(rr.Md)
 }
 
 // MX RR. See RFC 1035.
@@ -1082,6 +1036,45 @@ func (rr *TKEY) String() string {
 	return s
 }
 
+// UnknownRR delegates RFC3597
+// call ToRFC3597 if drilling
+type UnknownRR struct {
+	Hdr   RR_Header
+	Rdata []byte
+}
+
+func (rr *UnknownRR) String() string {
+	// Let's call it a whack
+	s := rfc3597Header(rr.Hdr)
+	s += "[unknown:" + strconv.Itoa(len(rr.Rdata)) + "]"
+	return s
+}
+
+func (rr *UnknownRR) Header() *RR_Header    { return &rr.Hdr }
+
+func (rr *UnknownRR) len(off int, compression map[string]struct{}) int {
+	return rr.Hdr.len(off, compression) + len(rr.Rdata)
+}
+
+func (rr *UnknownRR) pack(msg []byte, off int, compression compressionMap, compress bool) (off1 int, err error) {
+	end := off + len(rr.Rdata)
+	if end > len(msg) {
+		return len(msg), &Error{err: "overflow packing UnknownRR"}
+	}
+	copy(msg[off:end], rr.Rdata)
+	return end, nil
+}
+
+func (rr *UnknownRR) unpack(msg []byte, off int) (off1 int, err error) {
+	end := off + int(rr.Hdr.Rdlength)
+	if end > len(msg) {
+		return len(msg), &Error{err: "overflow unpacking UnknownRR"}
+	}
+	rr.Rdata = make([]byte, int(rr.Hdr.Rdlength))
+	copy(rr.Rdata, msg[off:end])
+	return end, nil
+}
+
 // RFC3597 represents an unknown/generic RR. See RFC 3597.
 type RFC3597 struct {
 	Hdr   RR_Header
@@ -1281,46 +1274,6 @@ func (rr *CAA) String() string {
 	return rr.Hdr.String() + strconv.Itoa(int(rr.Flag)) + " " + rr.Tag + " " + sprintTxtOctet(rr.Value)
 }
 
-// UID RR. Deprecated, IANA-Reserved.
-type UID struct {
-	Hdr RR_Header
-	Uid uint32
-}
-
-func (rr *UID) String() string { return rr.Hdr.String() + strconv.FormatInt(int64(rr.Uid), 10) }
-
-// GID RR. Deprecated, IANA-Reserved.
-type GID struct {
-	Hdr RR_Header
-	Gid uint32
-}
-
-func (rr *GID) String() string { return rr.Hdr.String() + strconv.FormatInt(int64(rr.Gid), 10) }
-
-// UINFO RR. Deprecated, IANA-Reserved.
-type UINFO struct {
-	Hdr   RR_Header
-	Uinfo string
-}
-
-func (rr *UINFO) String() string { return rr.Hdr.String() + sprintTxt([]string{rr.Uinfo}) }
-
-// EID RR. See http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt.
-type EID struct {
-	Hdr      RR_Header
-	Endpoint string `dns:"hex"`
-}
-
-func (rr *EID) String() string { return rr.Hdr.String() + strings.ToUpper(rr.Endpoint) }
-
-// NIMLOC RR. See http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt.
-type NIMLOC struct {
-	Hdr     RR_Header
-	Locator string `dns:"hex"`
-}
-
-func (rr *NIMLOC) String() string { return rr.Hdr.String() + strings.ToUpper(rr.Locator) }
-
 // OPENPGPKEY RR. See RFC 7929.
 type OPENPGPKEY struct {
 	Hdr       RR_Header
@@ -1418,14 +1371,6 @@ func (a *APLPrefix) equals(b *APLPrefix) bool {
 	return a.Negation == b.Negation &&
 		bytes.Equal(a.Network.IP, b.Network.IP) &&
 		bytes.Equal(a.Network.Mask, b.Network.Mask)
-}
-
-// copy returns a copy of the APL prefix.
-func (p *APLPrefix) copy() APLPrefix {
-	return APLPrefix{
-		Negation: p.Negation,
-		Network:  copyNet(p.Network),
-	}
 }
 
 // len returns size of the prefix in wire format.

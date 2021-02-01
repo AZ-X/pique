@@ -230,7 +230,7 @@ func logf(severity Severity, format string, args ...interface{}) *string {
 		} else {
 			os.Stderr.WriteString(line)
 		}
-		return &line
+		return &message
 	}
 	return nil
 }

@@ -610,7 +610,7 @@ func (p wireSlice) Less(i, j int) bool {
 func rawSignatureData(rrset []RR, s *RRSIG) (buf []byte, err error) {
 	wires := make(wireSlice, len(rrset))
 	for i, r := range rrset {
-		r1 := r.copy()
+		r1 := r
 		h := r1.Header()
 		h.Ttl = s.OrigTtl
 		labels := SplitDomainName(h.Name)
@@ -634,8 +634,6 @@ func rawSignatureData(rrset []RR, s *RRSIG) (buf []byte, err error) {
 		switch x := r1.(type) {
 		case *NS:
 			x.Ns = CanonicalName(x.Ns)
-		case *MD:
-			x.Md = CanonicalName(x.Md)
 		case *MF:
 			x.Mf = CanonicalName(x.Mf)
 		case *CNAME:
@@ -643,12 +641,6 @@ func rawSignatureData(rrset []RR, s *RRSIG) (buf []byte, err error) {
 		case *SOA:
 			x.Ns = CanonicalName(x.Ns)
 			x.Mbox = CanonicalName(x.Mbox)
-		case *MB:
-			x.Mb = CanonicalName(x.Mb)
-		case *MG:
-			x.Mg = CanonicalName(x.Mg)
-		case *MR:
-			x.Mr = CanonicalName(x.Mr)
 		case *PTR:
 			x.Ptr = CanonicalName(x.Ptr)
 		case *MINFO:

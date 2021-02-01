@@ -12,8 +12,6 @@ type PrivateRdata interface {
 	Pack([]byte) (int, error)
 	// Unpack is used when unpacking a private RR from a buffer.
 	Unpack([]byte) (int, error)
-	// Copy copies the Rdata into the PrivateRdata argument.
-	Copy(PrivateRdata) error
 	// Len returns the length in octets of the Rdata.
 	Len() int
 }
@@ -39,17 +37,6 @@ func (r *PrivateRR) len(off int, compression map[string]struct{}) int {
 	return l
 }
 
-func (r *PrivateRR) copy() RR {
-	// make new RR like this:
-	rr := &PrivateRR{r.Hdr, r.generator(), r.generator}
-
-	if err := r.Data.Copy(rr.Data); err != nil {
-		panic("dns: got value that could not be used to copy Private rdata: " + err.Error())
-	}
-
-	return rr
-}
-
 func (r *PrivateRR) pack(msg []byte, off int, compression compressionMap, compress bool) (int, error) {
 	n, err := r.Data.Pack(msg[off:])
 	if err != nil {
@@ -64,8 +51,6 @@ func (r *PrivateRR) unpack(msg []byte, off int) (int, error) {
 	off += off1
 	return off, err
 }
-
-func (r1 *PrivateRR) isDuplicate(r2 RR) bool { return false }
 
 // PrivateHandle registers a private resource record type. It requires
 // string and numeric representation of private RR type and generator function as argument.

@@ -31,28 +31,19 @@ type RR interface {
 	Header() *RR_Header
 	// String returns the text representation of the resource record.
 	String() string
-
-	// copy returns a copy of the RR
-	copy() RR
-
 	// len returns the length (in octets) of the compressed or uncompressed RR in wire format.
 	//
 	// If compression is nil, the uncompressed size will be returned, otherwise the compressed
 	// size will be returned and domain names will be added to the map for future compression.
 	len(off int, compression map[string]struct{}) int
-
 	// pack packs the records RDATA into wire format. The header will
 	// already have been packed into msg.
 	pack(msg []byte, off int, compression compressionMap, compress bool) (off1 int, err error)
-
 	// unpack unpacks an RR from wire format.
 	//
 	// This will only be called on a new and empty RR type with only the header populated. It
 	// will only be called if the record's RDATA is non-empty.
 	unpack(msg []byte, off int) (off1 int, err error)
-
-	// isDuplicate returns whether the two RRs are duplicates.
-	isDuplicate(r2 RR) bool
 }
 
 // RR_Header is the header all DNS resource records share.
@@ -66,9 +57,6 @@ type RR_Header struct {
 
 // Header returns itself. This is here to make RR_Header implements the RR interface.
 func (h *RR_Header) Header() *RR_Header { return h }
-
-// Just to implement the RR interface.
-func (h *RR_Header) copy() RR { return nil }
 
 func (h *RR_Header) String() string {
 	var s string

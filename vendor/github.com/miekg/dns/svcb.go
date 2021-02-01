@@ -128,7 +128,6 @@ type SVCBKeyValue interface {
 	pack() ([]byte, error) // pack returns the encoded value.
 	unpack([]byte) error   // unpack sets the value.
 	String() string        // String returns the string representation of the value.
-	copy() SVCBKeyValue    // copy returns a deep-copy of the pair.
 	len() int              // len returns the length of value in the wire format.
 }
 
@@ -181,12 +180,6 @@ func (s *SVCBMandatory) unpack(b []byte) error {
 
 func (s *SVCBMandatory) len() int {
 	return 2 * len(s.Code)
-}
-
-func (s *SVCBMandatory) copy() SVCBKeyValue {
-	return &SVCBMandatory{
-		append([]SVCBKey(nil), s.Code...),
-	}
 }
 
 // SVCBAlpn pair is used to list supported connection protocols.
@@ -246,12 +239,6 @@ func (s *SVCBAlpn) len() int {
 	return l
 }
 
-func (s *SVCBAlpn) copy() SVCBKeyValue {
-	return &SVCBAlpn{
-		append([]string(nil), s.Alpn...),
-	}
-}
-
 // SVCBNoDefaultAlpn pair signifies no support for default connection protocols.
 // Basic use pattern for creating a no-default-alpn option:
 //
@@ -261,7 +248,6 @@ func (s *SVCBAlpn) copy() SVCBKeyValue {
 type SVCBNoDefaultAlpn struct{}
 
 func (*SVCBNoDefaultAlpn) Key() SVCBKey          { return SVCB_NO_DEFAULT_ALPN }
-func (*SVCBNoDefaultAlpn) copy() SVCBKeyValue    { return &SVCBNoDefaultAlpn{} }
 func (*SVCBNoDefaultAlpn) pack() ([]byte, error) { return []byte{}, nil }
 func (*SVCBNoDefaultAlpn) String() string        { return "" }
 func (*SVCBNoDefaultAlpn) len() int              { return 0 }
@@ -287,7 +273,6 @@ type SVCBPort struct {
 func (*SVCBPort) Key() SVCBKey         { return SVCB_PORT }
 func (*SVCBPort) len() int             { return 2 }
 func (s *SVCBPort) String() string     { return strconv.FormatUint(uint64(s.Port), 10) }
-func (s *SVCBPort) copy() SVCBKeyValue { return &SVCBPort{s.Port} }
 
 func (s *SVCBPort) unpack(b []byte) error {
 	if len(b) != 2 {
@@ -361,12 +346,6 @@ func (s *SVCBIPv4Hint) String() string {
 	return strings.Join(str, ",")
 }
 
-func (s *SVCBIPv4Hint) copy() SVCBKeyValue {
-	return &SVCBIPv4Hint{
-		append([]net.IP(nil), s.Hint...),
-	}
-}
-
 // SVCBECHConfig pair contains the ECHConfig structure defined in draft-ietf-tls-esni [RFC xxxx].
 // Basic use pattern for creating an echconfig option:
 //
@@ -385,12 +364,6 @@ func (s *SVCBECHConfig) len() int       { return len(s.ECH) }
 
 func (s *SVCBECHConfig) pack() ([]byte, error) {
 	return append([]byte(nil), s.ECH...), nil
-}
-
-func (s *SVCBECHConfig) copy() SVCBKeyValue {
-	return &SVCBECHConfig{
-		append([]byte(nil), s.ECH...),
-	}
 }
 
 func (s *SVCBECHConfig) unpack(b []byte) error {
@@ -454,12 +427,6 @@ func (s *SVCBIPv6Hint) String() string {
 	return strings.Join(str, ",")
 }
 
-func (s *SVCBIPv6Hint) copy() SVCBKeyValue {
-	return &SVCBIPv6Hint{
-		append([]net.IP(nil), s.Hint...),
-	}
-}
-
 // SVCBLocal pair is intended for experimental/private use. The key is recommended
 // to be in the range [SVCB_PRIVATE_LOWER, SVCB_PRIVATE_UPPER].
 // Basic use pattern for creating a keyNNNNN option:
@@ -501,12 +468,6 @@ func (s *SVCBLocal) String() string {
 		}
 	}
 	return str.String()
-}
-
-func (s *SVCBLocal) copy() SVCBKeyValue {
-	return &SVCBLocal{s.KeyCode,
-		append([]byte(nil), s.Data...),
-	}
 }
 
 func (rr *SVCB) String() string {

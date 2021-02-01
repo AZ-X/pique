@@ -118,7 +118,6 @@ type Msg struct {
 // ClassToString is a maps Classes to strings for each CLASS wire type.
 var ClassToString = map[uint16]string{
 	ClassINET:   "IN",
-	ClassCSNET:  "CS",
 	ClassCHAOS:  "CH",
 	ClassHESIOD: "HS",
 	ClassNONE:   "NONE",
@@ -621,7 +620,7 @@ func UnpackRRWithHeader(h RR_Header, msg []byte, off int) (rr RR, off1 int, err 
 		rr = newFn()
 		*rr.Header() = h
 	} else {
-		rr = &RFC3597{Hdr: h}
+		rr = &UnknownRR{Hdr: h}
 	}
 
 	if noRdata(h) {
@@ -1033,44 +1032,8 @@ func compressionLenSearch(c map[string]struct{}, s string, msgOff int) (int, boo
 	return 0, false
 }
 
-// Copy returns a new RR which is a deep-copy of r.
-func Copy(r RR) RR { return r.copy() }
-
 // Len returns the length (in octets) of the uncompressed RR in wire format.
 func Len(r RR) int { return r.len(0, nil) }
-
-// Copy returns a new *Msg which is a deep-copy of dns.
-func (dns *Msg) Copy() *Msg { return dns.CopyTo(new(Msg)) }
-
-// CopyTo copies the contents to the provided message using a deep-copy and returns the copy.
-func (dns *Msg) CopyTo(r1 *Msg) *Msg {
-	r1.MsgHdr = dns.MsgHdr
-	r1.Compress = dns.Compress
-
-	if len(dns.Question) > 0 {
-		r1.Question = make([]Question, len(dns.Question))
-		copy(r1.Question, dns.Question) // TODO(miek): Question is an immutable value, ok to do a shallow-copy
-	}
-
-	rrArr := make([]RR, len(dns.Answer)+len(dns.Ns)+len(dns.Extra))
-	r1.Answer, rrArr = rrArr[:0:len(dns.Answer)], rrArr[len(dns.Answer):]
-	r1.Ns, rrArr = rrArr[:0:len(dns.Ns)], rrArr[len(dns.Ns):]
-	r1.Extra = rrArr[:0:len(dns.Extra)]
-
-	for _, r := range dns.Answer {
-		r1.Answer = append(r1.Answer, r.copy())
-	}
-
-	for _, r := range dns.Ns {
-		r1.Ns = append(r1.Ns, r.copy())
-	}
-
-	for _, r := range dns.Extra {
-		r1.Extra = append(r1.Extra, r.copy())
-	}
-
-	return r1
-}
 
 func (q *Question) pack(msg []byte, off int, compression compressionMap, compress bool) (int, error) {
 	off, err := packDomainName(q.Name, msg, off, compression, compress)

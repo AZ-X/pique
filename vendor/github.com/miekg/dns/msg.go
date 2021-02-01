@@ -605,18 +605,26 @@ func packRR(rr RR, msg []byte, off int, compression compressionMap, compress boo
 
 // UnpackRR unpacks msg[off:] into an RR.
 func UnpackRR(msg []byte, off int) (rr RR, off1 int, err error) {
+	return unpackRRWithTypes(msg, off, TypeToRR)
+}
+
+func unpackRRWithTypes(msg []byte, off int, known_types map[uint16]func()RR) (rr RR, off1 int, err error) {
 	h, off, msg, err := unpackHeader(msg, off)
 	if err != nil {
 		return nil, len(msg), err
 	}
 
-	return UnpackRRWithHeader(h, msg, off)
+	return unpackRRWithHeader_ts(h, msg, off, known_types)
+}
+
+func UnpackRRWithHeader(h RR_Header, msg []byte, off int) (rr RR, off1 int, err error) {
+	return unpackRRWithHeader_ts(h, msg, off, TypeToRR)
 }
 
 // UnpackRRWithHeader unpacks the record type specific payload given an existing
 // RR_Header.
-func UnpackRRWithHeader(h RR_Header, msg []byte, off int) (rr RR, off1 int, err error) {
-	if newFn, ok := TypeToRR[h.Rrtype]; ok {
+func unpackRRWithHeader_ts(h RR_Header, msg []byte, off int, known_types map[uint16]func()RR) (rr RR, off1 int, err error) {
+	if newFn, ok := known_types[h.Rrtype]; ok {
 		rr = newFn()
 		*rr.Header() = h
 	} else {
@@ -643,12 +651,18 @@ func UnpackRRWithHeader(h RR_Header, msg []byte, off int) (rr RR, off1 int, err 
 // unpackRRslice unpacks msg[off:] into an []RR.
 // If we cannot unpack the whole array, then it will return nil
 func unpackRRslice(l int, msg []byte, off int) (dst1 []RR, off1 int, err error) {
+	return unpackRRslice_ts(l, msg, off, TypeToRR)
+}
+
+// unpackRRslice unpacks msg[off:] into an []RR.
+// If we cannot unpack the whole array, then it will return nil
+func unpackRRslice_ts(l int, msg []byte, off int, known_types map[uint16]func()RR) (dst1 []RR, off1 int, err error) {
 	var r RR
 	// Don't pre-allocate, l may be under attacker control
 	var dst []RR
 	for i := 0; i < l; i++ {
 		off1 := off
-		r, off, err = UnpackRR(msg, off)
+		r, off, err = unpackRRWithTypes(msg, off, known_types)
 		if err != nil {
 			off = len(msg)
 			break
@@ -816,7 +830,7 @@ func (dns *Msg) packBufferWithCompressionMap(buf []byte, compression compression
 	return msg[:off], nil
 }
 
-func (dns *Msg) unpack(dh *Header, msg []byte, off int) (err error) {
+func (dns *Msg) UnpackWithTypes(dh *Header, msg []byte, off int, known_types map[uint16]func()RR) (err error) {
 	// If we are at the end of the message we should return *just* the
 	// header. This can still be useful to the caller. 9.9.9.9 sends these
 	// when responding with REFUSED for instance.
@@ -844,16 +858,16 @@ func (dns *Msg) unpack(dh *Header, msg []byte, off int) (err error) {
 		dns.Question = append(dns.Question, q)
 	}
 
-	dns.Answer, off, err = unpackRRslice(int(dh.Ancount), msg, off)
+	dns.Answer, off, err = unpackRRslice_ts(int(dh.Ancount), msg, off, known_types)
 	// The header counts might have been wrong so we need to update it
 	dh.Ancount = uint16(len(dns.Answer))
 	if err == nil {
-		dns.Ns, off, err = unpackRRslice(int(dh.Nscount), msg, off)
+		dns.Ns, off, err = unpackRRslice_ts(int(dh.Nscount), msg, off, known_types)
 	}
 	// The header counts might have been wrong so we need to update it
 	dh.Nscount = uint16(len(dns.Ns))
 	if err == nil {
-		dns.Extra, off, err = unpackRRslice(int(dh.Arcount), msg, off)
+		dns.Extra, off, err = unpackRRslice_ts(int(dh.Arcount), msg, off, known_types)
 	}
 	// The header counts might have been wrong so we need to update it
 	dh.Arcount = uint16(len(dns.Extra))
@@ -874,14 +888,19 @@ func (dns *Msg) unpack(dh *Header, msg []byte, off int) (err error) {
 
 // Unpack unpacks a binary message to a Msg structure.
 func (dns *Msg) Unpack(msg []byte) (err error) {
+	return dns.Unpack_TS(msg, TypeToRR)
+}
+
+func (dns *Msg) Unpack_TS(msg []byte, known_types map[uint16]func()RR) (err error) {
 	dh, off, err := unpackMsgHdr(msg, 0)
 	if err != nil {
 		return err
 	}
 
 	dns.setHdr(dh)
-	return dns.unpack(&dh, msg, off)
+	return dns.UnpackWithTypes(&dh, msg, off, known_types)
 }
+
 
 // Convert a complete message to a string with dig-like output.
 func (dns *Msg) String() string {

@@ -42,14 +42,28 @@ func (v *Validation) Init(cfg *Config, f FChannelByName) {
 	v.f = f
 }
 
+// TypeToRR is a restriction map of known/processing RR type.
+func TypeToRR() map[uint16]func()dns.RR {
+	return map[uint16]func()dns.RR {
+		dns.TypeA:     func() dns.RR { return new(dns.A) },
+		dns.TypeAAAA:  func() dns.RR { return new(dns.AAAA) },
+		dns.TypeCNAME: func() dns.RR { return new(dns.CNAME) },
+		dns.TypeSOA:   func() dns.RR { return new(dns.SOA) },
+		dns.TypeOPT:   func() dns.RR { return new(dns.OPT) },
+	}
+}
+
+/*
 //go:linkname unpack github.com/miekg/dns.(*Msg).unpack
 func unpack(dns *dns.Msg, dh *dns.Header, msg []byte, off int) (err error)
+*/
 
 //go:linkname unpackMsgHdr github.com/miekg/dns.unpackMsgHdr
 func unpackMsgHdr(msg []byte, off int) (dns.Header, int, error)
 
 //go:linkname setHdr github.com/miekg/dns.(*Msg).setHdr
 func setHdr(dns *dns.Msg, dh dns.Header)
+
 
 const _QR = 1 << 15
 const rr_throttle = 15 // quote miekg/dns 'as they are attacker controlled'; thus can be partially treated 
@@ -123,7 +137,7 @@ V1_Unpack:{
 	}
 	msg := &dns.Msg{}
 	setHdr(msg, dh)
-	if err = unpack(msg, &dh, in_bytes, off); err != nil {
+	if err = msg.UnpackWithTypes(&dh, in_bytes, off, TypeToRR()); err != nil {
 		s.LastError = err
 		goto V1_NOK
 	}
@@ -194,7 +208,7 @@ V3_Unpack:{
 	msg := &dns.Msg{}
 	setHdr(msg, dh)
 	tdh := dh
-	if err = unpack(msg, &tdh, in_bytes, off); err != nil {
+	if err = msg.UnpackWithTypes(&tdh, in_bytes, off, TypeToRR()); err != nil {
 		s.LastError = err
 		goto V3_NOK
 	}

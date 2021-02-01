@@ -176,7 +176,7 @@ RowLoop:
 			continue
 		}
 		msg := new(dns.Msg)
-		if err = msg.Unpack(binResult); err != nil {
+		if err = msg.Unpack_TS(binResult, map[uint16]func()dns.RR{}); err != nil {
 			dlog.Debug(err)
 			dlog.Errorf("got corrupt dns format for [%s]", *resolver.Name)
 			continue
@@ -192,16 +192,19 @@ RowLoop:
 				continue
 			}
 			hasTXT = true
-			lenData := int(rr.Header().Rdlength)
-			lenRR := dns.Len(rr)
-			var binCert []byte = make([]byte, lenRR)
-			var off int
-			off, _ = dns.PackRR(rr, binCert, 0, nil, false)
-			binCert = binCert[off - lenData + 1:off]
-			if len(binCert) < 124 {
+			// below works with msg.Unpack
+			//lenData := int(rr.Header().Rdlength)
+			//lenRR := dns.Len(rr)
+			//var binCert []byte = make([]byte, lenRR)
+			//var off int
+			//off, _ = dns.PackRR(rr, binCert, 0, nil, false)
+			//binCert = binCert[off - lenData + 1:off]
+			binCert := rr.(*dns.UnknownRR).Rdata
+			if len(binCert) < 125 {
 				err = dlog.Errorf("certificate of [%v] is too short", *resolver.Name)
 				continue
 			}
+			binCert = binCert[1:]
 			if !bytes.Equal(binCert[:4], CertMagic()) {
 				err = dlog.Errorf("[%s] has invalid cert magic", *resolver.Name)
 				continue

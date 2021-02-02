@@ -1,6 +1,11 @@
-![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)![repique_release](https://github.com/AZ-X/pique/workflows/repique_release/badge.svg)
+![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)![repique_release](https://github.com/AZ-X/pique/workflows/repique_release/badge.svg)[![Gitter](https://badges.gitter.im/repique/community.svg)](https://gitter.im/repique/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 # Intro: What's pique or repique
+
+> It's not DNS...  
+> There's no way it was DNS...  
+> It was DNS.  
+> -- SSBroski
 
 ## Repique is an advanced DNS stub which can run on different OS such as Windows, Linux, OpenWRT.
 
@@ -40,15 +45,41 @@ For example:
 - `network.c` in dnsmasq uses 2K-LOCs to coordinate sfd of socket and interfaces while others pseudo 'server' applications only delegate its functionality to vendors or create a rough one.
 - *ACCESS-CONTROL, MEMORY-CONTROL, THREADS-CONTROL,CACHE-CONTROL, SOCKET OPTION* in unbound by NLnetLabs are more detailed than others pseudo 'server' applications.
 
+Now, everybody knows the story in year 2020.
+> DNSpooq: Cache Poisoning and RCE in Popular DNS Forwarder (`rfc1035.c 2K-LOCs`)
+> DNSpooq `demonstrates` that DNS implementations are still insecure, even today, 13 years after the last major attack was described.
+
+|CVE|Impact|
+|--|--|
+|CVE-2020-25684|DNS Cache Poisoning|
+|CVE-2020-25685|DNS Cache Poisoning|
+|CVE-2020-25686|DNS Cache Poisoning|
+|CVE-2020-25681|Remote Code Execution, Denial of Service|
+|CVE-2020-25682|Remote Code Execution, Denial of Service|
+|CVE-2020-25683|Remote Code Execution, Denial of Service|
+|CVE-2020-25687|Remote Code Execution, Denial of Service|
+
+> In a bit of irony, in order for a device to be affected by the four buffer overflow vulnerabilities, the DNSSEC feature must be enabled.
+> Devices with DNSSEC disabled would NOT be affected by the buffer overflow flaws.
+> However, JSOF notes it is important to enable DNSSEC as it is used to prevent cache poisoning attacks.
+
+> DNS is an Internet-critical protocol whose security greatly affect the security of Internet users.
+> In this paper, JSOF presented 7 vulnerabilities affecting the popular DNS forwarder dnsmasq.
+> These issues put networking and other devices at a risk of compromise and affect millions of Internet users which can suffer from the cache poisoning attack and RCE presented.
+> This highlights the importance of DNS security in general and the security of DNS forwarders in particular.
+> It also highlights the need to expedite the deployment of DNS security measures such as DNSSEC, **DNS transport security and DNS cookies**.
+
 It sights a lack of creativity of DNS toolset mostly and these senseless users are used to pseudo newcome and speaking yogurt.  
 The fact is repique never aims at being a DNS server application so that it never performs overhead design or pseudo implementation.  
 However repique did most DNS stub never did, a powerful, dynamic and flexible program with interoperability to strong encryption protocols and routines to synthetic data.
+# ![repique TLS1.3](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/tls_my_server_name.png?raw=true)
+Illustration of sending TLS1.3 Client Hello by repique
 
 Repique can share cache and patterns between multiple listeners or on the contrary, isolate them as independence.  
 Repique can create nested groups for upstreams as well as tags for extra definition of upstreams.  
 Repique can use regular expressions to dispatch queries to groups, tags and listeners.  
 Repique has less explicit fingerprints and interaction behaviors than the rest of applications.  
-Repique forces TLS to fix on **version 1.3** and therefore **bypasses** https 1.1.  
+Repique enforces TLS to fix on **version 1.3** and therefore **bypasses** https 1.1.  
 Repique uses same ordered cipher suites no matter of what hardware features running on and has **discarded** `TLS_AES_128_GCM_SHA256` from v1.3 suites.  
 Repique uses compatible upstreams definitions with dnscrypt-proxy and compatible routines with Acrylic DNS.  
 Repique is the only alternative golang implementation conform to dnscrypt protocol.  
@@ -58,7 +89,7 @@ Repique goes beyond other stubs by implementing preload functions and various ca
 
 - People who take care of 'DNS Privacy'.
 - People who desire an inclusive DNS stub.
-- people who start prioritizing digital freedom, privacy and security across convenience and cost.
+- People who start prioritizing digital freedom, privacy and security across convenience and cost.
 - People who accept/cognize possible sophisticated analysis on encryption protocols as well inner/outer states by public servers, non-agreement front/back-end of services and mid hops.
 - People who understand the first principle of **Zero Trust**.
 - People who practise **Zero Trust** security with open source contributions and vendors.
@@ -68,12 +99,18 @@ Repique goes beyond other stubs by implementing preload functions and various ca
 
 ### Comparison between repique and dnscrypt-proxy
 
+Since repique started from dnscrypt-proxy R2, introducing an overall changes to advantages is necessary to specify:  
 1. Rewritten crypto functions
 1. Rewritten all protocols baseline
 1. Improved debug info so as to achieve principal stage of module based iteration methodology
 1. Improved flows and data handling
 1. Improved general design of common CLI program
 1. Strict & Small & Smart
+
+Finally, comparing both release size on Windows(with go1.15;zipped):
+-      dnscrypt-proxy-win64-2.0.45.zip 2.86 MB
+-      repique_windows_amd64.zip 1.85 MB  
+:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:
 
 ### Comparison between repique and dnsmasq/pihole-FTL
 
@@ -86,6 +123,20 @@ It is always recommended to use repique combining with a DNS server if hosting o
 ### Comparison between repique and pihole-MassDNS
 
 Repique can run on different OS while MassDNS is designed to run on Linux.
+
+### Comparison between repique and djb'dns
+
+Repique and djbdns share some common legends: both of them are reaction-propelled DNS project.  
+Djbdns was started because of black hole inside BIND DNS.  
+Repique was started because of dissentient vendoring, privacy and size of dnscrypt-proxy.  
+Repique is a modern DNS stub while djbdns is an old fashion DNS server after all.
+
+### Comparison between repique and NLnet Labs' stubby
+
+Just like other NLnet Labs' project, stubby has external dependencies on OpenSSL, libunbound, libidn2.  
+Repique has internal dependencies on Google's golang std libs.  
+Repique and stubby use different cryptographic primitives.  
+There is no complex routines or strict/flexible TLS when using stubby.
 
 ### Comparison between repique and CoreDNS
 
@@ -129,13 +180,57 @@ running on the supported OS; using the default DNS client by OS; configurate rep
 - Work with DNS server:  
 running on the supported OS; using any DNS server preferred; configurate forwarding rule to repique.
 
+### Releases
+
+Check out [Releases Page](https://github.com/AZ-X/pique/releases)
+
 ### Installation
-
-
 
 :arrow_double_down::arrow_double_down::arrow_double_down: old description
 
 ### [Download the latest release] coming soon maybe tomorrow
+
+### Usage
+
+#### Command Line Interface Options:
+
+|flags|description|
+|--|--|
+|–check=true|check the configuration file and exit|
+|-version|print current version and exit|
+|–config=[path]|Path to the configuration file (default `repique.toml` in current folder when omitted or not specified)|
+
+#### Configurations
+
+Only three configuration files compose the configurations for a common scenario(shared routine) usage.  
+1. Single `.md` file for upstreams definitions; SEE >>>>> [HOW TO](https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md/wiki)
+1. Single `.toml` file for program parameters; SEE >>>>> [EXAMPLE](https://github.com/AZ-X/pique/blob/master/examples/configuration/repique.toml.example)
+1. Single `any` named file for routine; SEE >>>>> [EXAMPLE](https://github.com/AZ-X/pique/blob/master/examples/configuration/black_cloaking_routine.txt.example)
+
+`.md.minisig` is automatically generated by the great [GUI TOOL](https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md/releases/tag/latest)
+
+# ![repique files](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/repique_folder_listview.PNG?raw=true)
+Illustration of program files on Windows
+
+## Versioning
+
+Repique has dual version association.
+
+Primary releases shipped with binaries are versioned like this:  
+>               _______________________|--number 2 : V2 (previous R2)
+>              |       ________________|--sequencing number from 1
+>              |      |        ________|--X : fixed X mark
+>              |      |       |
+>     Ver. + MAJOR.MINOR.SUBRELEASE
+
+Secondary tag releases with git and github are versioned like this:  
+>            ________________________|--number 1 : for golang semantic versioning
+>           |       _________________|--sequencing number from 1
+>           |      |        _________|--counter numbers of minor update
+>           |      |       |
+>     v + MAJOR.MINOR.SUBRELEASE
+
+MINOR versions of the twinned version are always matched for a single release.
 
 
 ## Server Name Indication :notebook_with_decorative_cover:
@@ -144,6 +239,11 @@ running on the supported OS; using any DNS server preferred; configurate forward
 ```c#
 'BCI/RSA Security/Transactionware/Vodafone/Stellar Switches/Huawei USA'
 ```
+
+### Repique's wonderful adventure without SNI
+
+# ![repique TLS1.3](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/DoT_no_server_name.png?raw=true)
+
 ## Autobiography
 
 [discussions...](https://github.com/AZ-X/pique/discussions/11)

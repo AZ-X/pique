@@ -199,12 +199,24 @@ RowLoop:
 			//var off int
 			//off, _ = dns.PackRR(rr, binCert, 0, nil, false)
 			//binCert = binCert[off - lenData + 1:off]
-			binCert := rr.(*dns.UnknownRR).Rdata
-			if len(binCert) < 125 {
+			/*
+			A single text DNS record (either TXT or SPF RR types) can be composed of more than one string.
+			If a published record contains multiple strings,
+			then the record MUST be treated as if those strings are concatenated together without adding spaces.
+			*/
+			rd := rr.(*dns.UnknownRR).Rdata
+			var binCert []byte
+			for next_l := 0; next_l < len(rd); next_l = next_l+1+int(rd[next_l]) {
+				if next_l+1+int(rd[next_l]) > len(rd) {
+					err = dlog.Errorf("certificate of [%v] is corrupt, stop using it", *resolver.Name)
+					return 0, err
+				}
+				binCert = append(binCert, rd[next_l+1:next_l+1+int(rd[next_l])]...)
+			}
+			if len(binCert) < 124 {
 				err = dlog.Errorf("certificate of [%v] is too short", *resolver.Name)
 				continue
 			}
-			binCert = binCert[1:]
 			if !bytes.Equal(binCert[:4], CertMagic()) {
 				err = dlog.Errorf("[%s] has invalid cert magic", *resolver.Name)
 				continue

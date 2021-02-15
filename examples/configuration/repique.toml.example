@@ -195,7 +195,7 @@ rence_method = 'random'
 # log_file = 'repique.log'
 
 
-## Use the system logger (syslog on Unix, Event Log on Windows)
+## Use the system logger (syslog on Unix)
 
 # use_syslog = true
 

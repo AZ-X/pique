@@ -429,11 +429,7 @@ CP1:{
 		cachedAny, ok := cp.clock_cache.Get(*s.hash_key)
 		if ok {
 			ce := cachedAny.(clockEntry)
-			if ce.rf || ce.nx {
-				cp.setNegativeResponse(s, ce.rf, ce.nx)
-			} else if ce.nc {
-				goto CP1_match
-			} else if ce.pll != nil && cp.cache != nil {
+			if ce.pll != nil && cp.cache != nil {
 				if s.pl_job == nil {
 					s.pl_job = &sync.Once{}
 				}
@@ -443,11 +439,17 @@ CP1:{
 					common.Program_dbg_full_log("start preloading...")
 					go preloading(cp, domains, ipv6, s.Listener)
 				})
-				goto CP1_cache
-			} else {
+			}
+			if ce.rf || ce.nx {
+				cp.setNegativeResponse(s, ce.rf, ce.nx)
+			} else if ce.nc {
+				goto CP1_match
+			} else if ce.Value != nil {
 				ep := ce.Load().(*common.EPRing)
 				ce.Store(ep.Next())
 				cp.setIPResponse(s,ep.Endpoint)
+			} else {
+				goto CP1_cache
 			}
 			goto CP1_NOK
 		}

@@ -50,6 +50,8 @@ func TypeToRR() map[uint16]func()dns.RR {
 		dns.TypeCNAME: func() dns.RR { return new(dns.CNAME) },
 		dns.TypeSOA:   func() dns.RR { return new(dns.SOA) },
 		dns.TypeOPT:   func() dns.RR { return new(dns.OPT) },
+		dns.TypeNS:    func() dns.RR { return new(dns.NS) },
+		dns.TypePTR:   func() dns.RR { return new(dns.PTR) },
 	}
 }
 

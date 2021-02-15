@@ -73,7 +73,15 @@ It sights a lack of creativity of DNS toolset mostly and these senseless users a
 The fact is repique never aims at being a DNS server application so that it never performs overhead design or pseudo implementation.  
 However repique did most DNS stub never did, a powerful, dynamic and flexible program with interoperability to strong encryption protocols and routines to synthetic data.
 # ![repique TLS1.3](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/tls_my_server_name.png?raw=true)
-Illustration of sending TLS1.3 Client Hello by repique
+Illustration of sending TLS1.3 Client Hello to IBM's server by repique
+
+> You may find out the difference of TLS 1.3 golang implementation inside above snapshot. It's ture.  
+> Repique demonstrates the ability to mod golang std-library and build together, meanwhile it won't be shipped with the release.  
+> For more information, see GITHUB gist:
+> 1. [Golang - Secure Windows CryptoAPI calling when verifying certificate](https://gist.github.com/AZ-X/f2bf1e4aa6704eb168b998efcc89b9b2)
+> 1. [Golang - stdlib RNG migration for Windows](https://gist.github.com/AZ-X/1dff5963486807c848eff8ef482f1425)
+> 1. Others such as **bypassing** INTEL's AES-NI won't be presented on gist because it just takes 5 minutes after saw issues like [`how to disable aes-ni usage`](https://github.com/golang/go/issues/43649), thus everybody can get this done without gist.
+
 
 Repique can share cache and patterns between multiple listeners or on the contrary, isolate them as independence.  
 Repique can create nested groups for upstreams as well as tags for extra definition of upstreams.  
@@ -191,6 +199,12 @@ Check out [Releases Page](https://github.com/AZ-X/pique/releases)
 ### [Download the latest release] coming soon maybe tomorrow
 
 ### Usage
+
+#### X-Copy deployment
+
+There is no additional service or setup to run repique.
+
+You are free to run it as service by searching existing mature methodology from the `Internet`.
 
 #### Command Line Interface Options:
 

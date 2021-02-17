@@ -1,11 +1,10 @@
 on:
   workflow_dispatch:
-  release:
-    types:
-      - created
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - '**/v[0-9]+.[0-9]+.[0-9]+'
+   inputs:
+    tag:
+     description: 'Tag'
+     required: true
+     default: 'v1.1.1'
 
 jobs:
   build:
@@ -13,4 +12,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Pull new module version
-      uses: andrewslotin/go-proxy-pull-action@master
+      run: env GO111MODULE=on go get -d "github.com/${GITHUB_REPOSITORY}@${{ github.event.inputs.tag }}"

@@ -1,4 +1,4 @@
-![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)![repique_release](https://github.com/AZ-X/pique/workflows/repique_release/badge.svg)[![Gitter](https://badges.gitter.im/repique/community.svg)](https://gitter.im/repique/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)![repique_release_go1.15](https://github.com/AZ-X/pique/workflows/repique_release_go1.15/badge.svg)[![Gitter](https://badges.gitter.im/repique/community.svg)](https://gitter.im/repique/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 ![hash pe 1.15](https://byob.yarr.is/AZ-X/pique/repique115pe)
 ![hash elf 1.15](https://byob.yarr.is/AZ-X/pique/repique115elf)

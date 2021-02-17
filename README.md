@@ -1,4 +1,7 @@
-![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)![repique_release](https://github.com/AZ-X/pique/workflows/repique_release/badge.svg)[![Gitter](https://badges.gitter.im/repique/community.svg)](https://gitter.im/repique/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)![repique_release_go1.15](https://github.com/AZ-X/pique/workflows/repique_release_go1.15/badge.svg)![repique_release_main](https://github.com/AZ-X/pique/workflows/repique_release_main/badge.svg)[![Gitter](https://badges.gitter.im/repique/community.svg)](https://gitter.im/repique/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+
+![hash pe 1.15](https://byob.yarr.is/AZ-X/pique/repique115pe)
+![hash elf 1.15](https://byob.yarr.is/AZ-X/pique/repique115elf)
 
 # Intro: What's pique or repique
 
@@ -194,9 +197,13 @@ Check out [Releases Page](https://github.com/AZ-X/pique/releases)
 
 ### Installation
 
-:arrow_double_down::arrow_double_down::arrow_double_down: old description
+[Download the latest release with golang 1.15 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.1.1)
 
-### [Download the latest release] coming soon maybe tomorrow
+[Download the latest release with golang 1.16 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.1.2)
+
+> Notice:  
+> Releases for OpenWRT won't be included in this repository @github.  
+> AMD64 Linux is considered an exception. 
 
 ### Usage
 

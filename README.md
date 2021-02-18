@@ -19,7 +19,7 @@
 - All DNS queries forwarded by repique are encrypted and secured as following top consumable standard.
 - The forwarding regulation of repique are extremely dynamic and flexible for self-hosted multiple listeners and upstreams.
 - The configuration of clockes, caches and patterns of repique can be ad hoc reloaded on Windows anytime unlimited.
-- The size(6MiB) of repique's binary file are much smaller than the rest of existing go program which has supported 3+ encryption protocols.
+- The all sizes(6MiB) of repique's binary files are much smaller than the rest of existing go program which has supported 3+ encryption protocols.
 - Repique is the only public golang program leveraging nested socks5/tcp/udp and http(s) proxy.
 - Main program is called "Repique" while its repository name is "Pique", which just creates foo-bar towards golang.
 - [There is an additional awesome standalone GUI tooling in combination with repique, check it.](https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md/wiki)
@@ -39,7 +39,7 @@
 
 ## Why use pique or repique
 
-Repique acts out an unifiable key point of Internet of Things - DNS Privacy and Confidence.  
+Repique acts out a unifiable key point of Internet of Things - DNS Privacy and Confidence.  
 Be an advancer of IoT, repique embraces aspects of Freedom, Privacy and Security.  
 Nowadays people like using their preferred DNS services to maximize the interests of personal IoT and business network.
 An illuminated perspective of new DNS infrastucture is representing as multiple upstreams, multiple encryption protocols and multiple interventions.
@@ -123,6 +123,7 @@ Since repique started from dnscrypt-proxy R2, introducing an overall changes to 
 Finally, comparing both release size on Windows(with go1.15;zipped):
 -      dnscrypt-proxy-win64-2.0.45.zip 2.86 MB
 -      repique_windows_amd64.zip 1.85 MB  
+-      repique_windows_amd64.zip 1.76 MB (golang 1.16 Feb.18)  
 :o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:
 
 ### Comparison between repique and dnsmasq/pihole-FTL

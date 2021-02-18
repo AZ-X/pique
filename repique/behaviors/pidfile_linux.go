@@ -32,7 +32,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -79,7 +78,7 @@ func (file PIDFile) Remove() error {
 
 // Read the PIDFile content.
 func (file PIDFile) Content() (int, error) {
-	if contents, err := ioutil.ReadFile(file.path); err != nil {
+	if contents, err := os.ReadFile(file.path); err != nil {
 		return 0, err
 	} else {
 		pid, err := strconv.Atoi(strings.TrimSpace(string(contents)))
@@ -117,7 +116,7 @@ func (file PIDFile) WriteControl(pid int, overwrite bool) error {
 	}
 
 	// You're clear to (over)write the file
-	f, err := ioutil.TempFile(filepath.Dir(file.path), filepath.Base(file.path))
+	f, err := os.CreateTemp(filepath.Dir(file.path), filepath.Base(file.path))
 	if err != nil {
 		return err
 	}
@@ -127,7 +126,7 @@ func (file PIDFile) WriteControl(pid int, overwrite bool) error {
 		return err
 	}
 	defer f.Close()
-	if err = ioutil.WriteFile(f.Name(), []byte(fmt.Sprintf("%d\n", pid)), 0600); err != nil {
+	if err = os.WriteFile(f.Name(), []byte(fmt.Sprintf("%d\n", pid)), 0600); err != nil {
 		return err
 	}
 	f.Close()

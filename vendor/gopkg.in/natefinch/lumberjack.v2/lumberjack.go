@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -387,7 +386,7 @@ func (l *Logger) mill() {
 // oldLogFiles returns the list of backup log files stored in the same
 // directory as the current log file, sorted by ModTime
 func (l *Logger) oldLogFiles() ([]logInfo, error) {
-	files, err := ioutil.ReadDir(l.dir())
+	files, err := os.ReadDir(l.dir())
 	if err != nil {
 		return nil, fmt.Errorf("can't read log file directory: %s", err)
 	}
@@ -456,7 +455,7 @@ func (l *Logger) prefixAndExt() (prefix, ext string) {
 // timestamp.
 type logInfo struct {
 	timestamp time.Time
-	os.FileInfo
+	os.DirEntry
 }
 
 // byFormatTime sorts by newest time formatted in the name.

@@ -3,8 +3,8 @@ package toml
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
+	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -126,7 +126,7 @@ func Decode(data string, v interface{}) (MetaData, error) {
 // DecodeFile is just like Decode, except it will automatically read the
 // contents of the file at `fpath` and decode it for you.
 func DecodeFile(fpath string, v interface{}) (MetaData, error) {
-	bs, err := ioutil.ReadFile(fpath)
+	bs, err := os.ReadFile(fpath)
 	if err != nil {
 		return MetaData{}, err
 	}
@@ -136,7 +136,7 @@ func DecodeFile(fpath string, v interface{}) (MetaData, error) {
 // DecodeReader is just like Decode, except it will consume all bytes
 // from the reader and decode it for you.
 func DecodeReader(r io.Reader, v interface{}) (MetaData, error) {
-	bs, err := ioutil.ReadAll(r)
+	bs, err := io.ReadAll(r)
 	if err != nil {
 		return MetaData{}, err
 	}

@@ -1,7 +1,7 @@
 ![CodeQL](https://github.com/AZ-X/pique/workflows/CodeQL/badge.svg)![repique_release_main](https://github.com/AZ-X/pique/workflows/repique_release_main/badge.svg)[![Gitter](https://badges.gitter.im/repique/community.svg)](https://gitter.im/repique/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
-![hash pe 1.15](https://byob.yarr.is/AZ-X/pique/repique115pe)
-![hash elf 1.15](https://byob.yarr.is/AZ-X/pique/repique115elf)
+![hash pe 1.16](https://byob.yarr.is/AZ-X/pique/repique116pe)
+![hash elf 1.16](https://byob.yarr.is/AZ-X/pique/repique116elf)
 
 # Intro: What's pique or repique
 

@@ -11,8 +11,8 @@ A minimal implementation of dynamic sequence routine
 import (
 	"crypto/sha512"
 	"encoding/binary"
-	"io/ioutil"
 	"math"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -91,7 +91,7 @@ func (cp *CP) Init(cfg *Config, f FChannelByName) {
 func (cp *CP) _init(reloading bool) {
 	ttl := DefaultTTL
 	if cp.BlackCloaking != nil {
-		bin, err := ioutil.ReadFile(*cp.BlackCloaking)
+		bin, err := os.ReadFile(*cp.BlackCloaking)
 		if err != nil {
 			panic(err)
 		}

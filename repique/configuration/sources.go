@@ -3,7 +3,6 @@ package configuration
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"strings"
@@ -49,10 +48,10 @@ var timeNow = time.Now
 
 func (source *Source) fetchFromCache(now time.Time) (delay time.Duration, err error, in []byte) {
 	var bin, sig []byte
-	if bin, err = ioutil.ReadFile(source.cacheFile); err != nil {
+	if bin, err = os.ReadFile(source.cacheFile); err != nil {
 		return
 	}
-	if sig, err = ioutil.ReadFile(source.cacheFile + ".minisig"); err != nil {
+	if sig, err = os.ReadFile(source.cacheFile + ".minisig"); err != nil {
 		return
 	}
 	if err = source.checkSignature(bin, sig); err != nil {

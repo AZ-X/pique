@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -444,7 +443,7 @@ Go:
 	req = req.WithContext(ctx)
 	if method == "POST" && body != nil {
 		req.ContentLength = int64(len(*body))
-		req.Body = ioutil.NopCloser(bytes.NewReader(*body))
+		req.Body = io.NopCloser(bytes.NewReader(*body))
 	}
 	resp, err := client.Do(req)
 	if err == nil {
@@ -476,7 +475,7 @@ Go:
 	if resp.ContentLength > 0 {
 		size = common.Min64(resp.ContentLength, size)
 	}
-	bin, err := ioutil.ReadAll(io.LimitReader(resp.Body, size))
+	bin, err := io.ReadAll(io.LimitReader(resp.Body, size))
 	if err != nil {
 		goto Error
 	}

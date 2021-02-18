@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"sync"
 	"time"
@@ -246,7 +245,7 @@ func ReadUDPDatagram(r io.Reader) (*UDPDatagram, error) {
 
 	dlen := int(header.Rsv)
 	if dlen == 0 { // standard SOCKS5 UDP datagram
-		extra, err := ioutil.ReadAll(r) // we assume no redundant data
+		extra, err := io.ReadAll(r) // we assume no redundant data
 		if err != nil {
 			return nil, err
 		}

@@ -70,7 +70,7 @@ jobs:
     - name: Tar Linux64
       run: tar czf ./release/repique_linux_amd64.tar.gz -C ./bin . 
 
-    - uses: "marvinpinto/action-automatic-releases@latest"
+    - uses: "AZ-X/action-automatic-releases@master"
       with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           automatic_release_tag	: ${{ github.event.inputs.tag }}

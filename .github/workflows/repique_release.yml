@@ -31,13 +31,17 @@ jobs:
 
     - name: Build Win64
       run: make GOARCH=amd64 GOOS=windows CGO_ENABLED=0
-      
+
+    - id: sha2win
+      run: |
+        echo "::set-output name=VALUE::$(sha256sum './bin/repique.exe' | sed '/ /s/ .*//')"
+
     - name: SHA-2 windows_amd64
       uses: RubbaBoy/BYOB@v1.2.0
       with:
         NAME: repique116pe
         LABEL: 'SHA-256 latest repique.exe golang 1.16'
-        STATUS: ${{ hashFiles('./bin/repique.exe') }}
+        STATUS: ${{ steps.sha2win.outputs.VALUE }}
         COLOR: blue
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -55,12 +59,16 @@ jobs:
     - name: Build Linux64
       run: make GOARCH=amd64 GOOS=linux CGO_ENABLED=0
 
+    - id: sha2lin
+      run: |
+        echo "::set-output name=VALUE::$(sha256sum './bin/repique' | sed '/ /s/ .*//')"
+
     - name: SHA-2 linux_amd64
       uses: RubbaBoy/BYOB@v1.2.0
       with:
         NAME: repique116elf
         LABEL: 'SHA-256 latest repique golang 1.16'
-        STATUS: ${{ hashFiles('./bin/repique') }}
+        STATUS: ${{ steps.sha2lin.outputs.VALUE }}
         COLOR: blue
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

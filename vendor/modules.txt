@@ -15,7 +15,7 @@ github.com/jedisct1/xsecretbox
 # github.com/miekg/dns v1.1.35 => ../miekg_dns/
 ## explicit
 github.com/miekg/dns
-# golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9
+# golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 ## explicit
 golang.org/x/crypto/salsa20/salsa
 # golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a

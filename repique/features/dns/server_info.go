@@ -23,7 +23,7 @@ import (
 	"github.com/jedisct1/dlog"
 	mm "github.com/RobinUS2/golang-moving-average"
 	stamps "stammel"
-	"github.com/miekg/dns"
+	"github.com/AZ-X/dns"
 )
 
 const Windows = 7

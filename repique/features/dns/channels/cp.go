@@ -9,6 +9,7 @@ A minimal implementation of dynamic sequence routine
 *******************************************************/
 
 import (
+	"crypto"
 	"crypto/sha512"
 	"encoding/binary"
 	"math"
@@ -18,7 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	
+
+	_ "unsafe"
 
 	"github.com/AZ-X/pique/repique/common"
 	"github.com/AZ-X/pique/repique/services"
@@ -26,7 +28,7 @@ import (
 	"github.com/AZ-X/pique/repique/behaviors"
 	
 	"github.com/jedisct1/dlog"
-	"github.com/miekg/dns"
+	"github.com/AZ-X/dns"
 )
 
 const (
@@ -207,16 +209,12 @@ func (cp *CP) _init(reloading bool) {
 			copy(anycast[len(ips):], dms)
 			cp.actions = services.CreateRegexActions(rfs, nxs, anycast)
 		}
-		preComputeCacheKey := func(qtype uint16, name string) [32]byte {
-			h := sha512.New512_256()
+		preComputeCacheKey := func(qtype uint16, name string) [sha512.Size256]byte {
 			var tmp [5]byte
 			binary.BigEndian.PutUint16(tmp[0:2], qtype)
 			binary.BigEndian.PutUint16(tmp[2:4], dns.ClassINET)
-			h.Write(tmp[:])
-			h.Write([]byte(name))
-			var sum [32]byte
-			h.Sum(sum[:0])
-			return sum
+			return *Sum512_256s(tmp[:], []byte(name))
+			//h.Sum(sum[:0]) //I don't like keeping writing and summing
 		}
 		if len(cloaks) != 0 || len(pls) != 0 {
 			cp.clock_cache = conceptions.NewCloakCache()
@@ -311,19 +309,46 @@ func (cp *CP) _init(reloading bool) {
 	}
 }
 
-func computeCacheKey(s *Session) *[32]byte {
-	h := sha512.New512_256()
+const chunk     = 128
+//go:linkname digest crypto/sha512.digest
+type digest struct {
+	h        [8]uint64
+	x        [chunk]byte
+	nx       int
+	len      uint64
+	function crypto.Hash
+}
+
+//go:linkname (*digest).checkSum crypto/sha512.(*digest).checkSum
+func (d *digest) checkSum() [sha512.Size]byte
+
+//go:linkname (*digest).Reset crypto/sha512.(*digest).Reset
+func (d *digest) Reset()
+
+//go:linkname (*digest).Write crypto/sha512.(*digest).Write
+func (d *digest) Write(p []byte) (n int, err error)
+
+func Sum512_256s(datas ...[]byte) (sum256 *[sha512.Size256]byte) {
+	d := digest{function: crypto.SHA512_256}
+	d.Reset()
+	for _, data := range datas {
+		d.Write(data)
+	}
+	sum := d.checkSum()
+	sum256 = new([sha512.Size256]byte)
+	copy(sum256[:], sum[:sha512.Size256])
+	return
+}
+
+func computeCacheKey(s *Session) *[sha512.Size256]byte {
 	var tmp [5]byte
 	binary.BigEndian.PutUint16(tmp[0:2], s.Qtype)
 	binary.BigEndian.PutUint16(tmp[2:4], s.Qclass)
 	if s.OPTOrigin != nil && s.OPTOrigin.Do() {
 		tmp[4] = 1
 	}
-	h.Write(tmp[:])
-	h.Write([]byte(s.Name))
-	var sum [32]byte
-	h.Sum(sum[:0])
-	return &sum
+	return Sum512_256s(tmp[:], []byte(s.Name))
+	//h.Sum(sum[:0]) //I don't like keeping writing and summing
 }
 
 func (cp *CP) setIPResponse(s *Session, ip *common.Endpoint) {

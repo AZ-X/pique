@@ -13,7 +13,7 @@ import (
 	_ "unsafe"
 
 	"github.com/jedisct1/dlog"
-	"github.com/miekg/dns"
+	"github.com/AZ-X/dns"
 	
 	stamps "stammel"
 )

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/miekg/dns"
+	"github.com/AZ-X/dns"
 )
 
 type State uint32

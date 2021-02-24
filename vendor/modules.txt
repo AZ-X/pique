@@ -1,3 +1,6 @@
+# github.com/AZ-X/dns v1.1.39
+## explicit
+github.com/AZ-X/dns
 # github.com/BurntSushi/toml v0.3.1
 ## explicit
 github.com/BurntSushi/toml
@@ -12,9 +15,6 @@ github.com/jedisct1/dlog
 github.com/jedisct1/go-clocksmith
 ## explicit
 github.com/jedisct1/xsecretbox
-# github.com/miekg/dns v1.1.35 => ../miekg_dns/
-## explicit
-github.com/miekg/dns
 # golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 ## explicit
 golang.org/x/crypto/salsa20/salsa
@@ -30,5 +30,4 @@ gopkg.in/natefinch/lumberjack.v2
 stammel
 # gopkg.in/natefinch/lumberjack.v2 => ../lumberjack.v2/
 # github.com/jedisct1/dlog => ../dboy/
-# github.com/miekg/dns => ../miekg_dns/
 # stammel => ../stammel/stammel

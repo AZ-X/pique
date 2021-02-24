@@ -15,7 +15,7 @@ import (
 	"github.com/AZ-X/pique/repique/common"
 
 	"github.com/jedisct1/dlog"
-	"github.com/miekg/dns"
+	"github.com/AZ-X/dns"
 )
 
 const (
@@ -48,7 +48,7 @@ func (a *Amender) Init(cfg *Config, f FChannelByName) {
 	}
 }
 
-//go:linkname popEdns0 github.com/miekg/dns.(*Msg).popEdns0
+//go:linkname popEdns0 github.com/AZ-X/dns.(*Msg).popEdns0
 func popEdns0(dns *dns.Msg) *dns.OPT
 
 

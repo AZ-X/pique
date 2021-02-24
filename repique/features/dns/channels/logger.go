@@ -13,10 +13,11 @@ import (
 	"strings"
 	"time"
 
+
 	"github.com/AZ-X/pique/repique/common"
 
 	"github.com/jedisct1/dlog"
-	"github.com/miekg/dns"
+	"github.com/AZ-X/dns"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 

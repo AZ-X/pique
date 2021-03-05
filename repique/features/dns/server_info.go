@@ -83,12 +83,12 @@ type ServerInfo struct {
 	rtt                *mm.ConcurrentMovingAverage
 }
 
-type RenceMethod int
+type Occurrence int
 
 const (
-	RenceMethodNone = RenceMethod(iota)
-	RenceMethodFirst
-	RenceMethodRandom
+	OccurrenceNone = Occurrence(iota)
+	OccurrenceLeading
+	OccurrenceRandom
 )
 
 
@@ -97,7 +97,7 @@ type ServersInfo struct {
 	innerFuncs        *map[int]func(qName *string)[]*ServerInfo
 	innerGroups       *map[int]map[int][]*ServerInfo
 	RegisteredServers []common.RegisteredServer
-	RenceMethod
+	Occurrence
 }
 
 func NewServersInfo() *ServersInfo {
@@ -255,8 +255,8 @@ func (serversInfo *ServersInfo) getOne(s *channels.Session) *ServerInfo {
 		return nil
 	}
 	var candidate int
-	switch serversInfo.RenceMethod {
-	case RenceMethodFirst:
+	switch serversInfo.Occurrence {
+	case OccurrenceLeading:
 		candidate = 0
 	default:
 		candidate = rand.Intn(serversCount)

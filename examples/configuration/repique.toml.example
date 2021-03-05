@@ -179,10 +179,10 @@ timeout = 5000
 keepalive = 30
 
 
-## Rence Method(indicate how to select upstreams): 'first' or 'random'(default)
+## Indicate a switch to select upstreams: 'leading' or 'random'(default)
 ## The only thing called 'Strategy' is to put this in your mind: make a decision to speed first or privacy first
-## If you want speedy responses, choose 'first'; otherwise choose 'random'
-rence_method = 'random'
+## If you want speedy responses, choose 'leading'; otherwise choose 'random'
+occurrence = 'random'
 
 
 ## Log level (0-6, default: 2 - 0 is very verbose, 6 only contains fatal errors)

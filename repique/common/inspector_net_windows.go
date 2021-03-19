@@ -1,6 +1,7 @@
 package common
 
 import (
+	"io"
 	"net"
 	"syscall"
 	"time"
@@ -10,6 +11,9 @@ import (
 )
 
 func temporary(err error) bool {
+	if err == io.EOF {
+		return true
+	}
 	if oe, ok := err.(*net.OpError); ok {
 		if syserr, ok := oe.Err.(*os.SyscallError); ok && syserr.Syscall == "wsarecv" {
 			if errno, ok := syserr.Err.(syscall.Errno); ok {

@@ -12,7 +12,7 @@ import (
 	"github.com/AZ-X/pique/repique/protocols/tls"
 	"github.com/AZ-X/pique/repique/common"
 	"github.com/jedisct1/dlog"
-	"stammel"
+	"github.com/AZ-X/pique/repique/unclassified/stammel"
 )
 
 type SourceFormat int

@@ -18,7 +18,7 @@ const (
 	Channel_Amender      = "A"
 	Channel_CP           = "CP" // caches and patterns; unitized handling
 	Channel_Stub         = "Stub" // query over recursive resolvers
-	Channel_Remote       = "Resolver" // server selection
+	Channel_Remote       = "Resolver" // server selection/dispatching/coordination
 	Channel_Logger       = "Log"
 
 	Dot                  = "."

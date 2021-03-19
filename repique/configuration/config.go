@@ -24,7 +24,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/jedisct1/dlog"
 	"golang.org/x/sync/semaphore"
-	stamps "stammel"
+	stamps "github.com/AZ-X/pique/repique/unclassified/stammel"
 )
 
 const (

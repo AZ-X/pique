@@ -11,11 +11,9 @@ require (
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
-	stammel v0.0.0-00010101000000-000000000000
 )
 
-replace gopkg.in/natefinch/lumberjack.v2 => ../lumberjack.v2/
+replace gopkg.in/natefinch/lumberjack.v2 => ./mod/lumberjack.v2
 
-replace github.com/jedisct1/dlog => ../dboy/
+replace github.com/jedisct1/dlog => ./mod/dboy
 
-replace stammel => ../stammel/stammel

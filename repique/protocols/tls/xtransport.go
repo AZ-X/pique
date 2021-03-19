@@ -19,7 +19,7 @@ import (
 	"github.com/AZ-X/pique/repique/common"
 	"github.com/AZ-X/pique/repique/conceptions"
 	"github.com/jedisct1/dlog"
-	stamps "stammel"
+	stamps "github.com/AZ-X/pique/repique/unclassified/stammel"
 )
 
 const (
@@ -141,26 +141,12 @@ func (XTransport *XTransport) BuildTransport(server common.RegisteredServer, _ *
 		MaxResponseHeaderBytes: 4096,
 		}
 		transport.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
-		fCounter := 0
-		Dial:
 			name, c, err := ctx.Value(nil).(TLSContextDial)(ctx, netw, addr)
 			if err != nil {
-				if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
-					if strings.Contains(err.Error(), "forcibly") {
-						if fCounter == 0 {
-							dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
-							dlog.Debugf("[%s] retry on forcible block", *name)
-						}
-						fCounter++
-						if fCounter < 1000 {
-							goto Dial
-						} else {
-							dlog.Warnf("[%s] forcible block is willfully activated, see next debug log for last error", *name)
-						}
+					if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
+						dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
 					}
-					dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
-				}
-				return nil, err
+					return nil, err
 			}
 			return c, nil // in case dialConn do Handshake there
 		}

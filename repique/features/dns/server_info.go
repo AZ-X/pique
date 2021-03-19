@@ -22,7 +22,7 @@ import (
 	"github.com/AZ-X/pique/repique/protocols/dnscrypt"
 	"github.com/jedisct1/dlog"
 	mm "github.com/RobinUS2/golang-moving-average"
-	stamps "stammel"
+	stamps "github.com/AZ-X/pique/repique/unclassified/stammel"
 	"github.com/AZ-X/dns"
 )
 

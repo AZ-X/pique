@@ -7,9 +7,10 @@ github.com/BurntSushi/toml
 # github.com/RobinUS2/golang-moving-average v1.0.0
 ## explicit
 github.com/RobinUS2/golang-moving-average
-# github.com/jedisct1/dlog v0.0.0-20190909160351-692385b00b84 => ../dboy/
+# github.com/jedisct1/dlog v0.0.0-20190909160351-692385b00b84 => ./mod/dboy
 ## explicit
 github.com/jedisct1/dlog
+# github.com/jedisct1/dlog => ./mod/dboy
 # github.com/jedisct1/go-clocksmith v0.0.0-20190707124905-73e087c7979c
 ## explicit
 github.com/jedisct1/go-clocksmith
@@ -22,12 +23,8 @@ golang.org/x/crypto/salsa20/salsa
 ## explicit
 golang.org/x/sync/semaphore
 # golang.org/x/sys v0.0.0-20200620081246-981b61492c35
-# gopkg.in/natefinch/lumberjack.v2 v2.0.0 => ../lumberjack.v2/
+# gopkg.in/natefinch/lumberjack.v2 v2.0.0 => ./mod/lumberjack.v2
 ## explicit
 gopkg.in/natefinch/lumberjack.v2
-# stammel v0.0.0-00010101000000-000000000000 => ../stammel/stammel
-## explicit
-stammel
-# gopkg.in/natefinch/lumberjack.v2 => ../lumberjack.v2/
-# github.com/jedisct1/dlog => ../dboy/
-# stammel => ../stammel/stammel
+# gopkg.in/natefinch/lumberjack.v2 => ./mod/lumberjack.v2
+

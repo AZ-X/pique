@@ -24,6 +24,10 @@
 - Main program is called "Repique" while its repository name is "Pique", which just creates foo-bar towards golang.
 - [There is an additional awesome standalone GUI tooling in combination with repique, check it.](https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md/wiki)
 
+# ![repique32](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/repique32.PNG?raw=true)
+Illustration of running repique on a laptop manufactured in Y2008 which unbelievably boots to Windows for seconds without hibernate.  
+Illustration of memory cost, not as good as other swift programs, but acceptable to most of hardwares.
+
 **pique** /piːk/
 
 **repique** /ʁə.pik/

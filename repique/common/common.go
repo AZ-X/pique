@@ -253,7 +253,7 @@ func ParallelDialWithDialer(ctx context.Context, dialer Dialer, network, addr st
 					if races == retry_on_forcibly -1 {
 						dlog.Warn(addr + " forcible block is willfully activated on , see next debug log for last error")
 					}
-					p()
+					go p()
 				}
 		case c := <- result:
 			if conn == nil {

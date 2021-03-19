@@ -210,6 +210,12 @@ Check out [Releases Page](https://github.com/AZ-X/pique/releases)
 
 ### Usage
 
+#### As Go Modules
+
+Since version v1.1.5 of repique, you can use its sub-modules as libraries formally by `go get`.
+
+However you still can get the source code and reuse it by 'git-clone' whatever the version is.
+
 #### X-Copy deployment
 
 There is no additional service or setup to run repique.

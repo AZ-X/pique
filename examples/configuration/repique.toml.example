@@ -107,7 +107,7 @@ listen_addresses = ['127.0.0.1:53']
 ## Field 'regex' is a boolean refering to match field of groups
 ## --e.g. { position=2, regex=true }
 ## --listen address 127.0.0.1 port 70
-## --2 matches found name='A&B`-regex' and name='CA'
+## --5 matches found name='A&B`-regex' and name='CA' ....
 ## --this listener will serve all the domain names successfully matched within servers from that group
 ## --if groups does NOT contain any item has match field and listener_association has regex=true
 ## --the default group server_names will be used which has a default match '*' (all domain name)

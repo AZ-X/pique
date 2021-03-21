@@ -130,6 +130,14 @@ Finally, comparing both release size on Windows(with go1.15;zipped):
 -      repique_windows_amd64.zip 1.76 MB (golang 1.16 Feb.18)  
 :o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:
 
+### Comparison between repique and nextdns
+
+Next just compare the size of both :)
+-      nextdns_1.11.0_windows_amd64.zip[(QUIC not included)](https://github.com/nextdns/nextdns/tree/v1.11.0) 2.25 MB (golang 1.15.1 Mar.9)  
+-      repique_windows_amd64.zip 1.85 MB  
+-      repique_windows_amd64.zip 1.76 MB (golang 1.16 Feb.18)  
+:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:
+
 ### Comparison between repique and dnsmasq/pihole-FTL
 
 Pihole-FTL is an enhanced(it's called coupling) dnsmasq copy with database, lua scripting, DHCP-discover and signals/regex support.  

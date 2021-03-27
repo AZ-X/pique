@@ -77,9 +77,13 @@ type TLSContextDial func(ctx context.Context, network, addr string) (*string, ne
 type HTTPSContext struct {
 	context.Context
 	TLSContextDial
+	tag *string //redundant key; for cm.key() & connectMethodKey mod
 }
 
 func (c *HTTPSContext) Value(key interface{}) interface{} {
+	if "Tag" == key {
+		return *c.tag
+	}
 	return c.TLSContextDial
 }
 
@@ -260,7 +264,7 @@ func (th *TransportHolding) BuildTLS(XTransport *XTransport) (cfg *tls.Config) {
 func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conceptions.NestedProxy) error {
 	alive := XTransport.KeepAlive
 	cfg := th.Config
-	th.Context = &HTTPSContext{Context:context.Background(),}
+	th.Context = &HTTPSContext{Context:context.Background(), tag:th.Name,}
 	th.Context.TLSContextDial = func(ctx context.Context, netw, addr string) (*string, net.Conn, error) {
 		if XTransport.Proxies != nil {
 			if plainConn, err := XTransport.Proxies.GetDialContext()(ctx, XTransport.LocalInterface, netw, addr); err == nil {

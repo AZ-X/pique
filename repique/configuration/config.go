@@ -24,7 +24,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/jedisct1/dlog"
 	"golang.org/x/sync/semaphore"
-	stamps "stammel"
+	stamps "github.com/AZ-X/pique/repique/unclassified/stammel"
 )
 
 const (
@@ -56,7 +56,7 @@ type Main struct {
 	LocalInterface           string                      `toml:"network_interface"`
 	NetprobeAddress          string                      `toml:"netprobe_address"`
 	UserName                 string                      `toml:"user_name"`
-	RenceMethod              string                      `toml:"rence_method"`
+	Occurrence               string                      `toml:"occurrence"`
 	Groups                   []GroupsConfig              `toml:"groups"`
 	GroupsListener           []ListenerAssociation       `toml:"listener_association"`
 }
@@ -205,13 +205,12 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	}
 	proxy.ServersInfo = &dns.ServersInfo{}
 
-	switch strings.ToLower(config.RenceMethod) {
-	case "fastest":
-	case "first":
-		proxy.ServersInfo.RenceMethod = dns.RenceMethodFirst
+	switch strings.ToLower(config.Occurrence) {
+	case "fastest", "first", "lead", "leading":
+		proxy.ServersInfo.Occurrence = dns.OccurrenceLeading
 	case "random": fallthrough
 	default:
-		proxy.ServersInfo.RenceMethod = dns.RenceMethodRandom
+		proxy.ServersInfo.Occurrence = dns.OccurrenceRandom
 	}
 
 	if configRoutes := config.AnonymizedDNS.Routes; configRoutes != nil {

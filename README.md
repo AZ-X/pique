@@ -22,6 +22,10 @@
 - Main program is called "Repique" while its repository name is "Pique", which just creates foo-bar towards golang.
 - [There is an additional awesome standalone GUI tooling in combination with repique, check it.](https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md/wiki)
 
+# ![repique32](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/repique32.PNG?raw=true)
+Illustration of running repique on a laptop manufactured in Y2008 which unbelievably boots to Windows for seconds without hibernate.  
+Illustration of memory cost, not as good as other swift programs, but acceptable to most of hardwares.
+
 **pique** /piːk/
 
 **repique** /ʁə.pik/
@@ -124,6 +128,15 @@ Finally, comparing both release size on Windows(with go1.15;zipped):
 -      repique_windows_amd64.zip 1.76 MB (golang 1.16 Feb.18)  
 :o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:
 
+### Comparison between repique and nextdns
+
+Next just compare the size of both :)
+>>nextdns_1.11.0_windows_amd64.zip[(QUIC not included)](https://github.com/nextdns/nextdns/tree/v1.11.0) 2.25 MB (golang 1.15.1 Mar.9)  
+repique_windows_amd64.zip 1.85 MB  
+repique_windows_amd64.zip 1.76 MB (golang 1.16 Feb.18)  
+
+:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:	:o:
+
 ### Comparison between repique and dnsmasq/pihole-FTL
 
 Pihole-FTL is an enhanced(it's called coupling) dnsmasq copy with database, lua scripting, DHCP-discover and signals/regex support.  
@@ -205,6 +218,12 @@ Check out [Releases Page](https://github.com/AZ-X/pique/releases)
 > AMD64 Linux is considered an exception. 
 
 ### Usage
+
+#### As Go Modules
+
+Since version v1.1.5 of repique, you can use its sub-modules as libraries formally by `go get`.
+
+However you still can get the source code and reuse it by 'git-clone' whatever the version is.
 
 #### X-Copy deployment
 

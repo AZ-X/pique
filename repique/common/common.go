@@ -13,9 +13,9 @@ import (
 	_ "unsafe"
 
 	"github.com/jedisct1/dlog"
-	"github.com/miekg/dns"
+	"github.com/AZ-X/dns"
 	
-	stamps "stammel"
+	stamps "github.com/AZ-X/pique/repique/unclassified/stammel"
 )
 //only if deep debug e.g. raw msg dumping
 const Program_dbg_full = false
@@ -220,6 +220,7 @@ func Dial(network, address string, ifi *string, timeout time.Duration, keepAlive
 }
 
 const parallel_dial_total = 2
+const retry_on_forcibly = 1000
 
 //memory grows; await on goose's fixing
 func ParallelDialWithDialer(ctx context.Context, dialer Dialer, network, addr string, races int) (net.Conn, error) {
@@ -238,9 +239,22 @@ func ParallelDialWithDialer(ctx context.Context, dialer Dialer, network, addr st
 	}
 	var err error
 	var conn net.Conn
+	var retryMsg bool
 	for i := 0; i < races; {
 		select {
-		case err = <- done: i++
+		case err = <- done: 
+				i++
+				if conn == nil && temporary(err) && races < retry_on_forcibly {
+					if !retryMsg {
+						dlog.Debug(addr + " retry on forcible block")
+					}
+					retryMsg = true
+					races++
+					if races == retry_on_forcibly -1 {
+						dlog.Warn(addr + " forcible block is willfully activated on , see next debug log for last error")
+					}
+					go p()
+				}
 		case c := <- result:
 			if conn == nil {
 				cancel()
@@ -254,6 +268,7 @@ func ParallelDialWithDialer(ctx context.Context, dialer Dialer, network, addr st
 	close(result)
 	close(done)
 	if conn != nil {
+		conn = getInspector(conn)
 		err = nil
 	}
 	return conn, err

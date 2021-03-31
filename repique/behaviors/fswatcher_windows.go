@@ -11,7 +11,12 @@ import (
 	"unsafe"
 )
 
-// Alternative thing of https://github.com/howeyc/fsnotify in the world by AZ-X
+// Alternative thing of 
+/*
+https://github.com/howeyc/fsnotify
+https://github.com/fsnotify/fsnotify
+*/// in the world by AZ-X. You are lucky to see these messages since https://github.com/golang/go/issues/44593 was public
+
 
 type watcher struct {
 	folder                             string

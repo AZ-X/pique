@@ -20,7 +20,7 @@ import (
 	"github.com/AZ-X/pique/repique/common"
 	"github.com/AZ-X/pique/repique/conceptions"
 	"github.com/jedisct1/dlog"
-	stamps "stammel"
+	stamps "github.com/AZ-X/pique/repique/unclassified/stammel"
 )
 
 const (
@@ -78,9 +78,13 @@ type TLSContextDial func(ctx context.Context, network, addr string) (*string, ne
 type HTTPSContext struct {
 	context.Context
 	TLSContextDial
+	tag *string //redundant key; for cm.key() & connectMethodKey mod
 }
 
 func (c *HTTPSContext) Value(key interface{}) interface{} {
+	if "Tag" == key {
+		return *c.tag
+	}
 	return c.TLSContextDial
 }
 
@@ -142,26 +146,12 @@ func (XTransport *XTransport) BuildTransport(server common.RegisteredServer, _ *
 		MaxResponseHeaderBytes: 4096,
 		}
 		transport.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
-		fCounter := 0
-		Dial:
 			name, c, err := ctx.Value(nil).(TLSContextDial)(ctx, netw, addr)
 			if err != nil {
-				if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
-					if strings.Contains(err.Error(), "forcibly") {
-						if fCounter == 0 {
-							dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
-							dlog.Debugf("[%s] retry on forcible block", *name)
-						}
-						fCounter++
-						if fCounter < 1000 {
-							goto Dial
-						} else {
-							dlog.Warnf("[%s] forcible block is willfully activated, see next debug log for last error", *name)
-						}
+					if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
+						dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
 					}
-					dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
-				}
-				return nil, err
+					return nil, err
 			}
 			return c, nil // in case dialConn do Handshake there
 		}
@@ -275,7 +265,7 @@ func (th *TransportHolding) BuildTLS(XTransport *XTransport) (cfg *tls.Config) {
 func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conceptions.NestedProxy) error {
 	alive := XTransport.KeepAlive
 	cfg := th.Config
-	th.Context = &HTTPSContext{Context:context.Background(),}
+	th.Context = &HTTPSContext{Context:context.Background(), tag:th.Name,}
 	th.Context.TLSContextDial = func(ctx context.Context, netw, addr string) (*string, net.Conn, error) {
 		if XTransport.Proxies != nil {
 			if plainConn, err := XTransport.Proxies.GetDialContext()(ctx, XTransport.LocalInterface, netw, addr); err == nil {

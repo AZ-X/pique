@@ -4,7 +4,6 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
-	"io/ioutil"
 	"strings"
 
 )
@@ -36,15 +35,6 @@ func NewPublicKey(publicKeyStr string) (PublicKey, error) {
 	return publicKey, nil
 }
 
-func DecodePublicKey(in string) (PublicKey, error) {
-	var publicKey PublicKey
-	lines := strings.SplitN(in, "\n", 2)
-	if len(lines) < 2 {
-		return publicKey, errors.New("Incomplete encoded public key")
-	}
-	return NewPublicKey(lines[1])
-}
-
 func DecodeSignature(in string) (Signature, error) {
 	var signature Signature
 	lines := strings.SplitN(in, "\n", 4)
@@ -68,24 +58,6 @@ func DecodeSignature(in string) (Signature, error) {
 	return signature, nil
 }
 
-func NewPublicKeyFromFile(file string) (PublicKey, error) {
-	var publicKey PublicKey
-	bin, err := ioutil.ReadFile(file)
-	if err != nil {
-		return publicKey, err
-	}
-	return DecodePublicKey(string(bin))
-}
-
-func NewSignatureFromFile(file string) (Signature, error) {
-	var signature Signature
-	bin, err := ioutil.ReadFile(file)
-	if err != nil {
-		return signature, err
-	}
-	return DecodeSignature(string(bin))
-}
-
 func (publicKey *PublicKey) Verify(bin []byte, signature Signature) (bool, error) {
 	if publicKey.SignatureAlgorithm != signature.SignatureAlgorithm {
 		return false, errors.New("Incompatible signature algorithm")
@@ -106,12 +78,4 @@ func (publicKey *PublicKey) Verify(bin []byte, signature Signature) (bool, error
 		return false, errors.New("Invalid global signature")
 	}
 	return true, nil
-}
-
-func (publicKey *PublicKey) VerifyFromFile(file string, signature Signature) (bool, error) {
-	bin, err := ioutil.ReadFile(file)
-	if err != nil {
-		return false, err
-	}
-	return publicKey.Verify(bin, signature)
 }

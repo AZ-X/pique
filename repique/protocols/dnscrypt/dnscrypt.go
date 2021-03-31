@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/jedisct1/dlog"
-	"github.com/miekg/dns"
+	"github.com/AZ-X/dns"
 	"golang.org/x/crypto/salsa20/salsa"
 
 	"github.com/AZ-X/pique/repique/common"

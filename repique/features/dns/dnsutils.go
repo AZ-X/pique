@@ -1,7 +1,7 @@
 package dns
 
 //import (
-//	"github.com/miekg/dns"
+//	"github.com/AZ-X/dns"
 //)
 //
 //func SetDNSSECFlag(msg *dns.Msg) {

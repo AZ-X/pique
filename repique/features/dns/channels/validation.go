@@ -11,7 +11,7 @@ A minimal implementation of dynamic sequence routine
 import (
 	_ "unsafe"
 
-	"github.com/miekg/dns"
+	"github.com/AZ-X/dns"
 
 	"github.com/AZ-X/pique/repique/common"
 )
@@ -56,14 +56,14 @@ func TypeToRR() map[uint16]func()dns.RR {
 }
 
 /*
-//go:linkname unpack github.com/miekg/dns.(*Msg).unpack
+//go:linkname unpack github.com/AZ-X/dns.(*Msg).unpack
 func unpack(dns *dns.Msg, dh *dns.Header, msg []byte, off int) (err error)
 */
 
-//go:linkname unpackMsgHdr github.com/miekg/dns.unpackMsgHdr
+//go:linkname unpackMsgHdr github.com/AZ-X/dns.unpackMsgHdr
 func unpackMsgHdr(msg []byte, off int) (dns.Header, int, error)
 
-//go:linkname setHdr github.com/miekg/dns.(*Msg).setHdr
+//go:linkname setHdr github.com/AZ-X/dns.(*Msg).setHdr
 func setHdr(dns *dns.Msg, dh dns.Header)
 
 

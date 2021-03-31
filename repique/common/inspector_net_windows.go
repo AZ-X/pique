@@ -4,7 +4,6 @@ import (
 	"io"
 	"net"
 	"syscall"
-	"time"
 	"os"
 
 	"github.com/jedisct1/dlog"
@@ -26,34 +25,6 @@ func temporary(err error) bool {
 	return false
 }
 
-type inspectForciblyConn struct {
-	raw net.Conn
-}
-
-func (c *inspectForciblyConn) LocalAddr() net.Addr {
-	return c.raw.LocalAddr()
-}
-
-func (c *inspectForciblyConn) RemoteAddr() net.Addr {
-	return c.raw.RemoteAddr()
-}
-
-func (c *inspectForciblyConn) SetDeadline(t time.Time) error {
-	return c.raw.SetDeadline(t)
-}
-
-func (c *inspectForciblyConn) SetReadDeadline(t time.Time) error {
-	return c.raw.SetReadDeadline(t)
-}
-
-func (c *inspectForciblyConn) SetWriteDeadline(t time.Time) error {
-	return c.raw.SetWriteDeadline(t)
-}
-
-func (c *inspectForciblyConn) Close() error {
-	return c.raw.Close()
-}
-
 func retryOnRW(f func([]byte) (n int, err error), b []byte) (n int, err error) {
 	fCounter := 0
 Retry:
@@ -71,14 +42,37 @@ Retry:
 	return
 }
 
-func (c *inspectForciblyConn) Read(b []byte) (n int, err error) {
-	return retryOnRW(c.raw.Read, b)
+type inspectForciblyConnTCP struct {
+	net.Conn
 }
 
-func (c *inspectForciblyConn) Write(b []byte) (n int, err error) {
-	return retryOnRW(c.raw.Write, b)
+func (c *inspectForciblyConnTCP) Read(b []byte) (n int, err error) {
+	return retryOnRW(c.Conn.Read, b)
+}
+
+func (c *inspectForciblyConnTCP) Write(b []byte) (n int, err error) {
+	return retryOnRW(c.Conn.Write, b)
+}
+
+type inspectForciblyConnUDP struct {
+	net.PacketConn
+}
+
+func (c *inspectForciblyConnUDP) Read(b []byte) (n int, err error) {
+	return retryOnRW(c.PacketConn.(net.Conn).Read, b)
+}
+
+func (c *inspectForciblyConnUDP) Write(b []byte) (n int, err error) {
+	return retryOnRW(c.PacketConn.(net.Conn).Write, b)
+}
+
+func (c *inspectForciblyConnUDP) RemoteAddr() net.Addr {
+	return c.PacketConn.(net.Conn).RemoteAddr()
 }
 
 func getInspector(conn net.Conn) net.Conn {
-	return &inspectForciblyConn{raw:conn}
+	switch t := conn.(type) {
+		case net.PacketConn: return &inspectForciblyConnUDP{PacketConn:t,}
+		default: return &inspectForciblyConnTCP{Conn:t,}
+	}
 }

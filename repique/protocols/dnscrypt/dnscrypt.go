@@ -469,11 +469,11 @@ func decrypt(version CryptoConstruction, sharedKey *[SharedKeySize]byte, encrypt
 	if len(encrypted) < responseHeaderLen+TagSize+int(common.MinDNSPacketSize) ||
 		len(encrypted) > responseHeaderLen+TagSize+int(maxDNSPacketSize) ||
 		!bytes.Equal(encrypted[:ServerMagicLen], ServerMagic()) {
-		return encrypted, errors.New("Invalid message size or prefix")
+		return encrypted, errors.New("invalid message size or prefix")
 	}
 	serverNonce := encrypted[ServerMagicLen:responseHeaderLen]
 	if !bytes.Equal(nonce[:HalfNonceSize], serverNonce[:HalfNonceSize]) {
-		return encrypted, errors.New("Unexpected nonce")
+		return encrypted, errors.New("unexpected nonce")
 	}
 	var packet []byte
 	var err error
@@ -482,14 +482,10 @@ func decrypt(version CryptoConstruction, sharedKey *[SharedKeySize]byte, encrypt
 	} else {
 		var xsalsaServerNonce [NonceSize]byte
 		copy(xsalsaServerNonce[:], serverNonce)
-		var ok bool
-		packet, ok = unclassified.Open(nil, encrypted[responseHeaderLen:], &xsalsaServerNonce, sharedKey)
-		if !ok {
-			err = errors.New("incorrect tag")
-		}
+		packet, err = unclassified.Open(nil, encrypted[responseHeaderLen:], &xsalsaServerNonce, sharedKey)
 	}
 	if err != nil {
-		return encrypted, err
+		return nil, err
 	}
 	packet, err = unpad(packet)
 	if err != nil || len(packet) < common.MinDNSPacketSize {

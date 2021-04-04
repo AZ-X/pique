@@ -1,7 +1,6 @@
 package unclassified
 
 import (
-	"crypto/subtle"
 	"errors"
 )
 
@@ -11,7 +10,7 @@ const (
 	// NonceSize is what the name suggests
 	NonceSize = 24
 	// TagSize is what the name suggests
-	TagSize = 16
+	TagSize = poly1305_TagSize
 )
 
 
@@ -27,19 +26,22 @@ func SealX(out, nonce, message, key []byte) []byte {
 	var firstBlock [64]byte
 	cipher, _ := chacha20_NewUnauthenticatedCipher(key, nonce)
 	cipher.XORKeyStream(firstBlock[:], firstBlock[:])
-	var polyKey [32]byte
-	copy(polyKey[:], firstBlock[:32])
+	var polyKey [KeySize]byte
+	copy(polyKey[:], firstBlock[:KeySize])
 
 	ret, out := sliceForAppend(out, TagSize+len(message))
+	if anyOverlap(out, message) {
+		panic("nacl: invalid buffer overlap")
+	}
 	firstMessageBlock := message
-	if len(firstMessageBlock) > 32 {
-		firstMessageBlock = firstMessageBlock[:32]
+	if len(firstMessageBlock) > KeySize {
+		firstMessageBlock = firstMessageBlock[:KeySize]
 	}
 
 	tagOut := out
 	out = out[TagSize:]
 	for i, x := range firstMessageBlock {
-		out[i] = firstBlock[32+i] ^ x
+		out[i] = firstBlock[KeySize+i] ^ x
 	}
 	message = message[len(firstMessageBlock):]
 	ciphertext := out
@@ -57,7 +59,9 @@ func SealX(out, nonce, message, key []byte) []byte {
 	return ret
 }
 
-// Open does what the name suggests
+// OpenX authenticates and decrypts a box produced by SealX and appends the
+// message to out, which must not overlap box. The output will be Overhead
+// bytes smaller than box.
 func OpenX(out, nonce, box, key []byte) ([]byte, error) {
 	if len(nonce) != NonceSize {
 		panic("unsupported nonce size")
@@ -65,38 +69,36 @@ func OpenX(out, nonce, box, key []byte) ([]byte, error) {
 	if len(key) != KeySize {
 		panic("unsupported key size")
 	}
-	if len(box) < TagSize {
+	if len(box) < Overhead {
 		return nil, errors.New("ciphertext is too short")
 	}
 
 	var firstBlock [64]byte
 	cipher, _ := chacha20_NewUnauthenticatedCipher(key, nonce)
 	cipher.XORKeyStream(firstBlock[:], firstBlock[:])
-	var polyKey [32]byte
-	copy(polyKey[:], firstBlock[:32])
 
-	var tag [TagSize]byte
-	ciphertext := box[TagSize:]
+	var polyKey [KeySize]byte
+	copy(polyKey[:], firstBlock[:KeySize])
+	ciphertext := box[Overhead:]
+
 	hash := poly1305_New(&polyKey)
 	hash.Write(ciphertext)
-	hash.Sum(tag[:0])
-	if subtle.ConstantTimeCompare(tag[:], box[:TagSize]) != 1 {
-		return nil, errors.New("ciphertext authentication failed")
+
+	if !hash.Verify(box[:Overhead]) {
+		return nil, errors.New("OpenX:ciphertext authentication failed")
 	}
 
 	ret, out := sliceForAppend(out, len(ciphertext))
-	if !hash.Verify(tag[:]) {
-		for i := range out {
-			out[i] = 0
-		}
-		return nil, errors.New("failed to verify poly1305 tag")
+	if anyOverlap(out, box) {
+		panic("nacl: invalid buffer overlap")
 	}
+
 	firstMessageBlock := ciphertext
-	if len(firstMessageBlock) > 32 {
-		firstMessageBlock = firstMessageBlock[:32]
+	if len(firstMessageBlock) > KeySize {
+		firstMessageBlock = firstMessageBlock[:KeySize]
 	}
 	for i, x := range firstMessageBlock {
-		out[i] = firstBlock[32+i] ^ x
+		out[i] = firstBlock[KeySize+i] ^ x
 	}
 	ciphertext = ciphertext[len(firstMessageBlock):]
 	out = out[len(firstMessageBlock):]

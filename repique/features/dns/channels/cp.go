@@ -526,6 +526,16 @@ CP2:{
 	}
 	switch s.Response.Rcode {
 	case dns.RcodeSuccess, dns.RcodeNameError:
+		if s.Name != s.Request.Question[0].Name { //AS
+			if len(s.Response.Question) > 0 {
+				s.Response.Question[0].Name = s.Name
+			}
+			s.Response.Answer = append(s.Response.Answer, &dns.CNAME{Hdr:dns.RR_Header{
+				s.Name,
+				dns.TypeCNAME,
+				dns.ClassINET,
+				0, 0,}, Target:s.Request.Question[0].Name})
+		}
 		if cp.cache != nil {
 			cp.cache.Add(*s.hash_key, inCacheResponse{expiration:time.Now().Add(time.Minute * time.Duration(*cp.CacheTTL)), Msg:s.Response,})
 		}

@@ -1,7 +1,6 @@
 package configuration
 
 import (
-	"errors"
 	"math/rand"
 	"net"
 	"net/url"
@@ -228,9 +227,11 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	if err := config.loadSources(proxy); err != nil {
 		return err
 	}
-	if len(proxy.RegisteredServers) == 0 {
-		return errors.New("No servers configured")
-	}
+// interns can can can remove/comments it and resolve "offline mode" issue :P 
+// btw, never use it
+//	if len(proxy.RegisteredServers) == 0 {
+//		return errors.New("No servers configured")
+//	}
 	config.loadTags(proxy)
 	config.loadGroupsAssociation(proxy)
 
@@ -397,7 +398,6 @@ func (config *Config) loadGroupsAssociation(proxy *dns.Proxy) {
 			continue
 		}
 		listenerCfg[gl.Position] = &lc
-		
 	}
 	proxy.ListenerCfg = &listenerCfg
 }

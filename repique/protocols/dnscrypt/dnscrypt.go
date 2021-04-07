@@ -315,13 +315,11 @@ Go:
 	var sharedKey *[PublicKeySize]byte
 	var nonce *[NonceSize]byte
 
-	var binLength int
+	binLength := len(bin)
 	if service != nil {
-		if binLength, err = calcDynamicEncryptedPaddingSize(len(bin), proto); err != nil {
+		if binLength, err = calcDynamicEncryptedPaddingSize(binLength, proto); err != nil {
 			goto Error
 		}
-	} else {
-		binLength = len(bin)
 	}
 	var buf []byte
 	var pbuf *[]byte
@@ -340,7 +338,7 @@ Go:
 		pbuf = &buf
 	}
 	if service != nil {
-		sharedKey , nonce, err = encrypt(service, &bin, pbuf, proto)
+		sharedKey, nonce, err = encrypt(service, &bin, pbuf, proto)
 	} else {
 		buf = append(buf, bin...)
 	}

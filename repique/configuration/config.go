@@ -491,7 +491,7 @@ func (config *Config) loadSource(proxy *dns.Proxy, requiredProps stamps.ServerIn
 					panic(err)
 				}
 			case proto == "DoT":
-				if err := proxy.XTransport.BuildTLS(registeredserver); err != nil {
+				if err := proxy.XTransport.BuildTLS(registeredserver, false); err != nil {
 					panic(err)
 				}
 			default:continue

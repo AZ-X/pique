@@ -53,8 +53,35 @@ type RegisteredServer struct {
 
 /*--------------------------------------------------------------------------------------*/
 
+//name, conn, err
+type TLSContextDial func(ctx context.Context, network, addr string) (*string, net.Conn, error)
+
 type TLSContext struct {
 	context.Context
+	TLSContextDial
+}
+
+func (c *TLSContext) Value(key interface{}) interface{} {
+	return c.TLSContextDial
+}
+
+//soul of HTTPS
+type HTTPSContext struct {
+	*TLSContext
+	Tag *string //redundant key; for cm.key() & connectMethodKey mod
+}
+
+func (c *HTTPSContext) Value(key interface{}) interface{} {
+	if "Tag" == key {
+		return *c.Tag
+	}
+	return c.TLSContextDial
+}
+
+func (c *HTTPSContext) WithContext(inner context.Context) context.Context {
+	ctx := *c
+	ctx.Context = inner
+	return &ctx
 }
 
 type Endpoint struct {

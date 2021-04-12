@@ -1,4 +1,4 @@
-package dns
+package extensions
 
 //import (
 //	"github.com/AZ-X/dns"

@@ -26,7 +26,6 @@ const (
 	GET                          = "GET"
 	POST                         = "POST"
 	DOHMediaType                 = "application/dns-message"
-	DefaultKeepAlive             = 0 * time.Second
 	DefaultTimeout               = 30 * time.Second
 	DoTDefaultPort               = 853
 	MaxHTTPBodyLength            = 4000000
@@ -50,13 +49,13 @@ func defaultCipherSuitesTLS13() []uint16
 //since we use custom dial on Transport with variant of tls config, have to cover all the proxies usage
 type TransportHolding struct {
 	*tls.Config
-	IPs                             *atomic.Value //*EPRing
+	IPs                             interface{} //*EPRing
 	Name                            *string //redundant key: name of stamp for now
 	DomainName                      string
 	SNIShadow                       string
 	SNIBlotUp                       stamps.SNIBlotUpType
-	Context                         *HTTPSContext
 	Proxies                         *conceptions.NestedProxy // individual proxies chain
+	DefaultContext                  context.Context //TLSContext or HTTPSContext
 }
 
 //upon TLS
@@ -70,26 +69,8 @@ type XTransport struct {
 	LocalInterface                  *string
 }
 
-//name, conn, err
-type TLSContextDial func(ctx context.Context, network, addr string) (*string, net.Conn, error)
-
-//soul of HTTPS
-type HTTPSContext struct {
-	context.Context
-	TLSContextDial
-	tag *string //redundant key; for cm.key() & connectMethodKey mod
-}
-
-func (c *HTTPSContext) Value(key interface{}) interface{} {
-	if "Tag" == key {
-		return *c.tag
-	}
-	return c.TLSContextDial
-}
-
 func NewXTransport() *XTransport {
 	XTransport := XTransport{
-		KeepAlive:                	DefaultKeepAlive,
 		Timeout:                  	DefaultTimeout,
 		TlsDisableSessionTickets: 	false,
 	}
@@ -116,20 +97,6 @@ func NewXTransport() *XTransport {
 func (XTransport *XTransport) BuildTransport(server common.RegisteredServer, _ *conceptions.NestedProxy) error {
 	dlog.Debugf("building transport for [%s]", server.Name)
 	Timeout := XTransport.Timeout
-	stamp := server.Stamp
-	domain, port, err := common.ExtractHostAndPort(stamp.ProviderName, stamps.DefaultPort)
-	if err != nil {
-		return err
-	}
-	endpoint, err := common.ResolveEndpoint(stamp.ServerAddrStr)
-	if err != nil {
-		return err
-	}
-	if endpoint.Port != 0 && endpoint.Port != stamps.DefaultPort {
-		port = endpoint.Port
-	}
-	endpoint.Port = port
-	epring := common.LinkEPRing(endpoint)
 	if XTransport.Transport == nil {
 		transport := &http.Transport{
 		ForceAttemptHTTP2:      true,//formal servers (DOH, DOT, https-gits, etc.) should provide H>1.1 infrastructure with tls>1.2
@@ -145,7 +112,7 @@ func (XTransport *XTransport) BuildTransport(server common.RegisteredServer, _ *
 		MaxResponseHeaderBytes: 4096,
 		}
 		transport.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
-			name, c, err := ctx.Value(nil).(TLSContextDial)(ctx, netw, addr)
+			name, c, err := ctx.Value(nil).(common.TLSContextDial)(ctx, netw, addr)
 			if err != nil {
 					if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
 						dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
@@ -156,52 +123,56 @@ func (XTransport *XTransport) BuildTransport(server common.RegisteredServer, _ *
 		}
 		XTransport.Transport = transport
 	}
-	th := &TransportHolding{
-		Name:       &server.Name,
-		DomainName: domain,
-		SNIShadow:  stamp.SNIShadow,
-		SNIBlotUp:  stamp.SNIBlotUp,
-	}
-	th.IPs = &atomic.Value{}
-	th.IPs.Store(epring)
-	th.Config = th.BuildTLS(XTransport)
-	if err := th.BuildTransport(XTransport, XTransport.Proxies); err != nil {
+	if err := XTransport.BuildTLS(server, true); err != nil {
 		return err
 	}
-	XTransport.Transports[server.Name] = th
 	return nil
 }
 
-func (XTransport *XTransport) BuildTLS(server common.RegisteredServer) error {
+func (XTransport *XTransport) BuildTLS(server common.RegisteredServer, https bool) error {
 	dlog.Debugf("building TLS for [%s]", server.Name)
 	stamp := server.Stamp
-	domain, port, err := common.ExtractHostAndPort(stamp.ProviderName, DoTDefaultPort)
+	domain, port, err := common.ExtractHostAndPort(stamp.ProviderName, stamps.DefaultPort)
 	if err != nil {
 		return err
 	}
-	endpoint, err := common.ResolveEndpoint(stamp.ServerAddrStr)
-	if err != nil {
-		return err
+	var endpoints []*common.Endpoint
+	for _, addr := range strings.Split(stamp.ServerAddrStr, common.Delimiter) {
+		endpoint, err := common.ResolveEndpoint(addr)
+		if err != nil {
+			return err
+		}
+		if endpoint.Port != 0 && endpoint.Port != stamps.DefaultPort {
+			port = endpoint.Port
+		}
+		endpoint.Port = port
+		endpoints = append(endpoints, endpoint)
 	}
-	if endpoint.Port != 0 && endpoint.Port != DoTDefaultPort {
-		port = endpoint.Port
-	}
-	endpoint.Port = port
-	epring := common.LinkEPRing(endpoint)
 	th := &TransportHolding{
 		Name:       &server.Name,
 		DomainName: domain,
 		SNIShadow:  stamp.SNIShadow,
 		SNIBlotUp:  stamp.SNIBlotUp,
 	}
-	th.IPs = &atomic.Value{}
-	th.IPs.Store(epring)
-	th.Config = th.BuildTLS(XTransport)
+	var ip string
+	if len(endpoints) > 1 {
+		epring := common.LinkEPRing(endpoints...)
+		ip = epring.IP.String()
+		th.IPs = &atomic.Value{}
+		th.IPs.(*atomic.Value).Store(epring)
+	} else {
+		th.IPs = endpoints[0].String()
+		ip = endpoints[0].IP.String()
+	}
+	th.Config = th.BuildTLS(XTransport, ip)
+	if err := th.BuildTransport(XTransport, XTransport.Proxies, https); err != nil {
+		return err
+	}
 	XTransport.Transports[server.Name] = th
 	return nil
 }
 
-func (th *TransportHolding) BuildTLS(XTransport *XTransport) (cfg *tls.Config) {
+func (th *TransportHolding) BuildTLS(XTransport *XTransport, ip string) (cfg *tls.Config) {
 	cfg = &tls.Config{
 		SessionTicketsDisabled: XTransport.TlsDisableSessionTickets,
 		MinVersion: tls.VersionTLS13,
@@ -220,7 +191,7 @@ func (th *TransportHolding) BuildTLS(XTransport *XTransport) (cfg *tls.Config) {
 		dlog.Debugf("SNI setup for [%s]", *th.Name)
 		switch th.SNIBlotUp {
 			case stamps.SNIBlotUpTypeOmit:    cfg.ServerName = ""
-			case stamps.SNIBlotUpTypeIPAddr:  cfg.ServerName = th.IPs.Load().(*common.EPRing).IP.String()
+			case stamps.SNIBlotUpTypeIPAddr:  cfg.ServerName = ip
 			case stamps.SNIBlotUpTypeMoniker: cfg.ServerName = th.SNIShadow
 		}
 		cfg.VerifyPeerCertificate = func(certificates [][]byte, _ [][]*x509.Certificate) error {
@@ -246,13 +217,17 @@ func (th *TransportHolding) BuildTLS(XTransport *XTransport) (cfg *tls.Config) {
 			}
 			_, err := certs[0].Verify(opts)
 			if err != nil {
-				switch err := err.(type) {
-				case x509.CertificateInvalidError:
-					return dlog.Errorf("[%v][%v(%v)]:%v", *th.Name, err.Cert.Subject, err.Cert.NotAfter, err)
-				case x509.HostnameError:
-					return dlog.Errorf("[%v]%v", *th.Name, err)
-				case x509.UnknownAuthorityError, x509.SystemRootsError:
-					return err
+				opts.DNSName = th.DomainName //in case of booby SNIShadow 
+				_, err := certs[0].Verify(opts)
+				if err != nil {
+					switch err := err.(type) {
+					case x509.CertificateInvalidError:
+						return dlog.Errorf("[%v][%v(%v)]:%v", *th.Name, err.Cert.Subject, err.Cert.NotAfter, err)
+					case x509.HostnameError:
+						return dlog.Errorf("[%v]%v", *th.Name, err)
+					case x509.UnknownAuthorityError, x509.SystemRootsError:
+						return err
+					}
 				}
 			}
 			return nil
@@ -261,13 +236,12 @@ func (th *TransportHolding) BuildTLS(XTransport *XTransport) (cfg *tls.Config) {
 	return cfg
 }
 
-func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conceptions.NestedProxy) error {
+func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conceptions.NestedProxy, https bool) error {
 	alive := XTransport.KeepAlive
 	cfg := th.Config
-	th.Context = &HTTPSContext{Context:context.Background(), tag:th.Name,}
-	th.Context.TLSContextDial = func(ctx context.Context, netw, addr string) (*string, net.Conn, error) {
-		if XTransport.Proxies != nil {
-			if plainConn, err := XTransport.Proxies.GetDialContext()(ctx, XTransport.LocalInterface, netw, addr); err == nil {
+	df := func(ctx context.Context, netw, addr string) (*string, net.Conn, error) {
+		if proxies != nil {
+			if plainConn, err := proxies.GetDialContext()(ctx, XTransport.LocalInterface, netw, addr); err == nil {
 				return th.Name, tls.Client(plainConn, cfg), nil
 			} else {
 				return th.Name, nil, err
@@ -276,9 +250,14 @@ func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conc
 		if !strings.HasPrefix(addr, th.DomainName) {
 			panic(dlog.Errorf("mismatch addr for TransportHolding(%s): [%s]", th.Name, addr))
 		}
-		epring := th.IPs.Load().(*common.EPRing)
-		addr = epring.String()
-		th.IPs.Store(epring.Next())
+		if str, ok := th.IPs.(string); ok {
+			addr = str
+		} else {
+			epring := th.IPs.(*atomic.Value).Load().(*common.EPRing)
+			addr = epring.String()
+			th.IPs.(*atomic.Value).Store(epring.Next())
+		}
+
 		if dialer, err := common.GetDialer("tcp", XTransport.LocalInterface, 800*time.Millisecond, alive); err != nil {
 			return th.Name, nil, err
 		} else {
@@ -292,6 +271,11 @@ func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conc
 			return th.Name, tls.Client(conn, cfg), nil
 		}
 	}
+	if https {
+		th.DefaultContext = &common.HTTPSContext{TLSContext:&common.TLSContext{Context:context.Background(), TLSContextDial:df,}, Tag:th.Name, }
+	} else {
+		th.DefaultContext = &common.TLSContext{Context:context.Background(), TLSContextDial:df,}
+	}
 	return nil
 }
 
@@ -299,7 +283,7 @@ const parallel_dial_total = 5
 
 
 // I don't foresee any benefit from dtls, so let's wait for DNS over QUIC 
-func (XTransport *XTransport) FetchDoT(name string, serverProto string, ctx *common.TLSContext, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
+func (XTransport *XTransport) FetchDoT(name string, serverProto string, ctx context.Context, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
 	th, found := XTransport.Transports[name]
 	if !found {
 		panic(name + " not found for Transports")
@@ -308,24 +292,26 @@ func (XTransport *XTransport) FetchDoT(name string, serverProto string, ctx *com
 	return XTransport.fetchDoT(th, serverProto, ctx, body, Timeout, cbs...)
 }
 
-func (XTransport *XTransport) fetchDoT(th *TransportHolding, _ string, ctx *common.TLSContext, msg *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
+func (XTransport *XTransport) fetchDoT(th *TransportHolding, _ string, ctx context.Context, msg *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
 	var err error
-	var conn net.Conn
-	var response []byte
-	proto := "tcp"
 	goto Go
 Error:
 	return nil, err
 Go:
+	const proto = "tcp"
 	if Timeout <= 0 {
 		Timeout = XTransport.Timeout
 	}
-	proxies := XTransport.Proxies.Merge(th.Proxies)
-	if proxies == nil {
-		conn, err = common.Dial(proto, th.IPs.Load().(*common.EPRing).String(), XTransport.LocalInterface, Timeout, XTransport.KeepAlive, ctx)
-	} else {
-		conn, err = XTransport.Proxies.GetDialContext()(ctx, XTransport.LocalInterface, "tcp", th.IPs.Load().(*common.EPRing).String())
+	var conn net.Conn
+	if ctx == nil {
+		ctx = th.DefaultContext
 	}
+	if tslCtx, ok := ctx.(*common.TLSContext); ok {
+		_, conn, err = tslCtx.TLSContextDial(tslCtx.Context, proto, th.DomainName)
+	} else {
+		_, conn, err = th.DefaultContext.(*common.TLSContext).TLSContextDial(ctx, proto, th.DomainName)
+	}
+
 	if err != nil {
 		goto Error
 	}
@@ -333,9 +319,8 @@ Go:
 	if err = conn.SetDeadline(time.Now().Add(Timeout)); err != nil {
 		goto Error
 	}
-	tlsConn := tls.Client(conn, th.Config)
-	err = tlsConn.Handshake()
-	if err != nil {
+	tlsConn := conn.(*tls.Conn)
+	if err = tlsConn.Handshake(); err != nil {
 		goto Error
 	}
 	for _, cb := range cbs {
@@ -349,6 +334,7 @@ Go:
 				dlog.Errorf("unhandled callback(T=%T) calling fetchDoT", cb)
 		}
 	}
+	var response []byte
 	for tries := 2; tries > 0; tries-- {
 		if err = common.WriteDP(tlsConn, *msg); err != nil {
 			common.Program_dbg_full_log("FetchDoT E01")
@@ -367,8 +353,7 @@ Go:
 	return response, nil
 }
 
-
-func (XTransport *XTransport) FetchHTTPS(name string, path string, method string, doh bool, ctx *HTTPSContext, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
+func (XTransport *XTransport) FetchHTTPS(name string, path string, method string, doh bool, ctx context.Context, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
 	th, found := XTransport.Transports[name]
 	if !found {
 		panic(name + "name not found for Transports")
@@ -377,7 +362,7 @@ func (XTransport *XTransport) FetchHTTPS(name string, path string, method string
 	return XTransport.fetchHTTPS(th, path, method, doh, ctx, body, Timeout, cbs...)
 }
 
-func (XTransport *XTransport) fetchHTTPS(th *TransportHolding, path string, method string, doh bool, ctx *HTTPSContext, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
+func (XTransport *XTransport) fetchHTTPS(th *TransportHolding, path string, method string, doh bool, ctx context.Context, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
 	var err error
 	goto Go
 Error:
@@ -428,8 +413,10 @@ Go:
 		Close:  XTransport.KeepAlive < 0,
 	}
 	if ctx == nil {
-		ctx = th.Context
-	}
+		ctx = th.DefaultContext
+	} else if _, ok := ctx.(*common.HTTPSContext); !ok {
+		ctx = th.DefaultContext.(*common.HTTPSContext).WithContext(ctx)
+	} 
 	req = req.WithContext(ctx)
 	if method == "POST" && body != nil {
 		req.ContentLength = int64(len(*body))
@@ -473,11 +460,11 @@ Go:
 	return bin, nil
 }
 
-func (XTransport *XTransport) Get(name string, path string, ctx *HTTPSContext, Timeout time.Duration) ([]byte, error) {
+func (XTransport *XTransport) Get(name string, path string, ctx context.Context, Timeout time.Duration) ([]byte, error) {
 	return XTransport.FetchHTTPS(name, path, GET, false, ctx, nil, Timeout)
 }
 
-func (XTransport *XTransport) Post(name string, path string, ctx *HTTPSContext, body *[]byte, Timeout time.Duration) ([]byte, error) {
+func (XTransport *XTransport) Post(name string, path string, ctx context.Context, body *[]byte, Timeout time.Duration) ([]byte, error) {
 	return XTransport.FetchHTTPS(name, path, POST, false, ctx, body, Timeout)
 }
 

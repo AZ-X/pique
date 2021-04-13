@@ -323,19 +323,19 @@ func (proxy *Proxy) ExchangeDnScRypt(serverInfo *DNSCryptInfo, request *[]byte) 
 	return &bin, err
 }
 
-func (proxy *Proxy) doHQuery(name string, path string, useGet bool, ctx *tls.HTTPSContext, body *[]byte, cbs ...interface{}) ([]byte, error) {
+func (proxy *Proxy) doHQuery(name string, path string, useGet bool, ctx context.Context, body *[]byte, cbs ...interface{}) ([]byte, error) {
 	if useGet {
 		return proxy.XTransport.FetchHTTPS(name, path, "GET", true, ctx, body, proxy.Timeout, cbs...)
 	}
 	return proxy.XTransport.FetchHTTPS(name, path, "POST", true, ctx, body, proxy.Timeout, cbs...)
 }
 
-func (proxy *Proxy) DoHQuery(name string, info *DOHInfo, ctx *tls.HTTPSContext, request *[]byte, cbs ...interface{}) (*[]byte, error) {
+func (proxy *Proxy) DoHQuery(name string, info *DOHInfo, ctx context.Context, request *[]byte, cbs ...interface{}) (*[]byte, error) {
 	bin, err := proxy.doHQuery(name, info.Path, info.useGet, ctx, request, cbs...)
 	return &bin, err
 }
 
-func (proxy *Proxy) DoTQuery(name string, ctx *common.TLSContext, request *[]byte, cbs ...interface{}) (*[]byte, error) {
+func (proxy *Proxy) DoTQuery(name string, ctx context.Context, request *[]byte, cbs ...interface{}) (*[]byte, error) {
 	bin, err := proxy.XTransport.FetchDoT(name, proxy.MainProto, ctx, request, proxy.Timeout, cbs...)
 	return &bin, err
 }

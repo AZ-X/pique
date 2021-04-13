@@ -37,20 +37,20 @@ however it still depends on dboy, common and unclassified getting at a reflectio
 
 */
 
-
-
 const (
-	ClientMagicLen   = 8
-	ServerMagicLen   = 8
-	PublicKeySize    = 32
-	SharedKeySize    = PublicKeySize
-	NonceSize        = unclassified.NonceSize
-	HalfNonceSize    = unclassified.NonceSize / 2
-	TagSize          = unclassified.TagSize
-	QueryOverhead    = ClientMagicLen + PublicKeySize + HalfNonceSize + TagSize
-	ResponseOverhead = ServerMagicLen + NonceSize + TagSize
-	IdentifierPrefix = "2.dnscrypt-cert."
-	DNSRoot          = "."
+	ClientMagicLen     = 8
+	ServerMagicLen     = 8
+	AnonymizedOverhead = 28
+	PublicKeySize      = 32
+	SharedKeySize      = PublicKeySize
+	NonceSize          = unclassified.NonceSize
+	HalfNonceSize      = unclassified.NonceSize / 2
+	TagSize            = unclassified.TagSize
+	QueryOverhead      = ClientMagicLen + PublicKeySize + HalfNonceSize + TagSize
+	ResponseHeaderLen  = ServerMagicLen + NonceSize
+	ResponseOverhead   = ResponseHeaderLen + TagSize
+	IdentifierPrefix   = "2.dnscrypt-cert."
+	DNSRoot            = "."
 )
 
 type CryptoConstruction uint8
@@ -315,20 +315,41 @@ Go:
 	var sharedKey *[PublicKeySize]byte
 	var nonce *[NonceSize]byte
 
-	binQuery := &bin
-	var pc net.Conn
+	binLength := len(bin)
 	if service != nil {
-		sharedKey , nonce, binQuery, err = encrypt(service, binQuery, proto)
+		if binLength, err = calcDynamicEncryptedPaddingSize(binLength, proto); err != nil {
+			goto Error
+		}
 	}
+	var buf []byte
+	var pbuf *[]byte
+	if relayAddr != nil {
+		buf = make([]byte, 0, binLength + AnonymizedOverhead)
+		buf = append(buf, AnonymizedDNSHeader()...)
+		buf = append(buf, upstreamAddr.IP.To16()...)
+		var tmp [2]byte
+		binary.BigEndian.PutUint16(tmp[0:2], uint16(upstreamAddr.Port))
+		buf = append(buf, tmp[:]...)
+		sbuf := buf[AnonymizedOverhead:]
+		pbuf = &sbuf
+		upstreamAddr = relayAddr
+	} else {
+		buf = make([]byte, 0, binLength)
+		pbuf = &buf
+	}
+	if service != nil {
+		sharedKey, nonce, err = encrypt(service, &bin, pbuf, proto)
+	} else {
+		buf = append(buf, bin...)
+	}
+	buf = buf[:cap(buf)]
 	if err != nil {
 		common.Program_dbg_full_log("dnscrypt Query E01")
 		goto Error
 	}
-	if relayAddr != nil {
-		appendReHeader(upstreamAddr, binQuery)
-		upstreamAddr = relayAddr
-	}
+
 	now := time.Now()
+	var pc net.Conn
 	pc, err = dialFn(proto, upstreamAddr.String())
 	if err != nil {
 		common.Program_dbg_full_log("dnscrypt Query E02")
@@ -337,7 +358,7 @@ Go:
 	defer pc.Close()
 	var packet []byte
 	for tries := 2; tries > 0; tries-- {
-		if err = common.WriteDP(pc, *binQuery); err != nil {
+		if err = common.WriteDP(pc, buf); err != nil {
 			common.Program_dbg_full_log(err.Error())
 			common.Program_dbg_full_log("dnscrypt Query E03")
 			continue
@@ -356,15 +377,6 @@ Go:
 		packet, err = decrypt(service.Version, sharedKey, packet, nonce, proto)
 	}
 	return packet, rtt, err
-}
-
-func appendReHeader(endpoint *common.Endpoint, bin *[]byte) {
-	relayedQuery := append(AnonymizedDNSHeader(), endpoint.IP.To16()...)
-	var tmp [2]byte
-	binary.BigEndian.PutUint16(tmp[0:2], uint16(endpoint.Port))
-	relayedQuery = append(relayedQuery, tmp[:]...)
-	relayedQuery = append(relayedQuery, *bin...)
-	*bin = relayedQuery
 }
 
 func pad(packet []byte, padSize int) []byte {
@@ -413,21 +425,8 @@ Go:
 	return
 }
 
-func encrypt(service *Service, packet *[]byte, proto string) (sharedKey *[PublicKeySize]byte, nonce *[NonceSize]byte, encrypted *[]byte, err error) {
-	var publicKey *[PublicKeySize]byte = new([PublicKeySize]byte)
-	nonce = new([NonceSize]byte)
-	rand.Read(nonce[:HalfNonceSize])
-	var scalar [PublicKeySize]byte
-	rand.Read(scalar[:])
-	var x []byte
-	if x, err = unclassified.Curve25519_X25519(scalar[:], unclassified.Curve25519_Basepoint); err != nil {
-		return
-	} else {
-		copy(publicKey[:], x)
-	}
-	sharedKey = computeSharedKey(service.Version, &scalar, &service.ServerPk, service.Name)
-	_packet := *packet
-	minQuestionSize := QueryOverhead + len(_packet)
+func calcDynamicEncryptedPaddingSize(length int, proto string) (eLength int, err error) {
+	minQuestionSize := QueryOverhead + length
 	if minQuestionSize+1 > common.MaxDNSUDPPacketSize -64 {
 		err = errors.New("data too large; cannot be padded")
 		return
@@ -446,50 +445,76 @@ func encrypt(service *Service, packet *[]byte, proto string) (sharedKey *[Public
 	random_size := (firstclass + int(b1.Int64())) * 64
 	paddedLength :=  common.Min(common.MaxDNSUDPPacketSize, random_size)
 	common.Program_dbg_full_log("padding size: %d", paddedLength)
-	_encrypted := append(service.MagicQuery[:], publicKey[:]...)
-	_encrypted = append(_encrypted, nonce[:HalfNonceSize]...)
-	padded := pad(_packet, paddedLength - len(_packet))
-	if service.Version == XChacha20Poly1305 {
-		_encrypted = unclassified.SealX(_encrypted, nonce[:], padded, sharedKey[:])
-	} else {
-		_encrypted = unclassified.Seal(_encrypted, padded, nonce, sharedKey)
+	eLength = QueryOverhead + paddedLength
+	common.Program_dbg_full_log("encrypted size: %d", eLength)
+	return
+}
+
+func encrypt(service *Service, packet, buf *[]byte, proto string) (sharedKey *[PublicKeySize]byte, nonce *[NonceSize]byte, err error) {
+	encrypted := *buf
+	_packet := *packet
+	eLength := cap(encrypted)
+	padded := pad(_packet, eLength - QueryOverhead - len(_packet))
+	var scalar [PublicKeySize]byte
+	rand.Read(scalar[:])
+	var xPK []byte
+	if xPK, err = unclassified.Curve25519_X25519(scalar[:], unclassified.Curve25519_Basepoint); err != nil {
+		return
 	}
-	encrypted = &_encrypted
+	if len(xPK) != PublicKeySize {
+		panic("X25519 failed to return a slice of 32 bytes")
+	}
+	encrypted = append(encrypted, service.MagicQuery[:]...)
+	encrypted = append(encrypted, xPK[:]...)
+	nonce = new([NonceSize]byte)
+	rand.Read(nonce[:HalfNonceSize])
+	encrypted = append(encrypted, nonce[:HalfNonceSize]...)
+	sharedKey = computeSharedKey(service.Version, &scalar, &service.ServerPk, service.Name)
+	if service.Version == XChacha20Poly1305 {
+		encrypted = unclassified.SealX(encrypted, nonce[:], padded, sharedKey[:])
+	} else {
+		encrypted = unclassified.Seal(encrypted, padded, nonce, sharedKey)
+	}
+	if len(encrypted) != eLength {
+		panic("dnscrypt encryption is unpredictable")
+	}
 	return
 }
 
 func decrypt(version CryptoConstruction, sharedKey *[SharedKeySize]byte, encrypted []byte, nonce *[NonceSize]byte, proto string) ([]byte, error) {
-	responseHeaderLen := ServerMagicLen + NonceSize
 	var maxDNSPacketSize int64
 	if proto == "udp" {
 		maxDNSPacketSize = common.MaxDNSUDPPacketSize
 	} else {
 		maxDNSPacketSize = common.MaxDNSPacketSize
 	}
-	if len(encrypted) < responseHeaderLen+TagSize+int(common.MinDNSPacketSize) ||
-		len(encrypted) > responseHeaderLen+TagSize+int(maxDNSPacketSize) ||
+	if len(encrypted) < ResponseOverhead+int(common.MinDNSPacketSize) ||
+		len(encrypted) > ResponseOverhead+int(maxDNSPacketSize) ||
 		!bytes.Equal(encrypted[:ServerMagicLen], ServerMagic()) {
 		return encrypted, errors.New("invalid message size or prefix")
 	}
-	serverNonce := encrypted[ServerMagicLen:responseHeaderLen]
+	serverNonce := encrypted[ServerMagicLen:ResponseHeaderLen]
 	if !bytes.Equal(nonce[:HalfNonceSize], serverNonce[:HalfNonceSize]) {
 		return encrypted, errors.New("unexpected nonce")
 	}
 	var packet []byte
 	var err error
 	if version == XChacha20Poly1305 {
-		packet, err = unclassified.OpenX(nil, serverNonce, encrypted[responseHeaderLen:], sharedKey[:])
+		packet, err = unclassified.OpenX(nil, serverNonce, encrypted[ResponseHeaderLen:], sharedKey[:])
 	} else {
 		var xsalsaServerNonce [NonceSize]byte
 		copy(xsalsaServerNonce[:], serverNonce)
-		packet, err = unclassified.Open(nil, encrypted[responseHeaderLen:], &xsalsaServerNonce, sharedKey)
+		packet, err = unclassified.Open(nil, encrypted[ResponseHeaderLen:], &xsalsaServerNonce, sharedKey)
 	}
 	if err != nil {
 		return nil, err
 	}
+	if len(encrypted) != len(packet)+ResponseOverhead  {
+		panic("dnscrypt decryption is unpredictable")
+	}
 	packet, err = unpad(packet)
 	if err != nil || len(packet) < common.MinDNSPacketSize {
-		return encrypted, errors.New("incorrect padding")
+		return encrypted, errors.New("incorrect padding of dnscrypt packet")
 	}
 	return packet, nil
 }

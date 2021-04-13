@@ -5,16 +5,15 @@ import (
 )
 
 const (
-	// KeySize is what the name suggests
 	KeySize = 32
-	// NonceSize is what the name suggests
 	NonceSize = 24
-	// TagSize is what the name suggests
 	TagSize = poly1305_TagSize
 )
 
 
-// Seal does what the name suggests
+// SealX appends an encrypted and authenticated copy of message to out, which
+// must not overlap message. The key and nonce pair must be unique for each
+// distinct message and the output will be Overhead bytes longer than message.
 func SealX(out, nonce, message, key []byte) []byte {
 	if len(nonce) != NonceSize {
 		panic("unsupported nonce size")

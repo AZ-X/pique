@@ -319,9 +319,8 @@ Go:
 	if err = conn.SetDeadline(time.Now().Add(Timeout)); err != nil {
 		goto Error
 	}
-	tlsConn := tls.Client(conn, th.Config)
-	err = tlsConn.Handshake()
-	if err != nil {
+	tlsConn := conn.(*tls.Conn)
+	if err = tlsConn.Handshake(); err != nil {
 		goto Error
 	}
 	for _, cb := range cbs {

@@ -12,6 +12,26 @@
 > It was DNS.  
 > -- SSBroski
 
+> Here’s my favorite example.  
+> Once upon a time, if you clicked on the website link for The New York Times, you were exposed to malware.  
+> And the reason is that if you ask for the front page of The New York Times, there are ads inserted, and they have been inserted by ad brokers who take them from whoever wants to pay for them.  
+> And in some cases, it’s people who want to spread malware.  
+> The little ad links are one of the famous ways to spread malware, and it’s not something I’ve ever clicked on, but it’s included.  
+> So I have a certain amount of hygiene that I follow about what I click on, but in reality, I really rely upon additional filtering behind the scenes to keep me out of harm’s way.  
+> So I have blacklists.  
+> -- Paul Mockapetris (Dr. PM)
+
+> The other thing is that Cloudflare hosts content for far-right US organizations, militant groups, torrent sites, and sites that spread malware.  
+> No matter what your political philosophy is, Cloudflare is hosting somebody that you find really repugnant.  
+> So using them to filter your DNS doesn’t seem to me to be a good idea, because they’re not going to filter out content that they’re serving themselves.  
+> -- Dr. PM
+
+> A lot of people view this (DNS filtering default done by the ISP) as censorship.  
+> Once upon a time, people thought that spam filtering was dangerous because censoring email was evil, and so forth.  
+> Today, I don’t think there’s anybody who uses email that doesn’t use such filtering mechanisms.  
+> Likewise, I don’t think anybody should be using DNS without having filtering mechanisms.  
+> -- Dr. PM
+
 ## Repique is an advanced DNS stub which can run on different OS such as Windows, Linux, OpenWRT.
 
 ## Repique is unique in the world because:
@@ -286,6 +306,14 @@ MINOR versions of the twinned version are always matched for a single release.
 ### Repique's wonderful adventure without SNI
 
 # ![repique TLS1.3](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/DoT_no_server_name.png?raw=true)
+
+### Repique's respecting and disrespecting low TTL
+
+Repique respects TTL of any record from upstream resolvers or local routines, on the contrary, Repique's bats cache discards the TTL when caching.
+
+> However, it will drastically reduce latency, and improve privacy and reliability by avoid unneeded queries.  
+> Of course, RFCs say that TTLs should be stricly respected.  
+> But the reality is that DNS has become quite inefficient.  
 
 ## Autobiography
 

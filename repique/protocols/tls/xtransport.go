@@ -320,7 +320,7 @@ Go:
 	if err = conn.SetDeadline(time.Now().Add(Timeout)); err != nil {
 		goto Error
 	}
-	tlsConn := conn.(*tls.Conn)
+	tlsConn := conn.(common.TLSConn)
 	if err = tlsConn.Handshake(); err != nil {
 		goto Error
 	}

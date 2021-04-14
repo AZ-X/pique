@@ -104,6 +104,10 @@ However repique did most DNS stub never did, a powerful, dynamic and flexible pr
 # ![repique TLS1.3](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/tls_my_server_name.png?raw=true)
 Illustration of sending TLS1.3 Client Hello to IBM's server by repique
 
+# ![repique TLS1.3](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/repique_DoT_v13_cecpq2.png?raw=true)
+Illustration of communication with Google's public server using DoT and [Combined Elliptic-Curve and Post-Quantum 2](https://en.wikipedia.org/wiki/CECPQ2) by repique..
+Although it is not included in the releases, you can find the implementation at my GITHUB gist.
+
 > You may find out the difference of TLS 1.3 golang implementation inside above snapshot. It's ture.  
 > Repique demonstrates the ability to mod golang std-library and build together, meanwhile it won't be shipped with the release.  
 > For more information, see GITHUB gist:

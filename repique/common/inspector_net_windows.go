@@ -1,6 +1,7 @@
 package common
 
 import (
+	"crypto/tls"
 	"io"
 	"net"
 	"syscall"
@@ -42,6 +43,24 @@ Retry:
 	return
 }
 
+type inspectForciblyConnTLS struct {
+	*tls.Conn
+}
+
+func (c *inspectForciblyConnTLS) Read(b []byte) (n int, err error) {
+	return retryOnRW(c.Conn.Read, b)
+}
+
+func (c *inspectForciblyConnTLS) Write(b []byte) (n int, err error) {
+	return retryOnRW(c.Conn.Write, b)
+}
+
+type TLSConn interface {
+	net.Conn
+	Handshake() error
+	ConnectionState() tls.ConnectionState
+}
+
 type inspectForciblyConnTCP struct {
 	net.Conn
 }
@@ -73,6 +92,8 @@ func (c *inspectForciblyConnUDP) RemoteAddr() net.Addr {
 func getInspector(conn net.Conn) net.Conn {
 	switch t := conn.(type) {
 		case net.PacketConn: return &inspectForciblyConnUDP{PacketConn:t,}
-		default: return &inspectForciblyConnTCP{Conn:t,}
+		case *net.TCPConn: return &inspectForciblyConnTCP{Conn:t,}
+		case *tls.Conn: return &inspectForciblyConnTLS{Conn:t,}
+		default: return conn
 	}
 }

@@ -282,6 +282,11 @@ func (th *TransportHolding) BuildTransport(XTransport *XTransport, proxies *conc
 
 const parallel_dial_total = 5
 
+type _TLSConn interface {
+	net.Conn
+	Handshake() error
+	ConnectionState() tls.ConnectionState
+}
 
 // I don't foresee any benefit from dtls, so let's wait for DNS over QUIC 
 func (XTransport *XTransport) FetchDoT(name string, serverProto string, ctx context.Context, body *[]byte, Timeout time.Duration, cbs ...interface{}) ([]byte, error) {
@@ -320,7 +325,7 @@ Go:
 	if err = conn.SetDeadline(time.Now().Add(Timeout)); err != nil {
 		goto Error
 	}
-	tlsConn := conn.(common.TLSConn)
+	tlsConn := conn.(_TLSConn)
 	if err = tlsConn.Handshake(); err != nil {
 		goto Error
 	}

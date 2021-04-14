@@ -55,12 +55,6 @@ func (c *inspectForciblyConnTLS) Write(b []byte) (n int, err error) {
 	return retryOnRW(c.Conn.Write, b)
 }
 
-type TLSConn interface {
-	net.Conn
-	Handshake() error
-	ConnectionState() tls.ConnectionState
-}
-
 type inspectForciblyConnTCP struct {
 	net.Conn
 }

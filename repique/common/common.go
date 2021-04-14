@@ -84,6 +84,12 @@ func (c *HTTPSContext) WithContext(inner context.Context) context.Context {
 	return &ctx
 }
 
+type TLSConn interface {
+	net.Conn
+	Handshake() error
+	ConnectionState() tls.ConnectionState
+}
+
 type Endpoint struct {
 	*net.IPAddr
 	Port                      int

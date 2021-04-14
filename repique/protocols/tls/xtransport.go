@@ -172,11 +172,20 @@ func (XTransport *XTransport) BuildTLS(server common.RegisteredServer, https boo
 	return nil
 }
 
+const (
+	CurveCECPQ2 tls.CurveID = 16696
+	goose = "google"
+)
+
 func (th *TransportHolding) BuildTLS(XTransport *XTransport, ip string) (cfg *tls.Config) {
+	cid := tls.X25519
+	if strings.Contains(th.DomainName, goose) {
+		cid = CurveCECPQ2 // fixed one; we do NOT make choice or expose the capability
+	}
 	cfg = &tls.Config{
 		SessionTicketsDisabled: XTransport.TlsDisableSessionTickets,
 		MinVersion: tls.VersionTLS13,
-		CurvePreferences: []tls.CurveID{tls.X25519},
+		CurvePreferences: []tls.CurveID{cid},
 		DynamicRecordSizingDisabled: true,
 		InsecureSkipVerify: th.SNIBlotUp != stamps.SNIBlotUpTypeDefault,
 		NextProtos: []string{"h2"},

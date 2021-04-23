@@ -116,12 +116,13 @@ func (serversInfo *ServersInfo) registerServer(name string, stamp *stamps.Server
 }
 
 func (serversInfo *ServersInfo) refresh(proxy *Proxy) (int, error) {
-	proxy.IsRefreshing.Store(true)
-	defer proxy.IsRefreshing.Store(false)
+	dlog.Notice("refreshing certificates")
 	proxy.Cancel()
 	proxy.Ctx, proxy.Cancel = context.WithCancel(context.Background())
-	proxy.Wg.Wait()
-	dlog.Notice("refreshing certificates")
+	if !proxy.SmaxClients.BeginExclusive() {
+		return 0, errors.New("semi-refresh occurs")
+	}
+	defer proxy.SmaxClients.EndExclusive()
 	RegisteredServers := serversInfo.RegisteredServers
 	liveServers := 0
 	var err error

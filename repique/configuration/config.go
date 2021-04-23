@@ -22,7 +22,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/jedisct1/dlog"
-	"golang.org/x/sync/semaphore"
+
 	stamps "github.com/AZ-X/pique/repique/unclassified/stammel"
 )
 
@@ -191,7 +191,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	}
 
 	proxy.Timeout = time.Duration(config.Timeout) * time.Millisecond
-	proxy.SmaxClients = semaphore.NewWeighted(int64(config.MaxClients))
+	proxy.SmaxClients = conceptions.NewSemaGroup(config.MaxClients)
 	proxy.Ctx, proxy.Cancel = context.WithCancel(context.Background())
 	proxy.MainProto = "udp"
 	if config.ForceTCP {

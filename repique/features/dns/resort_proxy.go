@@ -6,19 +6,17 @@ import (
 	"os"
 	"time"
 	"runtime/debug"
-	"sync"
-	"sync/atomic"
-	
+
 	clocksmith "github.com/jedisct1/go-clocksmith"
 	"github.com/AZ-X/pique/repique/behaviors"
 	"github.com/AZ-X/pique/repique/common"
+	"github.com/AZ-X/pique/repique/conceptions"
 	"github.com/AZ-X/pique/repique/features/dns/channels"
 	"github.com/AZ-X/pique/repique/protocols/dnscrypt"
 	"github.com/AZ-X/pique/repique/protocols/tls"
 	"github.com/AZ-X/pique/repique/services"
 
 	"github.com/jedisct1/dlog"
-	"golang.org/x/sync/semaphore"
 )
 
 var (
@@ -39,10 +37,8 @@ type Proxy struct {
 	ListenerCfg                   *map[int]*ListenerConfiguration
 	RegisteredRelays              []common.RegisteredServer
 	ServersInfo                   *ServersInfo
-	SmaxClients                   *semaphore.Weighted
-	IsRefreshing                  *atomic.Value
+	SmaxClients                   *conceptions.SemaGroup
 	XTransport                    *tls.XTransport
-	Wg                            *sync.WaitGroup
 	Ctx                           context.Context
 	Cancel                        context.CancelFunc
 }
@@ -134,10 +130,7 @@ func (proxy *Proxy) addDNSListener(listenAddrStr string, idx int) {
 
 
 func (proxy *Proxy) StartProxy() {
-	proxy.IsRefreshing = &atomic.Value{}
-	proxy.IsRefreshing.Store(false)
 	if len(proxy.UserName) == 0 || proxy.Child {
-		proxy.Wg = &sync.WaitGroup{}
 		shares := make([]int, len(proxy.ListenAddresses))
 		for idx, _ := range proxy.ListenAddresses {
 			shares[idx] = idx+1
@@ -151,17 +144,15 @@ func (proxy *Proxy) StartProxy() {
 		Timeout:
 			return channels.Error_Stub_Timeout
 		Go:
-			if proxy.IsRefreshing.Load().(bool) {
-				dlog.Warn("mute remote resolvers while refreshing")
-				goto IntFault
+			switch proxy.SmaxClients.Acquire(false) {
+				case conceptions.ErrSemaBoundary:
+					dlog.Warn("too many remote resolving")
+					goto IntFault
+				case conceptions.ErrSemaExcEntry:
+					dlog.Warn("mute remote resolvers while refreshing")
+					goto IntFault
 			}
-			if !proxy.SmaxClients.TryAcquire(1) {
-				dlog.Warn("too many remote resolving")
-				goto IntFault
-			}
-			defer proxy.SmaxClients.Release(1)
-			proxy.Wg.Add(1)
-			defer proxy.Wg.Done()
+			defer proxy.SmaxClients.Release()
 			serverInfo := proxy.ServersInfo.getOne(s)
 			if serverInfo == nil {
 				goto IntFault

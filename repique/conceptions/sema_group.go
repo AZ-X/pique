@@ -28,14 +28,11 @@ func (e *errSemaExcEntry) Error() string {
 	return "reach exclusive point"
 }
 
-//go:linkname sync_runtime_Semacquire sync.runtime_Semacquire
-func sync_runtime_Semacquire(addr *uint32) 
+//go:linkname semacquire runtime.semacquire
+func semacquire(addr *uint32)
 
-//go:linkname sync_runtime_Semrelease sync.runtime_Semrelease
-func sync_runtime_Semrelease(addr *uint32, handoff bool, skipframes int)
-
-//go:linkname cansemacquire runtime.cansemacquire
-func cansemacquire(addr *uint32) bool
+//go:linkname semrelease runtime.semrelease
+func semrelease(addr *uint32)
 
 type SemaGroup struct {
 	permits, entry, semap uint32
@@ -49,15 +46,15 @@ func (sg *SemaGroup) Acquire(wait bool) error {
 	if !atomic.CompareAndSwapUint32(&sg.entry, 0, 0) {
 		return ErrSemaExcEntry
 	}
-	if !wait && !cansemacquire(&sg.semap) {
+	if !wait && atomic.CompareAndSwapUint32(&sg.semap, 0, 0) {
 		return ErrSemaBoundary
 	}
-	sync_runtime_Semacquire(&sg.semap)
+	semacquire(&sg.semap)
 	return nil
 }
 
 func (sg *SemaGroup) Release() {
-	sync_runtime_Semrelease(&sg.semap, false, 0)
+	semrelease(&sg.semap)
 }
 
 func (sg *SemaGroup) BeginExclusive() bool {
@@ -65,14 +62,14 @@ func (sg *SemaGroup) BeginExclusive() bool {
 		return false
 	}
 	for count := sg.permits; count != 0; count-- {
-		sync_runtime_Semacquire(&sg.semap) // take out all
+		semacquire(&sg.semap) // take out all
 	}
 	return true
 }
 
 func (sg *SemaGroup) EndExclusive() {
 	for count := sg.permits; count != 0; count-- {
-		sync_runtime_Semrelease(&sg.semap, false, 0) // give back all
+		semrelease(&sg.semap) // give back all
 	}
 	if !atomic.CompareAndSwapUint32(&sg.entry, 1, 0) {
 		panic("SemaGroup: sequential fault")

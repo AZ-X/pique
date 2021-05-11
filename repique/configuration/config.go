@@ -1,7 +1,7 @@
 package configuration
 
 import (
-	"math/rand"
+	"crypto/sha256"
 	"net"
 	"net/url"
 	"os"
@@ -9,15 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"context"
 	"runtime"
 
 	"github.com/AZ-X/pique/repique/behaviors"
 	"github.com/AZ-X/pique/repique/features/dns"
 	"github.com/AZ-X/pique/repique/features/dns/channels"
+	"github.com/AZ-X/pique/repique/features/dns/nodes"
 	"github.com/AZ-X/pique/repique/common"
 	"github.com/AZ-X/pique/repique/conceptions"
-	"github.com/AZ-X/pique/repique/protocols/tls"
 	"github.com/AZ-X/pique/repique/services"
 
 	"github.com/BurntSushi/toml"
@@ -31,52 +30,25 @@ const (
 
 type Config struct {
 	*Main
-	ChannelsSections         map[string]channels.Config  `toml:"channels_sections"`
-	SourcesConfig            map[string]SourceConfig     `toml:"sources"`
-	AnonymizedDNS            AnonymizedDNSConfig         `toml:"anonymized_dns"`
+	NodesSections            nodes.Config                  `toml:"dns_nodes"`
+	ChannelsSections         map[string]channels.Config    `toml:"channels_sections"`
+	SourcesConfig            map[string]nodes.SourceConfig `toml:"sources"`
+	AnonymizedDNS            *nodes.AnonymizedDNSConfig    `toml:"anonymized_dns"`
 }
 
 type Main struct {
-	LogLevel                 int                         `toml:"log_level"`
-	LogFile                  *string                     `toml:"log_file"`
-	UseSyslog                bool                        `toml:"use_syslog"`
-	ForceTCP                 bool                        `toml:"force_tcp"`
-	TLSDisableSessionTickets bool                        `toml:"tls_disable_session_tickets"`
-	NetprobeTimeout          int                         `toml:"netprobe_Timeout"`
-	CertRefreshDelay         int                         `toml:"cert_refresh_delay"`
-	Timeout                  int                         `toml:"timeout"`
-	KeepAlive                int                         `toml:"keepalive"`
-	ServerNames              []string                    `toml:"server_names"`
-	DisabledServerNames      []string                    `toml:"disabled_server_names"`
-	ListenAddresses          []string                    `toml:"listen_addresses"`
-	MaxClients               uint32                      `toml:"max_clients"`
-	ProxyURI                 string                      `toml:"proxy_uri"`
-	ProxyIP                  string                      `toml:"proxy_ip"`
-	LocalInterface           string                      `toml:"network_interface"`
-	NetprobeAddress          string                      `toml:"netprobe_address"`
-	UserName                 string                      `toml:"user_name"`
-	Occurrence               string                      `toml:"occurrence"`
-	Groups                   []GroupsConfig              `toml:"groups"`
-	GroupsListener           []ListenerAssociation       `toml:"listener_association"`
-}
-
-type SourceConfig struct {
-	URL            string
-	URLs           []string
-	MinisignKeyStr string `toml:"minisign_key"`
-	CacheFile      string `toml:"cache_file"`
-	FormatStr      string `toml:"format"`
-	RefreshDelay   int    `toml:"refresh_delay"`
-	Prefix         string
-}
-
-type AnonymizedDNSRouteConfig struct {
-	ServerName string   `toml:"server_name"`
-	RelayNames []string `toml:"via"`
-}
-
-type AnonymizedDNSConfig struct {
-	Routes []AnonymizedDNSRouteConfig `toml:"routes"`
+	LogLevel                 int                           `toml:"log_level"`
+	LogFile                  *string                       `toml:"log_file"`
+	UseSyslog                bool                          `toml:"use_syslog"`
+	NetprobeTimeout          int                           `toml:"netprobe_Timeout"`
+	ListenAddresses          []string                      `toml:"listen_addresses"`
+	ProxyURI                 string                        `toml:"proxy_uri"`
+	ProxyIP                  string                        `toml:"proxy_ip"`
+	LocalInterface           string                        `toml:"network_interface"`
+	NetprobeAddress          string                        `toml:"netprobe_address"`
+	UserName                 string                        `toml:"user_name"`
+	Groups                   []GroupsConfig                `toml:"groups"`
+	GroupsListener           []ListenerAssociation         `toml:"listener_association"`
 }
 
 type GroupsConfig struct {
@@ -86,14 +58,15 @@ type GroupsConfig struct {
 	Groups         []string `toml:"groups"`
 	Priority       bool     `toml:"priority"`
 	Match          string   `toml:"match"`
+	DNSSEC         bool     `toml:"dnssec"`
 }
 
 type ListenerAssociation struct {
-	Position       int     `toml:"position"`
+	Position       int      `toml:"position"`
 	Group          string   `toml:"group"`
 	Regex          bool     `toml:"regex"`
+	DNSSEC         bool     `toml:"dnssec"`
 }
-
 
 type ConfigFlags struct {
 	Check                   *bool
@@ -103,7 +76,11 @@ type ConfigFlags struct {
 
 func findConfigFile(configFile *string) (string, error) {
 	if _, err := os.Stat(*configFile); os.IsNotExist(err) {
-		cdLocal()
+		if exeFileName, err := os.Executable(); err != nil {
+			dlog.Warnf("failed to determine the executable directory: [%s] -- You will need to specify absolute paths in the configuration file", err)
+		} else if err = os.Chdir(filepath.Dir(exeFileName)); err != nil {
+			dlog.Warnf("failed to change working directory to [%s]: %s", exeFileName, err)
+		}
 		if _, err := os.Stat(*configFile); err != nil {
 			return "", err
 		}
@@ -133,7 +110,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	if len(undecoded) > 0 {
 		return dlog.Errorf("Unsupported key in configuration file: [%s]", undecoded[0])
 	}
-	if err := cdFileDir(foundConfigFile); err != nil {
+	if err := os.Chdir(filepath.Dir(foundConfigFile)); err != nil {
 		return err
 	}
 	if config.LogLevel >= 0 && config.LogLevel <= int(dlog.SeverityError) {
@@ -155,107 +132,55 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	dlog.Noticef("LogLevel %s", dlog.SeverityName[dlog.LogLevel()])
 	proxy.UserName = config.UserName
 	proxy.Child = *flags.Child
-	
+	if len(config.ListenAddresses) == 0 {
+		panic("check local IP/port configuration")
+	}
 	proxy.ListenAddresses = config.ListenAddresses
 	
 	if !*flags.Child && len(proxy.UserName) > 0 && !*flags.Check {
 		return nil
 	}
-
+	var ifi *string
 	if len(config.LocalInterface) > 0 {
-		proxy.LocalInterface = &config.LocalInterface
+		ifi = &config.LocalInterface
 	}
 	if config.LogLevel == int(dlog.SeverityDebug) {
-		PrintInferfaceInfo(proxy.LocalInterface)
+		printInferfaceInfo(ifi)
 	}
-	
-	proxy.XTransport = tls.NewXTransport()
-	proxy.XTransport.TlsDisableSessionTickets = config.TLSDisableSessionTickets
-	proxy.XTransport.KeepAlive = time.Duration(config.KeepAlive) * time.Second
-	proxy.XTransport.Transports = make(map[string]*tls.TransportHolding)
-	proxy.XTransport.LocalInterface = proxy.LocalInterface
+
+	if !*flags.Check {
+		if err := behaviors.NetProbe(config.NetprobeAddress, ifi, config.NetprobeTimeout); err != nil {
+			return err
+		}
+	}
+
+	var np *conceptions.NestedProxy
 	if len(config.ProxyURI) > 0 {
 		globalProxy, err := url.Parse(config.ProxyURI)
 		if err != nil {
-			panic("failed to parse the proxy URL " + config.ProxyURI)
+			panic("failed to parse the URL of proxy -> " + config.ProxyURI)
 		}
-		proxy.XTransport.Proxies = conceptions.InitProxies()
+		np = conceptions.InitProxies()
 		var ep *common.Endpoint
 		if len(config.ProxyIP) > 0 {
 			
 			if ep, err = common.ResolveEndpoint(config.ProxyIP); err !=nil {
-				panic("failed to parse the proxy IP " + config.ProxyIP)
+				panic("failed to parse the ip-port of proxy -> " + config.ProxyIP)
 			}
 		}
-		proxy.XTransport.Proxies.AddGlobalProxy(globalProxy, ep)
+		np.AddGlobalProxy(globalProxy, ep)
 	}
-
-	proxy.Timeout = time.Duration(config.Timeout) * time.Millisecond
-	proxy.SmaxClients = conceptions.NewSemaGroup(config.MaxClients)
-	proxy.Ctx, proxy.Cancel = context.WithCancel(context.Background())
-	proxy.MainProto = "udp"
-	if config.ForceTCP {
-		proxy.MainProto = "tcp"
-	}
-	dlog.Noticef("dnscrypt-protocol bind to %s", proxy.MainProto)
-	proxy.CertRefreshDelay = time.Duration(common.Max(60, config.CertRefreshDelay)) * time.Minute
-	if len(config.ListenAddresses) == 0 {
-		panic("check local IP/port configuration")
-	}
-	proxy.ServersInfo = &dns.ServersInfo{}
-
-	switch strings.ToLower(config.Occurrence) {
-	case "fastest", "first", "lead", "leading":
-		proxy.ServersInfo.Occurrence = dns.OccurrenceLeading
-	case "random": fallthrough
-	default:
-		proxy.ServersInfo.Occurrence = dns.OccurrenceRandom
-	}
-
-	if configRoutes := config.AnonymizedDNS.Routes; configRoutes != nil {
-		routes := make(map[string][]string)
-		for _, configRoute := range configRoutes {
-			routes[configRoute.ServerName] = configRoute.RelayNames
-		}
-		proxy.Routes = &routes
-	}
-
-	if err := behaviors.NetProbe(config.NetprobeAddress, proxy.LocalInterface, config.NetprobeTimeout); err != nil {
+	proxy.NodesMgr = &nodes.NodesMgr{}
+	if servers, relays, proxies, sum, err := config.loadNodes(proxy); err != nil {
 		return err
+	} else {
+		dnssec := false
+		config.loadTags(proxy, servers)
+		config.loadGroupsAssociation(proxy, servers, &dnssec)
+		config.loadChannels(proxy, dnssec)
+		proxy.NodesMgr.Init(&config.NodesSections, config.AnonymizedDNS, sum, servers, relays, proxies, np, ifi)
 	}
 
-	if err := config.loadSources(proxy); err != nil {
-		return err
-	}
-// interns can can can remove/comments it and resolve "offline mode" issue :P 
-// btw, never use it
-//	if len(proxy.RegisteredServers) == 0 {
-//		return errors.New("No servers configured")
-//	}
-	config.loadTags(proxy)
-	config.loadGroupsAssociation(proxy)
-
-	config.loadChannels(proxy)
-	if proxy.Routes != nil && len(*proxy.Routes) > 0 {
-		hasSpecificRoutes := false
-		for _, server := range proxy.RegisteredServers {
-			if via, ok := (*proxy.Routes)[server.Name]; ok {
-				if server.Stamp.Proto != stamps.StampProtoTypeDNSCrypt {
-					dlog.Errorf("DNS anonymization is only supported with the DNSCrypt protocol - Connections to [%v] cannot be anonymized", server.Name)
-				} else {
-					dlog.Noticef("anonymized DNS: routing [%v] via %v", server.Name, via)
-				}
-				hasSpecificRoutes = true
-			}
-		}
-		if via, ok := (*proxy.Routes)[common.STAR]; ok {
-			if hasSpecificRoutes {
-				dlog.Noticef("anonymized DNS: routing everything else via %v", via)
-			} else {
-				dlog.Noticef("anonymized DNS: routing everything via %v", via)
-			}
-		}
-	}
 	if *flags.Check {
 		dlog.Notice("configuration successfully checked")
 		os.Exit(0)
@@ -263,9 +188,9 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 	return nil
 }
 
-func (config *Config) loadTags(proxy *dns.Proxy) {
+func (_ *Config) loadTags(proxy *dns.Proxy, _servers map[string]*common.RegisteredServer) {
 	tags := make(map[string]map[string]interface{})
-	for _, server := range proxy.RegisteredServers {
+	for _, server := range _servers {
 		for _, tag := range strings.Split(server.Stamp.Tags, common.Delimiter) {
 			if servers, ok := tags[tag]; !ok {
 				servers = make(map[string]interface{})
@@ -283,12 +208,12 @@ func (config *Config) loadTags(proxy *dns.Proxy) {
 
 // Simplicity, Beauty, Complex, as Original Repurification
 // panic if error, will migrate all critical cfg error to panic
-func (config *Config) loadGroupsAssociation(proxy *dns.Proxy) {
+func (config *Config) loadGroupsAssociation(proxy *dns.Proxy, _servers map[string]*common.RegisteredServer, dnssec *bool) {
 	if len(config.Groups) == 0 || len(config.GroupsListener) == 0 {
 		return
 	}
 	names := make(map[string]interface{})
-	for _, server := range proxy.RegisteredServers {
+	for _, server := range _servers {
 		names[server.Name] = nil
 	}
 	var g = &conceptions.Graph{}
@@ -322,21 +247,25 @@ func (config *Config) loadGroupsAssociation(proxy *dns.Proxy) {
 		panic("group cfg has error:" + err.Error())
 	}
 	positionLimit := len(proxy.ListenAddresses)
-	listenerCfg := make(map[int]*dns.ListenerConfiguration)
+	listenerCfg := make([]*nodes.ListenerConfiguration, len(config.GroupsListener) + 1)
 	for _, gl := range config.GroupsListener {
 		if gl.Position < 1 || gl.Position > positionLimit {
 			panic("position of listener_association out of range, check listen_addresses")
 		}
-		if _, ok := listenerCfg[gl.Position]; ok {
+		if listenerCfg[gl.Position] != nil {
 			panic("duplicate position of listener_association")
 		}
 		
 		if gl.Regex && len(gl.Group) != 0 {
 			panic("group or regex is mutually exclusive in listener_association")
 		}
-		lc := dns.ListenerConfiguration{}
-		getSvrs := func(groups []interface{}) *dns.Servers {
-			svrs := dns.Servers{Priority:groups[0].(GroupsConfig).Priority}
+		lc := nodes.ListenerConfiguration{}
+		lc.DNSSEC = gl.DNSSEC
+		if gl.DNSSEC {
+			*dnssec = true
+		}
+		getSvrs := func(groups []interface{}) *nodes.Servers {
+			svrs := nodes.Servers{Priority:groups[0].(GroupsConfig).Priority, DNSSEC:groups[0].(GroupsConfig).DNSSEC,}
 			serverList := make(map[string]interface{})
 			for _, group := range groups {
 				gc := group.(GroupsConfig)
@@ -381,7 +310,7 @@ func (config *Config) loadGroupsAssociation(proxy *dns.Proxy) {
 				panic("group " + gl.Group + " not found in groups")
 			}
 		} else if len(regexNames) > 0 {
-			gs := make(map[string]*dns.Servers)
+			gs := make(map[string]*nodes.Servers)
 			regexes := make([]string, len(regexNames))
 			for i, name := range regexNames {
 				groups := g.Tags(name);
@@ -399,11 +328,12 @@ func (config *Config) loadGroupsAssociation(proxy *dns.Proxy) {
 		}
 		listenerCfg[gl.Position] = &lc
 	}
-	proxy.ListenerCfg = &listenerCfg
+	proxy.L2NMapping = &listenerCfg
 }
 
 const CFG_Channels_Main = "main"
-func (config *Config) loadChannels(proxy *dns.Proxy) {
+const CFG_Channels_SP = "sp"
+func (config *Config) loadChannels(proxy *dns.Proxy, dnssec bool) {
 	proxy.ChannelMgr = &channels.ChannelMgr{}
 	proxy.ChannelMgr.Init(len(config.ListenAddresses))
 	var individual, shares []int
@@ -420,90 +350,87 @@ func (config *Config) loadChannels(proxy *dns.Proxy) {
 			}
 		}
 	}
+	if config.NodesSections.Bootstrap || dnssec {
+		if cfg, ok := config.ChannelsSections[CFG_Channels_SP]; ok {
+			proxy.ChannelMgr.Cfgs[0] = &cfg
+		} else if cfg, ok = config.ChannelsSections[CFG_Channels_Main]; ok {
+			proxy.ChannelMgr.Cfgs[0] = &cfg
+		} else {
+			panic("missing sp or main cfg for bootstrap or dnssec")
+		}
+		shares = append(shares, 0)
+		if proxy.L2NMapping == nil {
+			m := make([]*nodes.ListenerConfiguration, 1)
+			proxy.L2NMapping = &m
+		}
+	}
 	proxy.ChannelMgr.InitChannels(individual, shares)
 }
 
-func (config *Config) loadSources(proxy *dns.Proxy) error {
-	var requiredProps stamps.ServerInformalProperties
+func (config *Config) loadNodes(proxy *dns.Proxy) (servers, relays, proxies map[string]*common.RegisteredServer, sum []byte, err error) {
+	hasher := sha256.New()
+	servers = make(map[string]*common.RegisteredServer)
+	relays = make(map[string]*common.RegisteredServer)
+	proxies = make(map[string]*common.RegisteredServer)
 	for cfgSourceName, cfgSource := range config.SourcesConfig {
-		if err := config.loadSource(proxy, requiredProps, cfgSourceName, &cfgSource); err != nil {
-			return err
+		if len(cfgSource.URL) == 0 {
+			dlog.Debugf("missing URLs for source [%s], it's all right", cfgSourceName)
+		} else {
+			dlog.Debugf("source [%s] - URLs are not working in this program , however keep it for fun", cfgSourceName)
 		}
-	}
-	rand.Shuffle(len(proxy.RegisteredServers), func(i, j int) {
-		proxy.RegisteredServers[i], proxy.RegisteredServers[j] = proxy.RegisteredServers[j], proxy.RegisteredServers[i]
-	})
-
-	return nil
-}
-
-func (config *Config) loadSource(proxy *dns.Proxy, requiredProps stamps.ServerInformalProperties, cfgSourceName string, cfgSource *SourceConfig) error {
-	if len(cfgSource.URL) == 0 {
-		dlog.Debugf("missing URLs for source [%s]", cfgSourceName)
-	} else {
-		dlog.Debugf("URLs are not working in this program [%s], however keep it for fun", cfgSourceName)
-	}
-	if cfgSource.MinisignKeyStr == "" {
-		return dlog.Errorf("missing Minisign key for source [%s]", cfgSourceName)
-	}
-	if cfgSource.CacheFile == "" {
-		return dlog.Errorf("missing cache file for source [%s]", cfgSourceName)
-	}
-	if cfgSource.FormatStr == "" {
-		cfgSource.FormatStr = "v2"
-	}
-	if cfgSource.RefreshDelay <= 0 {
-		cfgSource.RefreshDelay = 72
-	}
-	source, err := NewSource(cfgSourceName, proxy.XTransport, cfgSource.URLs, cfgSource.MinisignKeyStr, cfgSource.CacheFile, cfgSource.FormatStr, time.Duration(cfgSource.RefreshDelay)*time.Hour)
-	if err != nil {
-		return err
-	}
-	registeredServers, err := source.Parse(cfgSource.Prefix)
-	if err != nil {
-		if len(registeredServers) == 0 {
-			return err
+		if cfgSource.MinisignKeyStr == "" {
+			return nil, nil, nil, nil, dlog.Errorf("missing Minisign key for source [%s]", cfgSourceName)
 		}
-		dlog.Warnf("error in source [%s]: [%s] -- continuing with reduced server count [%d]", cfgSourceName, err, len(registeredServers))
-	}
-	for _, registeredserver := range registeredServers {
-		if registeredserver.Stamp.Proto != stamps.StampProtoTypeDNSCryptRelay {
-			if len(config.ServerNames) > 0 {
-				if !includesName(config.ServerNames, registeredserver.Name) {
-					continue
+		if cfgSource.CacheFile == "" {
+			return nil, nil, nil, nil, dlog.Errorf("missing customized file for your own source [%s]", cfgSourceName)
+		}
+		if cfgSource.RefreshDelay <= 0 {
+			cfgSource.RefreshDelay = 72
+		}
+		source, err := NewSource(cfgSourceName, cfgSource.URLs, cfgSource.MinisignKeyStr, cfgSource.CacheFile, time.Duration(cfgSource.RefreshDelay)*time.Hour)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		registeredServers, err := source.Parse(cfgSource.Prefix, hasher)
+		if err != nil {
+			if len(registeredServers) == 0 {
+				return nil, nil, nil, nil, err
+			}
+			dlog.Warnf("error in source [%s]: [%s] -- continuing with reduced server count [%d]", cfgSourceName, err, len(registeredServers))
+		}
+		includesName := func(names []string, name string) bool {
+			for _, found := range names {
+				if strings.EqualFold(found, name) {
+					return true
 				}
-			} else if registeredserver.Stamp.Props&requiredProps != requiredProps {
+			}
+			return false
+		}
+		for _, server := range registeredServers {
+			if server.Stamp.Proto != stamps.StampProtoTypeDNSCryptRelay {
+				if len(config.NodesSections.ServerNames) > 0 {
+					if !includesName(config.NodesSections.ServerNames, server.Name) {
+						continue
+					}
+				}
+			}
+			if includesName(config.NodesSections.DisabledServerNames, server.Name) {
 				continue
 			}
-		}
-		if includesName(config.DisabledServerNames, registeredserver.Name) {
-			continue
-		}
-		if registeredserver.Stamp.Proto.String() == "Anonymized DNSCrypt" {
-			dlog.Debugf("applying [%s] to the set of available relays", registeredserver.Name)
-			proxy.RegisteredRelays = append(proxy.RegisteredRelays, registeredserver)
-		} else {
-			proto := registeredserver.Stamp.Proto.String()
-			switch {
-			case proto == "DNSCrypt":
-			case proto == "DoH":
-				if err := proxy.XTransport.BuildTransport(registeredserver, nil); err != nil {
-					panic(err)
-				}
-			case proto == "DoT":
-				if err := proxy.XTransport.BuildTLS(registeredserver, false); err != nil {
-					panic(err)
-				}
-			default:continue
+			switch server.Stamp.Proto.String() {
+				case "Anonymized DNSCrypt": relays[server.Name] = server
+					dlog.Debugf("applying relay [%s]", server.Name)
+				case "Proxy": proxies[server.Name] = server
+					dlog.Debugf("applying proxy [%s]", server.Name)
+				default: servers[server.Name] = server
+					dlog.Debugf("applying nodes [%s]", server.Name)
 			}
-			dlog.Debugf("applying [%s] to the set of wanted resolvers", registeredserver.Name)
-			proxy.RegisteredServers = append(proxy.RegisteredServers, registeredserver)
 		}
 	}
-	return nil
+	return servers, relays, proxies, hasher.Sum(nil), nil
 }
 
-func PrintInferfaceInfo(name *string) {
+func printInferfaceInfo(name *string) {
 	dlog.Debug("++++++++++++++++Interfaces Info++++++++++++++++++++++++")
 	if interfaces, err := net.Interfaces(); err == nil {
 		for _, ifi := range interfaces {
@@ -536,26 +463,4 @@ func PrintInferfaceInfo(name *string) {
 		}
 	}
 	dlog.Debug("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-}
-
-func includesName(names []string, name string) bool {
-	for _, found := range names {
-		if strings.EqualFold(found, name) {
-			return true
-		}
-	}
-	return false
-}
-
-func cdFileDir(fileName string) error {
-	return os.Chdir(filepath.Dir(fileName))
-}
-
-func cdLocal() {
-	exeFileName, err := os.Executable()
-	if err != nil {
-		dlog.Warnf("failed to determine the executable directory: [%s] -- You will need to specify absolute paths in the configuration file", err)
-	} else if err = os.Chdir(filepath.Dir(exeFileName)); err != nil {
-		dlog.Warnf("failed to change working directory to [%s]: %s", exeFileName, err)
-	}
 }

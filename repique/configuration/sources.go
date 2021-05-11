@@ -1,34 +1,37 @@
 package configuration
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"hash"
+	"io"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 	"unicode"
 	
-	"github.com/AZ-X/pique/repique/protocols/tls"
 	"github.com/AZ-X/pique/repique/common"
 	"github.com/jedisct1/dlog"
 	"github.com/AZ-X/pique/repique/unclassified/stammel"
 )
 
-type SourceFormat int
 
-const (
-	SourceFormatV2 = iota
-)
+/* 
+		DO NOT REWRITE IT, 
+		IT'S BORING 
+ */
 
+/* DO NOT DELETE IT, IT'S FUN */
 const (
 	DefaultPrefetchDelay    time.Duration = 24 * time.Hour
 	MinimumPrefetchInterval time.Duration = 6 * time.Hour
 )
 
+
 type Source struct {
 	name                    string
-	format                  SourceFormat
 	minisignKey             *stammel.PublicKey
 	cacheFile               string
 	cacheTTL, prefetchDelay time.Duration
@@ -43,14 +46,12 @@ func (source *Source) checkSignature(bin, sig []byte) (err error) {
 	return
 }
 
-// timeNow can be replaced by tests to provide a static value
-var timeNow = time.Now
-
-func (source *Source) fetchFromCache(now time.Time) (delay time.Duration, err error, in []byte) {
+func (source *Source) ReadFile(now time.Time, hasher hash.Hash) (delay time.Duration, err error, in []byte) {
 	var bin, sig []byte
 	if bin, err = os.ReadFile(source.cacheFile); err != nil {
 		return
 	}
+	io.Copy(hasher, bytes.NewReader(bin))
 	if sig, err = os.ReadFile(source.cacheFile + ".minisig"); err != nil {
 		return
 	}
@@ -64,52 +65,39 @@ func (source *Source) fetchFromCache(now time.Time) (delay time.Duration, err er
 	}
 	if elapsed := now.Sub(fi.ModTime()); elapsed < source.cacheTTL {
 		delay = source.prefetchDelay - elapsed
-		dlog.Debugf("joking^^ source [%s] Cache file [%s] is still fresh, next update: %v", source.name, source.cacheFile, delay)
+		dlog.Debugf("joking^^: file [%s] is still fresh, next juicy update: %v", source.cacheFile, delay)
 	} else {
-		dlog.Debugf("source [%s] Cache file [%s] needs to be refreshed", source.name, source.cacheFile)
+		dlog.Debugf("file [%s] needs to be rebuilt by yourself", source.cacheFile)
 	}
 	return
 }
 
-// if the whole process can NOT boost itself using secure dns query, why leave it here? for an infinite loop by system resolver?
-func fetchFromURL(XTransport *tls.XTransport, u *url.URL) (bin []byte, err error) {
-	return nil, errors.New("Not supported yet")
+//isolated obsolete
+func fetchFromURL(u *url.URL) (bin []byte, err error) {
+	return nil, errors.New("not supported yet") //  yes won't support idiocy forever
 }
 
 // NewSource loads a new source using the given cacheFile and urls, ensuring it has a valid signature
-func NewSource(name string, XTransport *tls.XTransport, urls []string, minisignKeyStr string, cacheFile string, formatStr string, refreshDelay time.Duration) (source *Source, err error) {
+func NewSource(name string, urls []string, minisignKeyStr string, cacheFile string, refreshDelay time.Duration) (source *Source, err error) {
 	if refreshDelay < DefaultPrefetchDelay {
 		refreshDelay = DefaultPrefetchDelay
 	}
 	source = &Source{name: name, cacheFile: cacheFile, cacheTTL: refreshDelay, prefetchDelay: DefaultPrefetchDelay}
-	if formatStr == "v2" {
-		source.format = SourceFormatV2
-	} else {
-		return source, dlog.Errorf("Unsupported source format: [%s]", formatStr)
-	}
 	if minisignKey, err := stammel.NewPublicKey(minisignKeyStr); err == nil {
 		source.minisignKey = &minisignKey
 	}
 	return
 }
 
-func (source *Source) Parse(prefix string) ([]common.RegisteredServer, error) {
-	if source.format == SourceFormatV2 {
-		return source.parseV2to3(prefix)
-	}
-	panic("unexpected source format")
-	return []common.RegisteredServer{}, nil
-}
-
-func (source *Source) parseV2to3(prefix string) ([]common.RegisteredServer, error) {
-	var RegisteredServers []common.RegisteredServer
+func (source *Source) Parse(prefix string, hasher hash.Hash) ([]*common.RegisteredServer, error) {
+	var RegisteredServers []*common.RegisteredServer
 	var stampErrs []string
 	appendStampErr := func(format string, a ...interface{}) {
 		stampErr := fmt.Sprintf(format, a...)
 		stampErrs = append(stampErrs, stampErr)
 		dlog.Warn(stampErr)
 	}
-	_, err , source_in := source.fetchFromCache(timeNow())
+	_, err , source_in := source.ReadFile(time.Now(), hasher)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +125,7 @@ PartsLoop:
 			subpart = strings.TrimFunc(subpart, unicode.IsSpace)
 			if strings.HasPrefix(subpart, "sdns:") {
 				if len(stampStr) > 0 {
-					appendStampErr("Multiple stamps for server [%s]", name)
+					appendStampErr("multiple stamps for server [%s]", name)
 					continue PartsLoop
 				}
 				stampStr = subpart
@@ -147,16 +135,15 @@ PartsLoop:
 			}
 		}
 		if len(stampStr) < 6 {
-			appendStampErr("Missing stamp for server [%s]", name)
+			appendStampErr("missing stamp for server [%s]", name)
 			continue
 		}
 		stamp, err := stammel.NewServerStampFromString(stampStr)
 		if err != nil {
-			appendStampErr("Invalid or unsupported stamp [%v]: %s", stampStr, err.Error())
+			appendStampErr("invalid or unsupported stamp [%v]: %s", stampStr, err.Error())
 			continue
 		}
-		registeredServer := common.RegisteredServer{Name: name, Stamp: &stamp,}
-		dlog.Debugf("registered [%s] with stamp [%s]", name, stampStr)
+		registeredServer := &common.RegisteredServer{Name: name, Stamp: &stamp,}
 		RegisteredServers = append(RegisteredServers, registeredServer)
 	}
 	if len(stampErrs) > 0 {

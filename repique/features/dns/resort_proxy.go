@@ -1,20 +1,14 @@
 package dns
 
 import (
-	"context"
 	"net"
 	"os"
 	"time"
-	"runtime/debug"
 
-	clocksmith "github.com/jedisct1/go-clocksmith"
 	"github.com/AZ-X/pique/repique/behaviors"
 	"github.com/AZ-X/pique/repique/common"
-	"github.com/AZ-X/pique/repique/conceptions"
 	"github.com/AZ-X/pique/repique/features/dns/channels"
-	"github.com/AZ-X/pique/repique/protocols/dnscrypt"
-	"github.com/AZ-X/pique/repique/protocols/tls"
-	"github.com/AZ-X/pique/repique/services"
+	"github.com/AZ-X/pique/repique/features/dns/nodes"
 
 	"github.com/jedisct1/dlog"
 )
@@ -24,45 +18,20 @@ var (
 	FileDescriptorNum = 0
 )
 
-
 type Proxy struct {
 	*ProxyStartup
 	*channels.ChannelMgr
-	Timeout                       time.Duration
-	CertRefreshDelay              time.Duration
-	MainProto                     string
-	LocalInterface                *string
-	Routes                        *map[string][]string
-	Tags                          *map[string]map[string]interface{} //key:tag values:servers
-	ListenerCfg                   *map[int]*ListenerConfiguration
-	RegisteredRelays              []common.RegisteredServer
-	ServersInfo                   *ServersInfo
-	SmaxClients                   *conceptions.SemaGroup
-	XTransport                    *tls.XTransport
-	Ctx                           context.Context
-	Cancel                        context.CancelFunc
-}
-
-type ListenerConfiguration struct {
-	Regex                         *services.Regexp_builder
-	Groups                        *map[string]*Servers
-	ServerList                    *Servers
-}
-
-type Servers struct {
-	Priority                      bool
-	Servers                       []*string
+	*nodes.NodesMgr
 }
 
 type ProxyStartup struct {
-	RegisteredServers             []common.RegisteredServer
 	UserName                      string
 	ListenAddresses               []string
+	Timeout                       time.Duration
 	Child                         bool
 }
 
-func (proxy *Proxy) addDNSListener(listenAddrStr string, idx int) {
-	
+func (proxy *Proxy) addDNSListener(listenAddrStr string, idx uint8) {
 	listenAddr, err := common.ResolveEndpoint(listenAddrStr)
 	if err != nil {
 		panic(err)
@@ -125,102 +94,41 @@ func (proxy *Proxy) addDNSListener(listenAddrStr string, idx int) {
 	go proxy.udpListener(listenerUDP.(*net.UDPConn), idx)
 
 	dlog.Noticef("listening to %v [TCP]", listenAddrStr)
-	go proxy.tcpListener(listenerTCP.(*net.TCPListener), idx)
+	timeout := proxy.Timeout
+	go proxy.tcpListener(listenerTCP.(*net.TCPListener), idx, timeout)
 }
 
 
 func (proxy *Proxy) StartProxy() {
 	if len(proxy.UserName) == 0 || proxy.Child {
-		shares := make([]int, len(proxy.ListenAddresses))
-		for idx, _ := range proxy.ListenAddresses {
-			shares[idx] = idx+1
+		l := len(proxy.ListenAddresses)
+		if proxy.Cfgs[0] != nil { //sp channels
+			l++
+			proxy.SPNoIPv6 = proxy.Cfgs[0].BlockIPv6
+		}
+		shares := make([]int, l)
+		for i,j := l-1,len(proxy.ListenAddresses); i >= 0; i-- {
+			shares[i] = j
+			j--
 		}
 		proxy.Registers(shares, &stub{handler: func(s *channels.Session) error {
-			goto Go
-		IntFault:
-			return channels.Error_Stub_Internal
-		SvrFault:
-			return channels.Error_Stub_SvrFault
-		Timeout:
-			return channels.Error_Stub_Timeout
-		Go:
-			switch proxy.SmaxClients.Acquire(false) {
-				case conceptions.ErrSemaBoundary:
-					dlog.Warn("too many remote resolving")
-					goto IntFault
-				case conceptions.ErrSemaExcEntry:
-					dlog.Warn("mute remote resolvers while refreshing")
-					goto IntFault
-			}
-			defer proxy.SmaxClients.Release()
-			serverInfo := proxy.ServersInfo.getOne(s)
-			if serverInfo == nil {
-				goto IntFault
-			}
-			s.ServerName = &serverInfo.Name
-			timer := time.Now()
-			switch serverInfo.Info.Proto() {
-				case "DoH", "DoT":
-				case "DNSCrypt":
-					info := (serverInfo.Info).(*DNSCryptInfo)
-					if info.RelayAddr!= nil {
-						name := common.STAR + info.RelayAddr.Load().(*common.EPRing).Order()
-						s.ExtraServerName = &name
-					}
-				default:
-					panic("unsupported server protocol:[%s]" + serverInfo.Info.Proto())
-			}
-			var err error
-			s.RawIn, err = serverInfo.Info.Query(proxy, s.RawOut)
-			if err != nil {
-				serverInfo.rtt.Add(float64(proxy.Timeout.Nanoseconds() / 1000000))
-				if neterr, ok := err.(net.Error); ok && neterr.Timeout(){
-					dlog.Debugf("%v [%s]", err, *s.ServerName)
-					goto Timeout
-				}
-				dlog.Errorf("%v [%s]", err, *s.ServerName)
-				goto SvrFault
-			}
-			elapsed := time.Since(timer).Nanoseconds() / 1000000
-			serverInfo.rtt.Add(float64(elapsed))
-			return nil
+			return proxy.Query(s) //real proxy
 		}})
+		proxy.SP = proxy.Handle
+		proxy.Ready <- nil
 	}
 
 	for idx, listenAddrStr := range proxy.ListenAddresses {
-		proxy.addDNSListener(listenAddrStr, idx+1)
+		proxy.addDNSListener(listenAddrStr, uint8(idx+1))
 	}
 	// if 'UserName' is set and we are the parent process drop privilege and exit
 	if len(proxy.UserName) > 0 && !proxy.Child {
 		behaviors.DropPrivilege(proxy.UserName, FileDescriptors)
 	}
-	for _, registeredServer := range proxy.RegisteredServers {
-		proxy.ServersInfo.registerServer(registeredServer.Name, registeredServer.Stamp)
-	}
 	proxy.ProxyStartup = nil
-	liveServers, err := proxy.ServersInfo.refresh(proxy)
-	if liveServers > 0 {
-		dlog.Noticef("repique is ready - live servers: %d", liveServers)
-	} else if err != nil {
-		dlog.Error(err)
-		dlog.Notice("repique is waiting for at least one server to be reachable")
-	}
-	if len(proxy.ServersInfo.RegisteredServers) > 0 {
-		go func() {
-			for {
-				debug.FreeOSMemory()
-				delay := proxy.CertRefreshDelay
-				if liveServers <= 1 && len(proxy.ServersInfo.RegisteredServers) != liveServers {
-					delay = 100 * time.Millisecond * time.Duration((len(proxy.ServersInfo.RegisteredServers) - liveServers))
-				}
-				clocksmith.Sleep(delay)
-				liveServers, _ = proxy.ServersInfo.refresh(proxy)
-			}
-		}()
-	}
 }
 
-func (proxy *Proxy) udpListener(clientPc *net.UDPConn, idx int) {
+func (proxy *Proxy) udpListener(clientPc *net.UDPConn, idx uint8) {
 	defer clientPc.Close()
 	for {
 		buffer := make([]byte, common.MaxDNSUDPPacketSize-1)
@@ -230,12 +138,12 @@ func (proxy *Proxy) udpListener(clientPc *net.UDPConn, idx int) {
 		}
 		packet := buffer[:length]
 		go func() {
-			proxy.processIncomingQuery("udp", packet, &clientAddr, clientPc, idx)
+			proxy.processIncomingQuery(true, packet, &clientAddr, clientPc, idx)
 		}()
 	}
 }
 
-func (proxy *Proxy) udpListenerFromAddr(listenAddr *net.UDPAddr, idx int) error {
+func (proxy *Proxy) udpListenerFromAddr(listenAddr *net.UDPAddr, idx uint8) error {
 	clientPc, err := net.ListenUDP("udp", listenAddr)
 	if err != nil {
 		return err
@@ -245,7 +153,7 @@ func (proxy *Proxy) udpListenerFromAddr(listenAddr *net.UDPAddr, idx int) error 
 	return nil
 }
 
-func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener, idx int) {
+func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener, idx uint8, timeout time.Duration) {
 	defer acceptPc.Close()
 	for {
 		clientPc, err := acceptPc.Accept()
@@ -254,7 +162,7 @@ func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener, idx int) {
 		}
 		go func() {
 			defer clientPc.Close()
-			if err = clientPc.SetDeadline(time.Now().Add(proxy.Timeout + 500 * time.Millisecond)); err != nil {
+			if err = clientPc.SetDeadline(time.Now().Add(timeout + 500 * time.Millisecond)); err != nil {
 				return
 			}
 			packet, err := common.ReadDP(clientPc)
@@ -262,75 +170,21 @@ func (proxy *Proxy) tcpListener(acceptPc *net.TCPListener, idx int) {
 				return
 			}
 			clientAddr := clientPc.RemoteAddr()
-			proxy.processIncomingQuery("tcp", packet, &clientAddr, clientPc, idx)
+			proxy.processIncomingQuery(false, packet, &clientAddr, clientPc, idx)
 		}()
 	}
 }
 
-func (proxy *Proxy) tcpListenerFromAddr(listenAddr *net.TCPAddr, idx int) error {
+func (proxy *Proxy) tcpListenerFromAddr(listenAddr *net.TCPAddr, idx uint8) error {
 	acceptPc, err := net.ListenTCP("tcp", listenAddr)
 	if err != nil {
 		return err
 	}
 	dlog.Noticef("listening to %v [TCP]", listenAddr)
-	go proxy.tcpListener(acceptPc, idx)
+	timeout := proxy.Timeout
+	go proxy.tcpListener(acceptPc, idx, timeout)
 	return nil
 }
-
-func (proxy *Proxy) ExchangeDnScRypt(serverInfo *DNSCryptInfo, request *[]byte) (*[]byte, error) {
-	var service *dnscrypt.Service
-	if len(serverInfo.V2_Services) != 0 {
-		service = serverInfo.V2_Services[0].Service
-	} else if len(serverInfo.V1_Services) != 0 {
-		service = serverInfo.V1_Services[0].Service
-	}
-	upstreamAddr := serverInfo.IPAddr.Load().(*common.EPRing)
-	upstream := upstreamAddr.Endpoint
-	serverInfo.IPAddr.Store(upstreamAddr.Next())
-	var relay *common.Endpoint
-	if serverInfo.RelayAddr != nil {
-		relayAddr := serverInfo.RelayAddr.Load().(*common.EPRing)
-		relay = relayAddr.Endpoint
-		serverInfo.RelayAddr.Store(relayAddr.Next())
-	}
-	dailFn := func(network, address string) (net.Conn, error) {
-		proxies := proxy.XTransport.Proxies.Merge(serverInfo.Proxies)
-		if network == "udp" && !proxies.UDPProxies() {
-			network = "tcp"
-		}
-		var pc net.Conn
-		var err error
-		if !proxies.HasValue() {
-			pc, err = common.Dial(network, address, proxy.LocalInterface, proxy.Timeout, -1)
-		} else {
-			pc, err = proxies.GetDialContext()(nil, proxy.LocalInterface, network, address)
-		}
-		if err == nil {
-			err = pc.SetDeadline(time.Now().Add(serverInfo.Timeout))
-		}
-		return pc, err
-	}
-	bin, _, err := dnscrypt.Query(dailFn, proxy.MainProto, service, *request, upstream, relay)
-	return &bin, err
-}
-
-func (proxy *Proxy) doHQuery(name string, path string, useGet bool, ctx context.Context, body *[]byte, cbs ...interface{}) ([]byte, error) {
-	if useGet {
-		return proxy.XTransport.FetchHTTPS(name, path, "GET", true, ctx, body, proxy.Timeout, cbs...)
-	}
-	return proxy.XTransport.FetchHTTPS(name, path, "POST", true, ctx, body, proxy.Timeout, cbs...)
-}
-
-func (proxy *Proxy) DoHQuery(name string, info *DOHInfo, ctx context.Context, request *[]byte, cbs ...interface{}) (*[]byte, error) {
-	bin, err := proxy.doHQuery(name, info.Path, info.useGet, ctx, request, cbs...)
-	return &bin, err
-}
-
-func (proxy *Proxy) DoTQuery(name string, ctx context.Context, request *[]byte, cbs ...interface{}) (*[]byte, error) {
-	bin, err := proxy.XTransport.FetchDoT(name, proxy.MainProto, ctx, request, proxy.Timeout, cbs...)
-	return &bin, err
-}
-
 
 type stub struct {
 	handler func(*channels.Session) error
@@ -360,17 +214,11 @@ func (_s *stub) Handle(s *channels.Session) channels.Channel {
 
 // how different
 var svrName = channels.NonSvrName
-func (proxy *Proxy) processIncomingQuery(clientProto string, query []byte, clientAddr *net.Addr, clientPc net.Conn, idx int) {
-	session := &channels.Session{RawIn:&query, Listener:idx, ServerName:&svrName, IsUDPClient:clientProto == "udp"}
+func (proxy *Proxy) processIncomingQuery(udp bool, query []byte, clientAddr *net.Addr, clientPc net.Conn, idx uint8) {
+	session := &channels.Session{RawIn:&query, Listener:idx, ServerName:&svrName, IsUDPClient:udp}
 	proxy.Handle(session)
 	if err := common.WriteDP(clientPc, *session.RawOut, clientAddr); err != nil {
 		dlog.Debug(err)
 	}
 	session = nil
-}
-
-func NewProxy() *Proxy {
-	return &Proxy{
-		ServersInfo: NewServersInfo(),
-	}
 }

@@ -1,7 +1,6 @@
 package nodes
 
 import (
-	
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -17,16 +16,16 @@ import (
 	"net/url"
 
 	"github.com/AZ-X/pique/repique/common"
+	"github.com/AZ-X/pique/repique/conceptions"
 	"github.com/AZ-X/pique/repique/protocols"
 	"github.com/AZ-X/pique/repique/protocols/dnscrypt"
 	"github.com/AZ-X/pique/repique/protocols/tls"
-	"github.com/AZ-X/pique/repique/conceptions"
 	"github.com/AZ-X/pique/repique/features/dns/channels"
 	"github.com/AZ-X/pique/repique/features/dns/nodes/metrics"
 	"github.com/AZ-X/pique/repique/services"
 
 	stamps "github.com/AZ-X/pique/repique/unclassified/stammel"
-	clocksmith "github.com/jedisct1/go-clocksmith"
+	smith "github.com/jedisct1/go-clocksmith"
 	"github.com/jedisct1/dlog"
 
 	"github.com/AZ-X/dns"
@@ -182,7 +181,6 @@ type NodesMgr struct {
 	SP           func(*channels.Session)
 	SPNoIPv6     *bool
 	Ready        chan interface{}
-
 }
 
 func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, servers, relays, proxies map[string]*common.RegisteredServer, globalproxy *conceptions.NestedProxy, ifi *string) {
@@ -233,6 +231,9 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 	nbDnscryptShared := &protocols.NetworkBase{IFI:ifi, Proxies:globalproxy, Network:network2, Alive:second(cfg.KeepAlive), Timeout:second(cfg.Timeout),}
 	hasDnscrypt := false
 	newProxy := func(svr *common.RegisteredServer) (proxy *conceptions.NestedProxy) {
+		if hasTag(Well_Known_Tag_NO_PROXY, svr.Name) { // first place; ignore any proxy referred
+			return conceptions.InitProxies()
+		}
 		par := strings.Split(svr.Stamp.Proxies, common.Delimiter)
 		if len(par) == 0 || len(par[0]) == 0 {
 			return
@@ -404,7 +405,6 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 		if svr.Stamp.Props&stamps.ServerInformalPropertyDNSSEC != 0 {
 			node.status|=status_dnssec_lv1
 		}
-
 		mgr.nodes[*node.name()] = node
 		names = append(names, *node.name())
 	}
@@ -415,10 +415,13 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 	if len(cfg.ExportCredentialPath) > 0 {
 		mgr.materials = &materials{}
 		mgr.open(cfg.ExportCredentialPath, sum)
-		if cfg.ImportCredential {
+		dnscrpt_obtain_fast_key := hasTagName(Well_Known_Tag_DNSCRPT_OBTAIN_FAST_KEY)
+		if cfg.ImportCredential || dnscrpt_obtain_fast_key {
 			var nodes []marshalable
 			for _, n := range mgr.nodes {
-				nodes = append(nodes, n)
+				if cfg.ImportCredential || hasTag(Well_Known_Tag_DNSCRPT_OBTAIN_FAST_KEY, *n.name()) {
+					nodes = append(nodes, n)
+				}
 			}
 			for _, n := range mgr.unmarshalto(nodes) {
 				dlog.Debugf("exported material to %s", *n.name())
@@ -439,7 +442,7 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 					delay = 100 * time.Millisecond * time.Duration(total - lives)
 				}
 				debug.FreeOSMemory()
-				clocksmith.Sleep(delay)
+				smith.Sleep(delay)
 			}
 		}(time.Duration(common.Max(60, cfg.FetchInterval)) * time.Minute, cfg.FetchAtLeastTwo)
 	}

@@ -86,7 +86,6 @@ func (m *materials) open(path string, identity []byte) {
 				dlog.Debugf("materials loaded path=%s count=%d", path, len(m.values))
 			}
 		}
-		
 	}
 }
 

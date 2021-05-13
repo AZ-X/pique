@@ -626,7 +626,8 @@ func (mgr *NodesMgr) associate() {
 			svrs[idx] = servers
 		}
 	}
-	for idx, lc := range *mgr.L2NMapping {
+	for i, lc := range *mgr.L2NMapping {
+		idx := i //capture range variable
 		if lc == nil && idx != 0 {
 			continue
 		}
@@ -670,11 +671,7 @@ func (mgr *NodesMgr) associate() {
 			servers := make([]_DNSService, 0)
 			if idx != 0 {
 				for _, name := range lc.ServerList.Servers {
-					if node := mgr.nodes[*name]; node.status&(
-						status_unusable|
-						status_outdated|
-						status_broken  |
-						status_bootstrapping) ==0 {
+					if node := mgr.nodes[*name]; node.applicable() {
 						servers = append(servers, node._DNSService)
 					}
 				}
@@ -706,6 +703,7 @@ func (mgr *NodesMgr) pick(s *channels.Session) _DNSService {
 		}
 		return nil
 	}
+
 	var candidates []_DNSService
 	if mgr.q2nodesFunc != nil {
 		if f := (*mgr.q2nodesFunc)[s.Listener]; f != nil {
@@ -714,6 +712,7 @@ func (mgr *NodesMgr) pick(s *channels.Session) _DNSService {
 	} else {
 		candidates = (*mgr.groups)[0][0]
 	}
+
 	cc := len(candidates)
 	if cc == 1 {
 		return candidates[0]

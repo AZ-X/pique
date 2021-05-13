@@ -76,7 +76,7 @@ func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) *time.Time {
 		n.V2_Services = append(n.V2_Services, s)
 	}
 	n.bs2epring()
-	to := time.Unix(int64(s.DtTo), 0).UTC()
+	to := time.Unix(int64(s.DtTo), 0)
 	return &to
 }
 

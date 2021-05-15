@@ -50,7 +50,7 @@
 - Materials as rotation of public key of dnscrypt protocol or multiple ip addresses of hostname/domain name of DoT/DoH protocol can be persisted in a specified textual file.
 - Materials can be loaded on startup to fulfill needs.
 - Quiet mode for repique increases flexibility that can keep serving without performing any additional exchange(network activity) on startup.
-- Implement well known tags for individual timeouts, http method etc.
+- Implement well known tags for individual timeouts, http method, etc.
 
 # ![repique32](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/repique32.PNG?raw=true)
 Illustration of running repique on a laptop manufactured in Y2008 which unbelievably boots to Windows for seconds without hibernate.  

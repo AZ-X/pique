@@ -180,6 +180,7 @@ func ConfigLoad(proxy *dns.Proxy, flags *ConfigFlags) error {
 		config.loadChannels(proxy, dnssec)
 		proxy.NodesMgr.Init(&config.NodesSections, config.AnonymizedDNS, sum, servers, relays, proxies, np, ifi)
 	}
+	proxy.Timeout = time.Duration(config.NodesSections.Timeout) * time.Second
 
 	if *flags.Check {
 		dlog.Notice("configuration successfully checked")

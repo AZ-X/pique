@@ -6,28 +6,47 @@
 ##############################################
 
 ## This is an example configuration file.
-## You should adjust it to your needs, and save it as "repique.toml"
+## You should adjust it to your needs, and save it always as "repique.toml"
 ##
 ## Online documentation is not available. This program evolved far from the original dnscrypt proxy (go version)
 ## Anybody with a background in computer science and normal IQ can start this program without any 'online documents'
 
+## Remove the leading comment character # of a line to enable an option; lines starting with # are ignored.
+
+##################################
+#͎͎͎͎͎͎͎͎͎͎͎͎͎Notice͎͎͎͎͎͎͎͎͎͎͎͎͎#
+##################################
+## 1. This program only uses TLS1.3 so that tls_cipher_suite was deprecated
+## DNS over HTTPS, and DNS over TLS: Use fixed cipher suite instead of the server preference
+## We use TLS_AES_256_GCM_SHA384 and TLS_CHACHA20_POLY1305_SHA256
+## On non-amd64 CPUs such as some antique MIPS and ARM systems
+## except Cavium Octeon MIPS, ARMv8-A and processors support Cryptographic Hardware Accelerator and
+## Hardware-based PRNG e.g. Hardware Crypto Engine in Qualcomm SoCs
+## Even very old amd64 CPUs running 32-bit operating systems can enable TLS1.3 on the fly.
+
+## 2. Fallback resolvers were deprecated
+## Always exclude UNSAFE 'fallback resolvers' and sys dns loops
 
 ##################################
 #         Primary settings       #
 ##################################
 
-## List of servers to use
-##
-##
-## The proxy will automatically pick working servers from this list.
-## Note that the require_* filters do NOT apply when using this setting.
-##
-## By default, this list is empty and all registered servers matching the
-## require_* filters will be used instead.
-##
-## Remove the leading # first to enable this; lines starting with # are ignored.
+## List of local addresses and ports to listen to. Can be IPv4 and/or IPv6.
+## Example with both IPv4 and IPv6:
+## listen_addresses = ['127.0.0.1:53', '[::1]:53']
 
-# server_names = ['google', 'ev-va']
+listen_addresses = ['127.0.0.1:53']
+
+## Specify an interface for outbound connections 
+## The value can be an interface name or any valid IP address
+## Fill in the name of interface, if its DHCP is enabled
+## If the inferface statically bound to only one IP address, you can use either of the form
+## If using an inferface name, net probe function will wait until it's available
+
+#network_interface = 'Local Area Connection'
+#network_interface = 'wlan'
+#network_interface = '172.16.0.1'
+
 
 ##++++++++++++++++++++++++++++++++++++++++++++++++++++
 ## Groups is a powerful concept for repique
@@ -72,23 +91,6 @@
 #{ name='all', servers=['*'] },
 #]
 
-## Specify an interface for outbound connections 
-## The value can be an interface name or any valid IP address
-## Fill in the name of interface, if its DHCP is enabled
-## If the inferface statically bound to only one IP address, you can use either of the form
-## If using an inferface name, net probe function will wait until it's available
-
-#network_interface = 'Local Area Connection'
-#network_interface = 'wlan'
-#network_interface = '172.16.0.1'
-
-
-## List of local addresses and ports to listen to. Can be IPv4 and/or IPv6.
-## Example with both IPv4 and IPv6:
-## listen_addresses = ['127.0.0.1:53', '[::1]:53']
-
-listen_addresses = ['127.0.0.1:53']
-
 
 ##++++++++++++++++++++++++++++++++++++++++++++++++++++
 ## Group and listener association                    +
@@ -107,7 +109,7 @@ listen_addresses = ['127.0.0.1:53']
 ## Field 'regex' is a boolean refering to match field of groups
 ## --e.g. { position=2, regex=true }
 ## --listen address 127.0.0.1 port 70
-## --5 matches found name='A&B`-regex' and name='CA' ....
+## --5 matches found name='A&B`-regex' and name='CA' ...
 ## --this listener will serve all the domain names successfully matched within servers from that group
 ## --if groups does NOT contain any item has match field and listener_association has regex=true
 ## --the default group server_names will be used which has a default match '*' (all domain name)
@@ -122,30 +124,12 @@ listen_addresses = ['127.0.0.1:53']
 #]
 
 
-## Maximum number of simultaneous client connections to accept
-
-max_clients = 250
-
-
 ## Switch to a different system user after listening sockets have been created.
 ## Note (1): this feature is currently unsupported on Windows.
 ## Note (2): this feature is not compatible with systemd socket activation.
 ## Note (3): when using -pidfile, the PID file directory must be writable by the new user
 
 # user_name = 'nobody'
-
-# The program won't filter on servers because of your own selection
-# The only thing you might want to do is disable some in a large set temporarily
-# READ https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
-disabled_server_names = []
-
-
-## Always use TCP to connect to upstream servers (current for DNSCrypt, spares for DoT/QUIC later).
-## This can be useful if you need to prepare dnssec queries.
-## Otherwise, leave this to `false`, as it doesn't improve your privacy
-
-
-force_tcp = false
 
 
 ## SOCKS5/HTTP/HTTPS proxy
@@ -156,7 +140,6 @@ force_tcp = false
 # proxy_uri = 'http://127.0.0.1:8888'
 # proxy_uri = 'https://127.0.0.1:443'
 
-
 ## SOCKS5/HTTP/HTTPS IP and port of hostname of proxy
 ## leave this section comment off unless you want to use hostname e.g. proxy_uri = 'socks5://hostname:9050'
 ## NOTICE: repique nerver use any insecure DNS and sys DNS loops as bootstrap
@@ -165,63 +148,17 @@ force_tcp = false
 # proxy_ip = '127.0.0.1:443'
 # proxy_ip = '[fe80::1%eth0]:443'
 
-
-## How long a DNS query will wait for a response, in milliseconds.
-## If you have a network with *a lot* of latency, you may need to
-## increase this. Startup may be slower if you do so.
-## Don't increase it too much. 10000 is the highest reasonable value.
-
-timeout = 5000
-
-
-## Keepalive for HTTP (HTTPS, HTTP/2) queries, in seconds
-
-keepalive = 30
-
-
-## Indicate a switch to select upstreams: 'leading' or 'random'(default)
-## The only thing called 'Strategy' is to put this in your mind: make a decision to speed first or privacy first
-## If you want speedy responses, choose 'leading'; otherwise choose 'random'
-occurrence = 'random'
-
-
 ## Log level (0-6, default: 2 - 0 is very verbose, 6 only contains fatal errors)
 
-# log_level = 2
-
+# log_level = 0
 
 ## log file for the application
 
 # log_file = 'repique.log'
 
-
 ## Use the system logger (syslog on Unix)
 
 # use_syslog = true
-
-
-## Delay, in minutes, after which certificates are reloaded
-
-cert_refresh_delay = 240
-
-
-
-## DoH: Disable TLS session tickets - increases privacy but also latency
-
-tls_disable_session_tickets = true
-
-## Notice: this program only uses TLS1.3 so that tls_cipher_suite was deprecated
-## DNS over HTTPS, and DNS over TLS: Use fixed cipher suite instead of the server preference
-## We use TLS_AES_256_GCM_SHA384 and TLS_CHACHA20_POLY1305_SHA256
-## On non-amd64 CPUs such as some antique MIPS and ARM systems
-## except Cavium Octeon MIPS, ARMv8-A and processors support Cryptographic Hardware Accelerator and
-## Hardware-based PRNG e.g. Hardware Crypto Engine in Qualcomm SoCs
-## Even very old amd64 CPUs running 32-bit operating systems can enable TLS1.3 on the fly.
-
-
-## Notice: fallback resolvers were deprecated
-## Always exclude UNSAFE 'fallback resolvers' and sys dns loops
-
 
 ## Maximum time (in seconds) to wait for network connectivity before
 ## initializing the proxy.
@@ -242,6 +179,76 @@ netprobe_timeout = 60
 ## but nothing will be sent at all.
 
 netprobe_address = '9.9.9.9:53'
+
+
+#######################################################################
+#        Nodes Configuration (upstreams)                              #
+#######################################################################
+
+[dns_nodes]
+
+## The program won't filter on servers because of your own selection
+## The only thing you might want to do is enable/disable some in a large set temporarily
+## READ https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
+
+## Filter to the stamps file a.k.a 'cache_file' below, defined in sources section
+# enabled_server_names = ['google', 'ev-va']
+# disabled_server_names = ['google', 'ev-va']
+
+## Connect to dnscrypt nodes over TCP
+## This can be useful if you need to prepare dnssec queries via dnscrypt protocols.
+## Otherwise, leave this to `false`, as it doesn't improve your privacy and increase latency time
+
+# dnscrypt_use_tcp = true
+
+## Simultaneous outgoing dns query directly by downstreams
+
+max_concurrent_upstreams = 250
+
+## General timed out to DNS lookup, in seconds.
+
+# timeout = 3
+
+## Keep alive period of communication protocol on a TCP connection, in seconds
+
+# keepalive = 15
+
+## To fetch materials or determine connectivity to the upstreams; 0>=no_interval
+
+# interval = 60
+
+## DoH/DoT: Disable TLS session tickets
+
+tls_disable_session_tickets = true
+
+## mark all nodes unavailable on startup then determine connectivity for each
+
+#default_unavailable = true
+
+## Exclusive feature of repique: ***export persistence credential file***
+
+# credentialpath = "materials.txt"
+
+## Exclusive feature of repique: ***load persistence credential file when startup***
+## Skip seeking public key(dnscrypt) if valid till now
+## Skip boosting IP addresses of your dynamic hostname/domain name
+
+# import_credential = true
+
+## Allow bootstrap; no ip address of DoH/DoT nodes
+## By default, the program will panic if no ip address found for DoH/DoT stamps unless this option is switched on
+## At least one DNS-BOOST-GROUP tag must be defined on no-bootstrap nodes
+## A bootstrap node also can be tagged with DNS-BOOST-GROUP (rare case of single node fail-over)
+
+# bootstrap = true
+
+## Keep fetching without interval until one(n=1) or two(n>1) nodes are available
+
+# at_least_one_or_two = true
+
+## Lock free; useful at low hardware conditions
+
+# no_metrics = true
 
 
 #######################################################################
@@ -313,7 +320,6 @@ cache_ttl = 720
 nodata_ttl = 720
 
 
-
 ## Log client queries to a file
 
 [channels_sections.'main'.query_log]
@@ -357,6 +363,8 @@ nodata_ttl = 720
   ## An example of all in one source cooked by yourself 
   ## READ https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
   [sources.'all-in-one']
+  ## It was called 'cache file' once upon a time
+  ## Now it keep the inessential without renaming
   cache_file = 'mylist.md'
   minisign_key = '========>COPY PUB KEY HERE<========'
   prefix = ''

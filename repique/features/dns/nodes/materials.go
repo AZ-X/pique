@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"os"
+	"io/ioutil"
 	"strings"
 	"time"
 
@@ -57,7 +57,7 @@ func (m *materials) open(path string, identity []byte) {
 	m.path = path
 	m.identity = identity
 	m.values = make(map[string]*struct{c uint8; v string})
-	if bin, err := os.ReadFile(path); err == nil {
+	if bin, err := ioutil.ReadFile(path); err == nil {
 		r := bufio.NewReaderSize(bytes.NewReader(bin), len(bin))
 		var identity1 []byte
 		if _, err = fmt.Fscanf(r, identityfmt, &identity1); err == nil {
@@ -115,5 +115,5 @@ func (m *materials) savepoint() {
 		fmt.Fprintf(&content, keyfmt, key, item.c)
 		content.WriteString(item.v)
 	}
-	os.WriteFile(m.path, []byte(content.String()), 0600)
+	ioutil.WriteFile(m.path, []byte(content.String()), 0600)
 }

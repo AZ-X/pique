@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"strings"
@@ -48,11 +49,11 @@ func (source *Source) checkSignature(bin, sig []byte) (err error) {
 
 func (source *Source) ReadFile(now time.Time, hasher hash.Hash) (delay time.Duration, err error, in []byte) {
 	var bin, sig []byte
-	if bin, err = os.ReadFile(source.cacheFile); err != nil {
+	if bin, err = ioutil.ReadFile(source.cacheFile); err != nil {
 		return
 	}
 	io.Copy(hasher, bytes.NewReader(bin))
-	if sig, err = os.ReadFile(source.cacheFile + ".minisig"); err != nil {
+	if sig, err = ioutil.ReadFile(source.cacheFile + ".minisig"); err != nil {
 		return
 	}
 	if err = source.checkSignature(bin, sig); err != nil {

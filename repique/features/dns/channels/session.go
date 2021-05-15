@@ -65,11 +65,12 @@ type Session struct {
 	hash_key                               *[32]byte
 	ServerName                             *string
 	ExtraServerName                        *string // for debug display of 'Anonymized' sever idx
-	Listener                               int
+	Listener                               uint8
+	SPGroup                                uint8
+	ID                                     uint16
 	Stopwatch                              time.Time //not started yet
 	LastError                              error
 	IsUDPClient                            bool
-	ID                                     uint16
 	rep_job                                *sync.Once
 	pl_job                                 *sync.Once
 }

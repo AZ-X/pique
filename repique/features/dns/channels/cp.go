@@ -328,10 +328,10 @@ func (d *digest) Reset()
 //go:linkname (*digest).Write crypto/sha512.(*digest).Write
 func (d *digest) Write(p []byte) (n int, err error)
 
-func Sum512_256s(datas ...[]byte) (sum256 *[sha512.Size256]byte) {
+func Sum512_256s(ars ...[]byte) (sum256 *[sha512.Size256]byte) {
 	d := digest{function: crypto.SHA512_256}
 	d.Reset()
-	for _, data := range datas {
+	for _, data := range ars {
 		d.Write(data)
 	}
 	sum := d.checkSum()
@@ -413,7 +413,7 @@ func (cp *CP) match(s *Session, target *string, cp2 bool) *bool {
 	return &cp.false
 }
 
-func preloading(r Channel, domains []*string, ipv6 bool, idx int) {
+func preloading(r Channel, domains []*string, ipv6 bool, idx uint8) {
 	tmp := &Session{Listener:idx, ServerName:&svrName}
 	tmp.LastState = A1_OK
 	for _, str := range domains {

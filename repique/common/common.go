@@ -104,7 +104,7 @@ func (e *EPRing) Next() *EPRing {
 }
 
 func LinkEPRing(endpoints ...*Endpoint) *EPRing {
-	var cur *EPRing = nil
+	var cur *EPRing
 	for i , endpoint := range endpoints {
 		tmp := &EPRing{}
 		tmp.Ring = ring.New(1)

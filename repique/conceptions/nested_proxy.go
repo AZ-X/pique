@@ -32,6 +32,7 @@ type NestedProxy struct {
 
 func InitProxies() *NestedProxy {
 	l := &NestedProxy{}
+	l.List = &list.List{}
 	l.Init()
 	return l
 }

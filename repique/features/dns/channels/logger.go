@@ -87,16 +87,20 @@ func (l *Logger) Handle(s *Session) Channel {
 	}
 ConsoleLog:
 	answer := EMPTY
-	for i := len(s.Response.Answer); i > 0; i-- {
-		rr := s.Response.Answer[i-1]
+	RowLoop:
+	for i := 0; i < len(s.Response.Answer); i++ {
+		rr := s.Response.Answer[i]
 		switch rr.Header().Rrtype {
 		case dns.TypeA:
 			answer = rr.(*dns.A).A.String() + " v4"
-			break
+			break RowLoop
 		case dns.TypeAAAA:
 			answer = rr.(*dns.AAAA).AAAA.String()  + " v6"
-			break
+			break RowLoop
 		}
+	}
+	if s.OPTOrigin != nil {
+		dlog.Debugf("%v", *s.OPTOrigin)
 	}
 	if *s.ServerName == NonSvrName {
 		question := EMPTY

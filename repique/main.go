@@ -1,11 +1,8 @@
 package main
 
 import (
-	crypto_rand "crypto/rand"
-	"encoding/binary"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,10 +33,6 @@ func init() {
 func main() {
 	dlog.Init("repique", dlog.SeverityNotice, "DAEMON")
 
-	seed := make([]byte, 8)
-	crypto_rand.Read(seed)
-	rand.Seed(int64(binary.BigEndian.Uint64(seed[:])))
-
 	version := flag.Bool("version", false, "print current proxy version")
 	flags := configuration.ConfigFlags{}
 	flags.Check = flag.Bool("check", false, "check the configuration file and exit")
@@ -57,7 +50,7 @@ func main() {
 		flags: &flags,
 	}
 
-	app.proxy = dns.NewProxy()
+	app.proxy = &dns.Proxy{}
 	app.AppMain()
 }
 

@@ -46,15 +46,15 @@ type Channel interface {
 // A simple channel manager across all listeners
 type ChannelMgr struct {
 	*ListenerCfg
-	channels_list map[int]map[string]Channel
+	channels_list []map[string]Channel
 }
 
 func (mgr *ChannelMgr) Init(listeners int) {
 	s := &Starter{}
 	e := &End{}
-	mgr.ListenerCfg = &ListenerCfg{Cfgs:make(map[int]*Config, listeners)}
-	mgr.channels_list = make(map[int]map[string]Channel, listeners)
-	for idx := 1; idx <= listeners; idx++ {
+	mgr.ListenerCfg = &ListenerCfg{Cfgs:make([]*Config, listeners + 1)}
+	mgr.channels_list = make([]map[string]Channel, listeners + 1)
+	for idx := 0; idx <= listeners; idx++ {
 		mgr.channels_list[idx] = make(map[string]Channel)
 		mgr.Register(idx, s)
 		mgr.Register(idx, e)
@@ -89,11 +89,14 @@ func (mgr *ChannelMgr) Register(idx int, ch Channel) {
 
 func (mgr *ChannelMgr) Registers(shares []int, ch Channel) {
 	for _, idx := range shares {
+		mgr.channels_list[idx][ch.Name()] = ch
+	}
+	for _, idx := range shares {
 		var f FChannelByName = func(name string) Channel {
 			return mgr.channels_list[idx][name]
 		}
 		ch.Init(mgr.Cfgs[idx], f)
-		mgr.channels_list[idx][ch.Name()] = ch
+		break
 	}
 }
 
@@ -110,7 +113,7 @@ func Handle(ch Channel, session *Session) {
 }
 
 type ListenerCfg struct {
-	Cfgs map[int]*Config
+	Cfgs []*Config
 }
 
 type Config struct {

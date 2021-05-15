@@ -102,6 +102,22 @@ type ServerKey struct {
 	ServerPk           [PublicKeySize]byte
 }
 
+func (r *Resolver) GetDefaultService() (s *ServiceInfo) {
+	if len(r.V2_Services) != 0 {
+		s = r.V2_Services[0]
+	} else if len(r.V1_Services) != 0 {
+		s = r.V1_Services[0]
+	}
+	return
+}
+
+func (r *Resolver) GetDefaultExpiration() time.Time {
+	if s := r.GetDefaultService(); s != nil {
+		return time.Unix(int64(s.DtTo), 0).Local()
+	}
+	return time.Now()
+}
+
 func RetrieveServicesInfo(useSk bool, resolver *Resolver, dialFn common.DialFn, proto string, upstreamAddr *common.Endpoint, relays *[]*common.Endpoint) (time.Duration, error) {
 	if len(resolver.PublicKey) != ed25519.PublicKeySize {
 		return 0, errors.New("invalid public key length -> " + *resolver.Name)
@@ -109,10 +125,8 @@ func RetrieveServicesInfo(useSk bool, resolver *Resolver, dialFn common.DialFn, 
 	var rtt time.Duration
 	var err error
 	var service *Service
-	if useSk && len(resolver.V2_Services) != 0 {
-		service = resolver.V2_Services[0].Service
-	} else if len(resolver.V1_Services) != 0 {
-		service = resolver.V1_Services[0].Service
+	if useSk {
+		service = resolver.GetDefaultService().Service
 	}
 	var v1_Services []*ServiceInfo
 	var v2_Services []*ServiceInfo
@@ -120,8 +134,8 @@ func RetrieveServicesInfo(useSk bool, resolver *Resolver, dialFn common.DialFn, 
 	var keys map[ServerKey]interface{} = make(map[ServerKey]interface{})
 RowLoop:
 	for _, str := range resolver.Identifiers {
-		var binResult []byte
-		var preResult []byte
+		var binResult *[]byte
+		var preResult *[]byte
 		identifier := str
 		if !strings.HasSuffix(identifier, DNSRoot) {
 			identifier = identifier + DNSRoot
@@ -150,13 +164,15 @@ RowLoop:
 		_relays := *relays
 		if len(_relays) > 0 {
 			for i , relayAddr := range _relays {
-				binResult, rtt, err = Query(dialFn, proto, service, binQuery, upstreamAddr, relayAddr)
+				now := time.Now()
+				binResult, err = Query(dialFn, proto, service, &binQuery, upstreamAddr, relayAddr)
+				rtt = time.Since(now)
 				if err != nil {
 					dlog.Debug(err)
 					dlog.Noticef("relay [%d] failed for [%s]", i + 1, *resolver.Name)
 					continue
 				}
-				if preResult != nil && !bytes.Equal(binResult, preResult) {
+				if preResult != nil && !bytes.Equal(*binResult, *preResult) {
 					err = dlog.Errorf("relay [%d] returns unmatched result for [%s]", i + 1, *resolver.Name)
 					continue RowLoop
 				}
@@ -169,14 +185,16 @@ RowLoop:
 			}
 			*relays = working_relays
 		} else {
-			binResult, rtt, err = Query(dialFn, proto, service, binQuery, upstreamAddr, nil)
+			now := time.Now()
+			binResult, err = Query(dialFn, proto, service, &binQuery, upstreamAddr, nil)
+			rtt = time.Since(now)
 		}
 		if err != nil {
 			dlog.Debug(err)
 			continue
 		}
 		msg := new(dns.Msg)
-		if err = msg.Unpack_TS(binResult, map[uint16]func()dns.RR{}); err != nil {
+		if err = msg.Unpack_TS(*binResult, map[uint16]func()dns.RR{}); err != nil {
 			dlog.Debug(err)
 			dlog.Errorf("got corrupt dns format for [%s]", *resolver.Name)
 			continue
@@ -305,17 +323,16 @@ RowLoop:
 }
 
 // looks like a standard dns query via user-defined port, nevertheless it's fixed with fingerprints
-func Query(dialFn common.DialFn, proto string, service *Service, bin []byte, upstreamAddr, relayAddr *common.Endpoint) ([]byte, time.Duration, error) {
+func Query(dialFn common.DialFn, proto string, service *Service, bin *[]byte, upstreamAddr, relayAddr *common.Endpoint) (*[]byte, error) {
 	var err error
-	var rtt time.Duration
 	goto Go
 Error:
-	return nil, rtt, err
+	return nil, err
 Go:
 	var sharedKey *[PublicKeySize]byte
 	var nonce *[NonceSize]byte
 
-	binLength := len(bin)
+	binLength := len(*bin)
 	if service != nil {
 		if binLength, err = calcDynamicEncryptedPaddingSize(binLength, proto); err != nil {
 			goto Error
@@ -338,9 +355,9 @@ Go:
 		pbuf = &buf
 	}
 	if service != nil {
-		sharedKey, nonce, err = encrypt(service, &bin, pbuf, proto)
+		sharedKey, nonce, err = encrypt(service, bin, pbuf, proto)
 	} else {
-		buf = append(buf, bin...)
+		buf = append(buf, *bin...)
 	}
 	buf = buf[:cap(buf)]
 	if err != nil {
@@ -348,7 +365,6 @@ Go:
 		goto Error
 	}
 
-	now := time.Now()
 	var pc net.Conn
 	pc, err = dialFn(proto, upstreamAddr.String())
 	if err != nil {
@@ -368,7 +384,6 @@ Go:
 		}
 		common.Program_dbg_full_log("retry on Timeout or <-EOF msg")
 	}
-	rtt = time.Since(now)
 	if err != nil {
 		common.Program_dbg_full_log("dnscrypt Query E04")
 		goto Error
@@ -376,7 +391,7 @@ Go:
 	if service != nil {
 		packet, err = decrypt(service.Version, sharedKey, packet, nonce, proto)
 	}
-	return packet, rtt, err
+	return &packet, err
 }
 
 func pad(packet []byte, padSize int) []byte {
@@ -400,7 +415,7 @@ func unpad(packet []byte) ([]byte, error) {
 	}
 }
 
-func computeSharedKey(cryptoConstruction CryptoConstruction, scalar, serverPk *[PublicKeySize]byte, name *string) (sharedKey *[PublicKeySize]byte) {
+func deriveSharedKey(cryptoConstruction CryptoConstruction, scalar, serverPk *[PublicKeySize]byte, name *string) (sharedKey *[PublicKeySize]byte) {
 	goto Go
 Fault:
 	dlog.Warnf("[%s] is using weak public key, the program will be panicked", *name)
@@ -469,7 +484,7 @@ func encrypt(service *Service, packet, buf *[]byte, proto string) (sharedKey *[P
 	nonce = new([NonceSize]byte)
 	rand.Read(nonce[:HalfNonceSize])
 	encrypted = append(encrypted, nonce[:HalfNonceSize]...)
-	sharedKey = computeSharedKey(service.Version, &scalar, &service.ServerPk, service.Name)
+	sharedKey = deriveSharedKey(service.Version, &scalar, &service.ServerPk, service.Name)
 	if service.Version == XChacha20Poly1305 {
 		encrypted = unclassified.SealX(encrypted, nonce[:], padded, sharedKey[:])
 	} else {

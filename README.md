@@ -42,6 +42,14 @@
 - Main program is called "Repique" while its repository name is "Pique", which just creates foo-bar towards golang.
 - [There is an additional awesome standalone GUI tooling in combination with repique, check it.](https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md/wiki)
 
+## Repique Ver.2.2.x highlights:
+
+- Support Secure DNS bootstrap.
+- Materials as rotation of public key of dnscrypt protocol or multiple ip addresses of hostname/domain name of DoT/DoH protocol can be persisted in a specified textual file.
+- Materials can be loaded on startup to fulfill needs.
+- Quiet mode for repique increases flexibility that can keep serving without performing any additional exchange(network activity) on startup.
+- Implement well known tags for individual timeouts, http method, etc.
+
 # ![repique32](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/repique32.PNG?raw=true)
 Illustration of running repique on a laptop manufactured in Y2008 which unbelievably boots to Windows for seconds without hibernate.  
 Illustration of memory cost, not as good as other swift programs, but acceptable to most of hardwares.
@@ -235,7 +243,7 @@ Check out [Releases Page](https://github.com/AZ-X/pique/releases)
 
 ### Installation
 
-[Download the latest release with golang 1.15 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.1.14)
+[Download the latest release with golang 1.15 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.2.0)
 
 > Notice:  
 > Releases for OpenWRT won't be included in this repository @github.  

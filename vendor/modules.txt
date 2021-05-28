@@ -11,9 +11,6 @@ github.com/RobinUS2/golang-moving-average
 ## explicit
 github.com/jedisct1/dlog
 # github.com/jedisct1/dlog => ./mod/dboy
-# github.com/jedisct1/go-clocksmith v0.0.0-20190707124905-73e087c7979c
-## explicit
-github.com/jedisct1/go-clocksmith
 ## explicit
 github.com/jedisct1/xsecretbox
 # golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83

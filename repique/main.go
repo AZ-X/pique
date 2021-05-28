@@ -21,11 +21,6 @@ const (
 
 var AppVersion            = "dev-X"
 
-type App struct {
-	proxy *dns.Proxy
-	flags *configuration.ConfigFlags
-}
-
 func init() {
 	common.AppVersion = AppVersion
 }
@@ -34,7 +29,7 @@ func main() {
 	dlog.Init("repique", dlog.SeverityNotice, "DAEMON")
 
 	version := flag.Bool("version", false, "print current proxy version")
-	flags := configuration.ConfigFlags{}
+	flags := &configuration.ConfigFlags{}
 	flags.Check = flag.Bool("check", false, "check the configuration file and exit")
 	flags.ConfigFile = flag.String("config", DefaultConfigFileName, "Path to the configuration file")
 	flags.Child = flag.Bool("Child", false, "Invokes program as a Child process")
@@ -46,17 +41,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	app := &App{
-		flags: &flags,
-	}
 
-	app.proxy = &dns.Proxy{}
-	app.AppMain()
-}
-
-
-func (app *App) AppMain() {
-	if err := configuration.ConfigLoad(app.proxy, app.flags); err != nil {
+	proxy := &dns.Proxy{}
+	if err := configuration.ConfigLoad(proxy, flags); err != nil {
 		panic(err)
 	}
 	pid, err := behaviors.NewPidFile()
@@ -74,8 +61,7 @@ func (app *App) AppMain() {
 		done <- true
 		os.Exit(1)
 	}()
-	app.proxy.StartProxy()
+	proxy.StartProxy()
 	<-done
 	dlog.Notice("Quit signal received...")
-
 }

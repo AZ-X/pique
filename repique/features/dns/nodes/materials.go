@@ -89,12 +89,13 @@ func (m *materials) open(path string, identity []byte) {
 	}
 }
 
-func (m *materials) unmarshalto(items []marshalable) (updated []marshalable) {
+func (m *materials) unmarshalto(items []marshalable) (updated []marshalable, dts []*time.Time) {
 	for _, item := range items {
 		if s, found := m.values[*item.name()]; found {
 			if material := item.material(); material != nil {
 				if dt := material.unmarshal(s); dt == nil || dt.After(time.Now()) {
 					updated = append(updated, item)
+					dts = append(dts, dt)
 				}
 			}
 		}

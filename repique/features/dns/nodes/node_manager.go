@@ -23,11 +23,9 @@ import (
 	"github.com/AZ-X/pique/repique/features/dns/channels"
 	"github.com/AZ-X/pique/repique/features/dns/nodes/metrics"
 	"github.com/AZ-X/pique/repique/services"
-
 	stamps "github.com/AZ-X/pique/repique/unclassified/stammel"
-	smith "github.com/jedisct1/go-clocksmith"
-	"github.com/jedisct1/dlog"
 
+	"github.com/jedisct1/dlog"
 	"github.com/AZ-X/dns"
 )
 
@@ -52,7 +50,7 @@ const (
 )
 
 type connectivity interface {
-	boost(*node) *uint32
+	boost(*node) interface{} // *uint32 or *time.Time
 }
 
 type _DNSInterface interface {
@@ -101,10 +99,9 @@ func (n *node) awaitresolution() bool {
 }
 
 func (n *node) awaitboost() bool {
-	return n.status&(
+	return n.status&status_broken == 0 && n.status&(
 			status_outdated|
-			status_broken  |
-			status_bootstrapping) == status_outdated|status_bootstrapping
+			status_bootstrapping) != 0
 }
 
 func (n *node) dnssec() bool {
@@ -168,10 +165,22 @@ func (n *node) evaluate() {
 	}
 }
 
+type boostrunnable struct {
+	n            *node
+	mgr          *NodesMgr
+}
+
+func (r *boostrunnable) run() {
+	dlog.Debugf("reboost %s", *r.n.name())
+	r.n.status|=status_outdated
+	r.mgr.fetchmaterials(r.n.name())
+}
+
 // A simple node manager across all servers
 type NodesMgr struct {
 	*conceptions.SemaGroup
 	*materials
+	*smith
 	metrics.RTT
 	nodes        map[string]*node
 	q2nodesFunc  *[]func(*string, uint8)[]_DNSService
@@ -352,7 +361,7 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 	}
 	newDnscryptNode := func(svr *common.RegisteredServer) (node *dnscryptnode, c node_capable) {
 		hasDnscrypt = true
-		c = status_bootstrapping|status_outdated
+		c = status_outdated
 		if cfg.DefaultUnavailable {
 			c|=status_unusable
 		}
@@ -412,6 +421,7 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 	if hasDnscrypt {
 		dlog.Noticef("dnscrypt-protocol bind to %s", network2)
 	}
+	mgr.smith = &smith{}
 	if len(cfg.ExportCredentialPath) > 0 {
 		mgr.materials = &materials{}
 		mgr.open(cfg.ExportCredentialPath, sum)
@@ -423,9 +433,24 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 					nodes = append(nodes, n)
 				}
 			}
-			for _, n := range mgr.unmarshalto(nodes) {
+			updates, dts := mgr.unmarshalto(nodes)
+			for i, n := range updates {
 				dlog.Debugf("exported material to %s", *n.name())
-				n.(*node).status&^=status_outdated|status_bootstrapping
+				node := n.(*node)
+				node.status&^=status_outdated|status_bootstrapping
+				f := func(){
+					node.status|=status_outdated
+				}
+				if cfg.FetchInterval > 0 {
+					r := &boostrunnable{node, mgr,}
+					f = r.run
+				}
+				if dt := dts[i]; dt != nil {
+					dlog.Debugf("next expiration for %s on %v", *n.name(), dt)
+					mgr.addevent(dt, 0, f)
+				} else if cfg.FetchInterval > 0 {
+					mgr.addevent(nil, uint32(cfg.FetchInterval)*60 - 5, f)
+				}
 			}
 		}
 	}
@@ -434,16 +459,19 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 		go func(interval time.Duration, least2 bool) {
 			<-mgr.Ready
 			close(mgr.Ready)
-			for {
-				delay := interval
+			var f func()
+			f = func () {
 				mgr.fetchmaterials()
+				delay := interval
 				lives, total := mgr.available()
 				if least2 && lives <= 1 && total != lives {
-					delay = 100 * time.Millisecond * time.Duration(total - lives)
+						delay = time.Duration(total - lives) *  time.Second
 				}
 				debug.FreeOSMemory()
-				smith.Sleep(delay)
+				mgr.addevent(nil, uint32(delay.Seconds()), f)
 			}
+			f()
+			mgr.pilot()
 		}(time.Duration(common.Max(60, cfg.FetchInterval)) * time.Minute, cfg.FetchAtLeastTwo)
 	}
 }
@@ -461,7 +489,7 @@ func (mgr *NodesMgr) available() (c int, t int) {
 
 const _DNSRoot = "."
 // booster for DoH & DoT
-func (mgr *NodesMgr) boost(n *node) *uint32 {
+func (mgr *NodesMgr) boost(n *node) interface{} {
 	var node *tlsnode
 	var bs_ips *tls_bs_ips
 	switch n.proto() {
@@ -522,34 +550,41 @@ func (mgr *NodesMgr) boost(n *node) *uint32 {
 	return ttl
 }
 
-func (mgr *NodesMgr) fetchmaterials() {
-	if !mgr.BeginExclusive() {
-		dlog.Warn("semi-refresh occurs")
-		return
+func (mgr *NodesMgr) fetchmaterials(opts  ...*string) {
+	if len(opts) == 0 {
+		if !mgr.BeginExclusive() {
+			dlog.Warn("semi-refresh occurs")
+			return
+		}
+		mgr.proveResolution()
+		mgr.associate()
+		mgr.EndExclusive()
 	}
-	mgr.proveResolution()
-	mgr.associate()
-	mgr.EndExclusive()
 
-	nodes, rts := make([]*node, 0), make([]chan *uint32, 0)
-	for _, n := range mgr.nodes {
-		if n.awaitboost() {
+	nodes, rts := make([]*node, 0), make([]chan interface{}, 0)
+	for key, n := range mgr.nodes {
+		if (len(opts) == 0 || key == *opts[0]) && n.awaitboost() {
 			nodes = append(nodes, n)
-			rt := make(chan *uint32)
+			rt := make(chan interface{})
 			rts = append(rts, rt)
-			go func(n1 *node, r chan<- *uint32) {
+			go func(n1 *node, r chan<- interface{}) {
 				dlog.Debugf("ready to boost %s", *n1.name())
 				r <- n1.boost(n1)
 				close(r)
 			}(n, rt)
 		}
 	}
-	updates, rtdt := make([]*node, 0), make([]*uint32, 0)
+	updates := make([]*node, 0)
 	for c := len(rts) -1; c >= 0; c-- {
 		rt := <- rts[c]
 		if rt != nil {
 			updates = append(updates, nodes[c])
-			rtdt = append(rtdt, rt)
+			r := &boostrunnable{nodes[c], mgr,}
+			if dt, ok := rt.(*time.Time); ok {
+				mgr.addevent(dt, 0, r.run)
+			} else {
+				mgr.addevent(nil, *rt.(*uint32) + uint32(c), r.run)
+			}
 		} else {
 			dlog.Debugf("can not boost %s", *nodes[c].name())
 		}
@@ -572,7 +607,9 @@ func (mgr *NodesMgr) fetchmaterials() {
 			mgr.savepoint()
 		}
 	}
-	mgr.proveResolution()
+	if len(opts) == 0 {
+		mgr.proveResolution()
+	}
 	mgr.associate()
 }
 
@@ -698,10 +735,7 @@ func (mgr *NodesMgr) associate() {
 
 func (mgr *NodesMgr) pick(s *channels.Session) _DNSService {
 	if s.ServerName != nil && *s.ServerName != channels.NonSvrName {
-		if node := mgr.nodes[*s.ServerName]; node.applicable() {
-			return node._DNSService
-		}
-		return nil
+		return mgr.nodes[*s.ServerName]._DNSService
 	}
 
 	var candidates []_DNSService

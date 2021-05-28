@@ -153,38 +153,35 @@ func fswatcher_init () {
 			panic(err)
 		}
 		go fswatcher_loop()
-		for {
-			select {
-			case reg := <- register:
-				if path0, err := filepath.Abs(reg.filename); err != nil {
+		for reg := range register {
+			if path0, err := filepath.Abs(reg.filename); err != nil {
+				panic("fswatcher_init failed:" + err.Error())
+			} else {
+				dir := fixLongPath(path.Dir(path0))
+				var fs0 fs
+				if info, err := os.Stat(path0); err != nil {
 					panic("fswatcher_init failed:" + err.Error())
 				} else {
-					dir := fixLongPath(path.Dir(path0))
-					var fs0 fs
-					if info, err := os.Stat(path0); err != nil {
+					fs0 = fs{filepath:path0, lastinfo:&atomic.Value{},callback:reg.callback}
+					fs0.lastinfo.Store(info)
+				}
+				var found bool
+				for _, w := range fswatcher {
+					if w.folder == dir {
+						found = true
+						w.files = append(w.files, fs0)
+						break
+					}
+				}
+				if !found {
+					path_ptr, _ := syscall.UTF16PtrFromString(dir)
+					if handle, err := findFirstChangeNotification(path_ptr, false, syscall.FILE_NOTIFY_CHANGE_LAST_WRITE); err != nil {
 						panic("fswatcher_init failed:" + err.Error())
 					} else {
-						fs0 = fs{filepath:path0, lastinfo:&atomic.Value{},callback:reg.callback}
-						fs0.lastinfo.Store(info)
-					}
-					var found bool
-					for _, w := range fswatcher {
-						if w.folder == dir {
-							found = true
-							w.files = append(w.files, fs0)
-							break
-						}
-					}
-					if !found {
-						path_ptr, _ := syscall.UTF16PtrFromString(dir)
-						if handle, err := findFirstChangeNotification(path_ptr, false, syscall.FILE_NOTIFY_CHANGE_LAST_WRITE); err != nil {
-							panic("fswatcher_init failed:" + err.Error())
-						} else {
-							w := watcher{folder:dir, files:[]fs{fs0}, win_handle:handle}
-							fswatcher = append(fswatcher, w)
-							if !setEvent(reset) {
-								panic("fswatcher_init failed to call SetEvent")
-							}
+						w := watcher{folder:dir, files:[]fs{fs0}, win_handle:handle}
+						fswatcher = append(fswatcher, w)
+						if !setEvent(reset) {
+							panic("fswatcher_init failed to call SetEvent")
 						}
 					}
 				}

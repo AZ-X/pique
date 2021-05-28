@@ -23,12 +23,12 @@ type dnscryptnode struct {
 	bs_relays               []*common.Endpoint
 }
 
-func (n *dnscryptnode) boost(o *node) *uint32 {
+func (n *dnscryptnode) boost(o *node) interface{} {
 	if o.status&status_outdated == status_outdated || n.GetDefaultExpiration().Before(time.Now()) {
 		relays := n.bs_relays
 		if _, err := dnscrypt.RetrieveServicesInfo(false, n.Resolver, n.dailFn, n.Network, n.ipaddr, &relays); err == nil {
-			n.bs2epring()
-			expired := uint32(n.GetDefaultExpiration().Unix())
+			n.bs2epring(relays)
+			expired := n.GetDefaultExpiration()
 			return &expired
 		} else {
 			dlog.Debugf("dnscrypt boost failed, %v", err)
@@ -37,8 +37,8 @@ func (n *dnscryptnode) boost(o *node) *uint32 {
 	return nil
 }
 
-func (n *dnscryptnode) bs2epring() {
-	if epring := common.LinkEPRing(n.bs_relays...); epring != nil {
+func (n *dnscryptnode) bs2epring(eps []*common.Endpoint) {
+	if epring := common.LinkEPRing(eps...); epring != nil {
 		epring.Do(func(v interface{}){
 			dlog.Infof("relay [%s*%s]=%s", *n.Name, v.(*common.EPRing).Order(), v.(*common.EPRing).String())
 		})
@@ -75,7 +75,7 @@ func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) *time.Time {
 	} else {
 		n.V2_Services = append(n.V2_Services, s)
 	}
-	n.bs2epring()
+	n.bs2epring(n.bs_relays)
 	to := time.Unix(int64(s.DtTo), 0)
 	return &to
 }

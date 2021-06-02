@@ -64,7 +64,7 @@ func DropPrivilege(userStr string, fds []*os.File) {
 		panic(err)
 	}
 
-	args = append(args, "-Child")
+	args = append(args, "-child")
 
 	dlog.Notice("dropping privileges")
 

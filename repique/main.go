@@ -31,9 +31,9 @@ func main() {
 	dlog.Init("repique", dlog.SeverityNotice, "DAEMON")
 
 	flags := &configuration.ConfigFlags{}
-	flags.ConfigFile = flag.String("config", DefaultConfigFileName, "Path to the configuration file")
+	flags.ConfigFile = flag.String("config", DefaultConfigFileName, "path to the configuration file")
 	flags.Check = flag.Bool("check", false, "check the configuration file and exit")
-	flags.Child = flag.Bool("child", false, "Invokes program as a child process")
+	flags.Child = flag.Bool("child", false, "as child process")
 
 	tz := flag.String("tz", DefaultTZ, "name of time zone")
 	off := flag.Int("tzoff", 0, "offset(hours) of time zone")

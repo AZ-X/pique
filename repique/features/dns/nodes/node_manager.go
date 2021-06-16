@@ -663,8 +663,9 @@ func (mgr *NodesMgr) associate() {
 			svrs[idx] = servers
 		}
 	}
-	for i, lc := range *mgr.L2NMapping {
+	for i, lcp := range *mgr.L2NMapping {
 		idx := i //capture range variable
+		lc := lcp //capture range variable
 		if lc == nil && idx != 0 {
 			continue
 		}

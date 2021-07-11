@@ -209,6 +209,7 @@ If using CoreDNS as a forwarder, applicable size is `coredns_1.8.1_windows_amd64
 Acrylic is a DNS stub built with Delphi 7.  
 Repique is built with golang fresh version.  
 Repique can build with consistency on any machine and check its fidelity.  
+Acrylic supports less complex routines.
 
 ### Comparison between repique and dnsdist(PowerDNS)
 

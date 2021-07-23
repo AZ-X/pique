@@ -32,6 +32,8 @@
 
 ## Repique is an advanced DNS stub which can run on different OS such as Windows, Linux, OpenWRT.
 
+### ![openwrt](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/fin.PNG?raw=true)
+
 ## Repique is unique in the world because:
 
 - All DNS queries forwarded by repique are encrypted and secured as following top consumable standard.

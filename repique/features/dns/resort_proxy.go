@@ -111,9 +111,7 @@ func (proxy *Proxy) StartProxy() {
 			shares[i] = j
 			j--
 		}
-		proxy.Registers(shares, &stub{handler: func(s *channels.Session) error {
-			return proxy.Query(s) //real proxy
-		}})
+		proxy.Registers(shares, &stub{handler: proxy.Query})
 		proxy.SP = proxy.Handle
 		proxy.Ready <- nil
 	}

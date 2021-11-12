@@ -69,7 +69,7 @@ func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) *time.Time {
 	}
 	copy(s.MagicQuery[:], mq)
 	copy(s.ServerPk[:], sk)
-	s.Name = n.Resolver.Name
+	s.Name = n.name()
 	if s.Version == dnscrypt.XSalsa20Poly1305 {
 		n.V1_Services = append(n.V1_Services, s)
 	} else {

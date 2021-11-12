@@ -192,7 +192,7 @@ V3_Unpack:{
 	in_bytes := *s.RawIn
 	if len(in_bytes) < common.MinDNSPacketSize || len(in_bytes) > common.MaxDNSPacketSize {
 		s.LastError = Error_Packet_Size2
-		goto V1_NOK
+		goto V3_NOK
 	}
 	var dh dns.Header
 	var off int

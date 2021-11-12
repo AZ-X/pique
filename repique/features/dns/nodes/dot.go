@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -54,13 +55,18 @@ type tls_bs_ips struct {
 
 func (bs *tls_bs_ips) marshal() *struct{c uint8; v string} {
 	var c strings.Builder
-	var count uint8 = 0
+	var sortlist [][16]byte //persist ordered when marshalling
 	for ipb, _ := range bs.ips {
+		sortlist = append(sortlist, ipb)
+	}
+	sort.Slice(sortlist, func(i, j int) bool {
+		return string(sortlist[i][:]) < string(sortlist[j][:])
+	})
+	for _, ipb := range sortlist {
 		var ip net.IP = ipb[:]
 		fmt.Fprintf(&c, ipsmarshalfmt, ip)
-		count++
 	}
-	return &struct{c uint8; v string} {count,c.String()}
+	return &struct{c uint8; v string} {uint8(len(sortlist)),c.String()}
 }
 
 func (bs *tls_bs_ips) unmarshal(s *struct{c uint8; v string}) *time.Time {

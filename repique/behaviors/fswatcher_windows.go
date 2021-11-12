@@ -111,7 +111,7 @@ func satisfyCallback(idx int) {
 	for _, fs := range fswatcher[idx].files {
 		lastinfo := fs.lastinfo.Load().(os.FileInfo)
 		if info, err := os.Stat(fs.filepath); err != nil {
-			panic("fswatcher_init failed:" + err.Error())
+			panic("satisfyCallback failed:" + err.Error())
 		} else if info.Size() != lastinfo.Size() || info.ModTime() != lastinfo.ModTime() {
 			fs.lastinfo.Store(info)
 			fs.callback()

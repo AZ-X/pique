@@ -104,10 +104,13 @@ func (m *materials) unmarshalto(items []marshalable) (updated []marshalable, dts
 	return
 }
 
-func (m *materials) marshalfrom(item marshalable) {
+func (m *materials) marshalfrom(item marshalable) bool {
 	if material := item.material(); material != nil {
+		previous, _ := m.values[*item.name()]
 		m.values[*item.name()] = material.marshal()
+		return previous != nil && *m.values[*item.name()] == *previous
 	}
+	return false
 }
 
 func (m *materials) savepoint() {

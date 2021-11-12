@@ -488,6 +488,7 @@ func (mgr *NodesMgr) available() (c int, t int) {
 }
 
 const _DNSRoot = "."
+var svrName = channels.NonSvrName
 // booster for DoH & DoT
 func (mgr *NodesMgr) boost(n *node) interface{} {
 	var node *tlsnode
@@ -500,7 +501,7 @@ func (mgr *NodesMgr) boost(n *node) interface{} {
 			node = n._DNSService.(*tls_bs_node).tlsnode
 			bs_ips = n._DNSService.(*tls_bs_node).tls_bs_ips
 	}
-	svrName := channels.NonSvrName
+	
 	s := &channels.Session{LastState:channels.V1_OK, ServerName:&svrName}
 	s.Request = &dns.Msg{}
 	t := dns.TypeA
@@ -595,9 +596,12 @@ func (mgr *NodesMgr) fetchmaterials(opts  ...*string) {
 		return
 	}
 	defer mgr.EndExclusive()
-	for _, node :=range updates {
+	for idx, node := range updates {
 		if mgr.materials != nil {
-			mgr.marshalfrom(node)
+			if mgr.marshalfrom(node) {
+				updates = append(updates[:idx], updates[idx+1:]...)
+				dlog.Debugf("unchanged material of %s", *node.name())
+			}
 		}
 		dlog.Debugf("%s has been boosted", *node.name())
 		node.status&^=status_outdated|status_bootstrapping
@@ -802,10 +806,10 @@ Go:
 	s.RawIn, err = service.exchange(s.RawOut, cbs...)
 	if err != nil {
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout(){
-			dlog.Debugf("%v [%s]", err, *s.ServerName)
+			dlog.Debugf("%v [%s]", err, *service.name())
 			goto Timeout
 		}
-		dlog.Errorf("%v [%s]", err, *s.ServerName)
+		dlog.Errorf("%v [%s]", err, *service.name())
 		goto SvrFault
 	}
 	elapsed := time.Since(timer).Nanoseconds() / 1000000

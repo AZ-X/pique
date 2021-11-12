@@ -43,9 +43,9 @@ listen_addresses = ['127.0.0.1:53']
 ## If the inferface statically bound to only one IP address, you can use either of the form
 ## If using an inferface name, net probe function will wait until it's available
 
-#network_interface = 'Local Area Connection'
-#network_interface = 'wlan'
-#network_interface = '172.16.0.1'
+# network_interface = 'Local Area Connection'
+# network_interface = 'wlan'
+# network_interface = '172.16.0.1'
 
 
 ##++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -78,18 +78,18 @@ listen_addresses = ['127.0.0.1:53']
 ##========================================================
 ## Below is an example of groups
 
-#groups = [
-#{ name='A', servers=['server1', 'server2', 'server3'] },
-#{ name='B', servers=['server11', 'server12', 'server13'], priority=true },
-#{ name='A&B', groups=['A', 'B']},
-#{ name='A&B`', groups=['B', 'A'], priority=true },
-#{ name='A&B`-regex', groups=['A', 'B'], match='google\.com\.$' },
-#{ name='CA', servers=['serverC'], match='\.ca\.$' },
-#{ name='DE', tag='de', match='\.de\.$' },
-#{ name='Swiss', tag='ch', match='\.swiss\.$;\.ch\.$' },
-#{ name='foo', tag='foo', match='porn' },
-#{ name='all', servers=['*'] },
-#]
+# groups = [
+# { name='A', servers=['server1', 'server2', 'server3'] },
+# { name='B', servers=['server11', 'server12', 'server13'], priority=true },
+# { name='A&B', groups=['A', 'B']},
+# { name='A&B`', groups=['B', 'A'], priority=true },
+# { name='A&B`-regex', groups=['A', 'B'], match='google\.com\.$' },
+# { name='CA', servers=['serverC'], match='\.ca\.$' },
+# { name='DE', tag='de', match='\.de\.$' },
+# { name='Swiss', tag='ch', match='\.swiss\.$;\.ch\.$' },
+# { name='foo', tag='foo', match='porn' },
+# { name='all', servers=['*'] },
+# ]
 
 
 ##++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -117,11 +117,11 @@ listen_addresses = ['127.0.0.1:53']
 ##========================================================
 ## Below is an example of listener_association
 
-#listener_association = [
-#{ position=1, group='A&B' },
-#{ position=2, regex=true },
-#{ position=3 },
-#]
+# listener_association = [
+# { position=1, group='A&B' },
+# { position=2, regex=true },
+# { position=3 },
+# ]
 
 
 ## Switch to a different system user after listening sockets have been created.
@@ -364,7 +364,7 @@ nodata_ttl = 720
   ## READ https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
   [sources.'all-in-one']
   ## It was called 'cache file' once upon a time
-  ## Now it keep the inessential without renaming
+  ## Now it's bearing the inessential without renaming
   cache_file = 'mylist.md'
   minisign_key = '========>COPY PUB KEY HERE<========'
   prefix = ''

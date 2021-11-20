@@ -142,7 +142,7 @@ listen_addresses = ['127.0.0.1:53']
 
 ## SOCKS5/HTTP/HTTPS IP and port of hostname of proxy
 ## leave this section comment off unless you want to use hostname e.g. proxy_uri = 'socks5://hostname:9050'
-## NOTICE: repique nerver use any insecure DNS and sys DNS loops as bootstrap
+## NOTICE: repique never use any insecure DNS and sys DNS loops as bootstrap
 ## NOTICE: port should not be omitted
 
 # proxy_ip = '127.0.0.1:443'

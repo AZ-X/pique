@@ -62,7 +62,8 @@ type Session struct {
 	LastState                              State
 	RawIn, RawOut                          *[]byte
 	Request, Response                      *dns.Msg
-	hash_key                               *[32]byte
+	//hash_key                               *[32]byte
+	hash_key                               uint64
 	ServerName                             *string
 	ExtraServerName                        *string // for debug display of 'Anonymized' sever idx
 	Listener                               uint8

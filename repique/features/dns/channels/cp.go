@@ -9,9 +9,8 @@ A minimal implementation of dynamic sequence routine
 *******************************************************/
 
 import (
-	"crypto"
-	"crypto/sha512"
 	"encoding/binary"
+	"hash/maphash"
 	"math"
 	"os"
 	"regexp"
@@ -209,12 +208,24 @@ func (cp *CP) _init(reloading bool) {
 			copy(anycast[len(ips):], dms)
 			cp.actions = services.CreateRegexActions(rfs, nxs, anycast)
 		}
+		/* for personal use, AMD AES-NI or the Fallback may save a small piece of mem
 		preComputeCacheKey := func(qtype uint16, name string) [sha512.Size256]byte {
 			var tmp [5]byte
 			binary.BigEndian.PutUint16(tmp[0:2], qtype)
 			binary.BigEndian.PutUint16(tmp[2:4], dns.ClassINET)
 			return *Sum512_256s(tmp[:], []byte(name))
 			//h.Sum(sum[:0]) //I don't like keeping writing and summing
+		}
+		*/
+		preComputeCacheKey := func(qtype uint16, name string) uint64 {
+			var tmp [5]byte
+			binary.BigEndian.PutUint16(tmp[0:2], qtype)
+			binary.BigEndian.PutUint16(tmp[2:4], dns.ClassINET)
+			var h maphash.Hash
+			h.SetSeed(seed)
+			h.Write(tmp[:])
+			h.Write([]byte(name))
+			return h.Sum64()
 		}
 		if len(cloaks) != 0 || len(pls) != 0 {
 			cp.clock_cache = conceptions.NewCloakCache()
@@ -309,6 +320,8 @@ func (cp *CP) _init(reloading bool) {
 	}
 }
 
+/* for personal use, AMD AES-NI or the Fallback may save a small piece of mem
+
 const chunk     = 128
 //go:linkname digest crypto/sha512.digest
 type digest struct {
@@ -349,6 +362,23 @@ func computeCacheKey(s *Session) *[sha512.Size256]byte {
 	}
 	return Sum512_256s(tmp[:], []byte(s.Name))
 	//h.Sum(sum[:0]) //I don't like keeping writing and summing
+}
+*/
+
+var seed = maphash.MakeSeed()
+
+func computeCacheKey(s *Session) uint64 {
+	var tmp [5]byte
+	binary.BigEndian.PutUint16(tmp[0:2], s.Qtype)
+	binary.BigEndian.PutUint16(tmp[2:4], s.Qclass)
+	if s.OPTOrigin != nil && s.OPTOrigin.Do() {
+		tmp[4] = 1
+	}
+	var h maphash.Hash
+	h.SetSeed(seed)
+	h.Write(tmp[:])
+	h.Write([]byte(s.Name))
+	return h.Sum64()
 }
 
 func (cp *CP) setIPResponse(s *Session, ip *common.Endpoint) {
@@ -451,7 +481,7 @@ CP1:{
 		s.hash_key = computeCacheKey(s)
 	}
 	if cp.clock_cache != nil {
-		cachedAny, ok := cp.clock_cache.Get(*s.hash_key)
+		cachedAny, ok := cp.clock_cache.Get(s.hash_key)
 		if ok {
 			ce := cachedAny.(clockEntry)
 			if ce.pll != nil && cp.cache != nil {
@@ -481,7 +511,7 @@ CP1:{
 	}
 CP1_cache:
 	if cp.cache != nil {
-		cachedAny, ok := cp.cache.Get(*s.hash_key)
+		cachedAny, ok := cp.cache.Get(s.hash_key)
 		if ok {
 			s.Response = cachedAny.(inCacheResponse).Msg
 			if time.Now().After(cachedAny.(inCacheResponse).expiration) {
@@ -537,7 +567,7 @@ CP2:{
 				0, 0,}, Target:s.Request.Question[0].Name})
 		}
 		if cp.cache != nil {
-			cp.cache.Add(*s.hash_key, inCacheResponse{expiration:time.Now().Add(time.Minute * time.Duration(*cp.CacheTTL)), Msg:s.Response,})
+			cp.cache.Add(s.hash_key, inCacheResponse{expiration:time.Now().Add(time.Minute * time.Duration(*cp.CacheTTL)), Msg:s.Response,})
 		}
 	}
 	s.LastState = CP2_OK

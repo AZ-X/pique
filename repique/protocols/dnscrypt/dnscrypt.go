@@ -170,6 +170,7 @@ RowLoop:
 				if err != nil {
 					dlog.Debug(err)
 					dlog.Noticef("relay [%d] failed for [%s]", i + 1, *resolver.Name)
+					binResult = preResult
 					continue
 				}
 				if preResult != nil && !bytes.Equal(*binResult, *preResult) {
@@ -186,12 +187,11 @@ RowLoop:
 			*relays = working_relays
 		} else {
 			now := time.Now()
-			binResult, err = Query(dialFn, proto, service, &binQuery, upstreamAddr, nil)
+			if binResult, err = Query(dialFn, proto, service, &binQuery, upstreamAddr, nil); err != nil {
+				dlog.Debug(err)
+				continue
+			}
 			rtt = time.Since(now)
-		}
-		if err != nil {
-			dlog.Debug(err)
-			continue
 		}
 		msg := new(dns.Msg)
 		if err = msg.Unpack_TS(*binResult, map[uint16]func()dns.RR{}); err != nil {
@@ -404,13 +404,13 @@ func pad(packet []byte, padSize int) []byte {
 func unpad(packet []byte) ([]byte, error) {
 	for i := len(packet); ; {
 		if i == 0 {
-			return nil, errors.New("Invalid padding (short packet)")
+			return nil, errors.New("invalid padding (short packet)")
 		}
 		i--
 		if packet[i] == 0x80 {
 			return packet[:i], nil
 		} else if packet[i] != 0x00 {
-			return nil, errors.New("Invalid padding (delimiter not found)")
+			return nil, errors.New("invalid padding (delimiter not found)")
 		}
 	}
 }

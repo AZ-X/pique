@@ -4,17 +4,65 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 )
+
+/*
+To dboy:
+
+There is no cross process read/write calling.
+
+Thread Interactions with Regular File Operations
+All of the following functions shall be atomic with respect to each other in the effects specified in POSIX.1-2017 when they operate on regular files or symbolic links:
+chmod()
+chown()
+close()
+creat()
+dup2()
+fchmod()
+fchmodat()
+fchown()
+
+fchownat()
+fcntl()
+fstat()
+fstatat()
+ftruncate()
+lchown()
+link()
+linkat()
+
+lseek()
+lstat()
+open()
+openat()
+pread()
+read()
+readlink()
+readlinkat()
+
+readv()
+pwrite()
+rename()
+renameat()
+stat()
+symlink()
+symlinkat()
+truncate()
+
+unlink()
+unlinkat()
+utime()
+utimensat()
+utimes()
+write()
+writev()
+
+*/
 
 type Severity int32
 
 type globals struct {
-	sync.Mutex
 	logLevel       Severity
 	useSyslog      *bool
 	appName        string
@@ -22,17 +70,11 @@ type globals struct {
 	systemLogger   *systemLogger
 	fileName       *string
 	outFd          *os.File
-	lastMessage    string
-	lastOccurrence time.Time
-	occurrences    uint64
 }
 
 var (
 	_globals = globals{
 		appName:        "-",
-		lastMessage:    "",
-		lastOccurrence: time.Now(),
-		occurrences:    0,
 	}
 )
 
@@ -104,30 +146,8 @@ func Error(message interface{}) {
 }
 
 
-func (s *Severity) get() Severity {
-	return Severity(atomic.LoadInt32((*int32)(s)))
-}
-
-func (s *Severity) set(val Severity) {
-	atomic.StoreInt32((*int32)(s), int32(val))
-}
-
-func (s *Severity) String() string {
-	return strconv.FormatInt(int64(*s), 10)
-}
-
-func (s *Severity) Get() interface{} {
-	return s.get()
-}
-
-func (s *Severity) Set(strVal string) error {
-	val, _ := strconv.Atoi(strVal)
-	s.set(Severity(val))
-	return nil
-}
-
 func Init(appName string, logLevel Severity, syslogFacility string) error {
-	_globals.logLevel.set(logLevel)
+	_globals.logLevel = logLevel
 
 	if len(syslogFacility) == 0 {
 		syslogFacility = "DAEMON"
@@ -136,46 +156,32 @@ func Init(appName string, logLevel Severity, syslogFacility string) error {
 	_globals.syslogFacility = syslogFacility
 	_globals.useSyslog = flag.Bool("syslog", false, "Send logs to the local system logger (Eventlog on Windows, syslog on Unix)")
 	_globals.fileName = flag.String("logfile", "", "Write logs to file")
-	flag.Var(&_globals.logLevel, "loglevel", fmt.Sprintf("Log level (%d-%d)", SeverityDebug, SeverityError))
 	return nil
 }
 
 func LogLevel() Severity {
-	_globals.Lock()
-	logLevel := _globals.logLevel.get()
-	_globals.Unlock()
-	return logLevel
+	return _globals.logLevel
 }
 
 func SetLogLevel(logLevel Severity) {
-	_globals.Lock()
-	_globals.logLevel.set(logLevel)
-	_globals.Unlock()
+	_globals.logLevel = logLevel
 }
 
 func UseSyslog(value bool) {
-	_globals.Lock()
 	_globals.useSyslog = &value
-	_globals.Unlock()
 }
 
 func UseLogFile(fileName string) {
-	_globals.Lock()
 	_globals.fileName = &fileName
-	_globals.Unlock()
 }
 
 func GetFileDescriptor() (*os.File) {
-	_globals.Lock()
 	createFileDescriptor()
-	_globals.Unlock()
 	return _globals.outFd
 }
 
 func SetFileDescriptor(fd *os.File) {
-	_globals.Lock()
 	_globals.outFd = fd
-	_globals.Unlock()
 }
 
 func createFileDescriptor() {
@@ -188,51 +194,31 @@ func createFileDescriptor() {
 }
 
 func logf(severity Severity, format string, args ...interface{}) *string {
-	if severity < _globals.logLevel.get() {
+	if severity < _globals.logLevel {
 		return nil
 	}
 	now := time.Now().Local()
-	year, month, day := now.Date()
+	_, month, day := now.Date()
 	hour, minute, second := now.Clock()
 	message := fmt.Sprintf(format, args...)
-	message = strings.TrimSpace(strings.TrimSuffix(message, "\n"))
-	if len(message) <= 0 {
-		return nil
-	}
-	_globals.Lock()
-	defer _globals.Unlock()
-	if _globals.lastMessage == message {
-		if time.Since(_globals.lastOccurrence) < floodDelay {
-			_globals.occurrences++
-			if _globals.occurrences > floodMinRepeats {
-				return nil
-			}
-		}
-	} else {
-		_globals.occurrences = 0
-		_globals.lastMessage = message
-	}
-	_globals.lastOccurrence = now
 	if *_globals.useSyslog && _globals.systemLogger == nil {
 		systemLogger, err := newSystemLogger(_globals.appName, _globals.syslogFacility)
 		if err == nil {
 			_globals.systemLogger = systemLogger
 		}
 	}
-	createFileDescriptor()
 	if _globals.systemLogger != nil {
 		(*_globals.systemLogger).writeString(severity, message)
 	} else {
-		line := fmt.Sprintf("[%d-%02d-%02d %02d:%02d:%02d] [%s] %s\n", year, int(month), day, hour, minute, second, SeverityName[severity], message)
+		line := fmt.Sprintf("%02d-%02d %02d:%02d:%02d %5s| %s\n", month, day, hour, minute, second, SeverityName[severity], message)
 		if _globals.outFd != nil {
 			_globals.outFd.WriteString(line)
 			_globals.outFd.Sync()
 		} else {
 			os.Stderr.WriteString(line)
 		}
-		return &message
 	}
-	return nil
+	return &message
 }
 
 func log(severity Severity, args interface{}) {

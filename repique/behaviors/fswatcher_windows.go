@@ -17,10 +17,9 @@ https://github.com/howeyc/fsnotify
 https://github.com/fsnotify/fsnotify
 */// in the world by AZ-X. You are lucky to see these messages since https://github.com/golang/go/issues/44593 was public
 
-
 type watcher struct {
 	folder                             string
-	files                              []fs
+	files                              *atomic.Value //[]fs
 	win_handle                         syscall.Handle
 }
 
@@ -108,7 +107,7 @@ func setEvent(hEvent syscall.Handle) bool {
 }
 
 func satisfyCallback(idx int) {
-	for _, fs := range fswatcher[idx].files {
+	for _, fs := range fswatcher[idx].files.Load().([]fs) {
 		lastinfo := fs.lastinfo.Load().(os.FileInfo)
 		if info, err := os.Stat(fs.filepath); err != nil {
 			panic("satisfyCallback failed:" + err.Error())
@@ -169,7 +168,7 @@ func fswatcher_init () {
 				for _, w := range fswatcher {
 					if w.folder == dir {
 						found = true
-						w.files = append(w.files, fs0)
+						w.files.Store(append(w.files.Load().([]fs), fs0))
 						break
 					}
 				}
@@ -178,7 +177,8 @@ func fswatcher_init () {
 					if handle, err := findFirstChangeNotification(path_ptr, false, syscall.FILE_NOTIFY_CHANGE_LAST_WRITE); err != nil {
 						panic("fswatcher_init failed:" + err.Error())
 					} else {
-						w := watcher{folder:dir, files:[]fs{fs0}, win_handle:handle}
+						w := watcher{folder:dir, files:&atomic.Value{}, win_handle:handle}
+						w.files.Store([]fs{fs0})
 						fswatcher = append(fswatcher, w)
 						if !setEvent(reset) {
 							panic("fswatcher_init failed to call SetEvent")

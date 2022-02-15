@@ -50,12 +50,12 @@ type ChannelMgr struct {
 }
 
 func (mgr *ChannelMgr) Init(listeners int) {
-	s := &Starter{}
 	e := &End{}
 	mgr.ListenerCfg = &ListenerCfg{Cfgs:make([]*Config, listeners + 1)}
 	mgr.channels_list = make([]map[string]Channel, listeners + 1)
 	for idx := 0; idx <= listeners; idx++ {
 		mgr.channels_list[idx] = make(map[string]Channel)
+		s := &Starter{}
 		mgr.Register(idx, s)
 		mgr.Register(idx, e)
 	}

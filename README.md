@@ -268,7 +268,7 @@ However you still can get the source code and reuse it by 'git-clone' whatever t
 There are two options to build from the branch special for go1.18:
 
 1. Change the source code by yourself and compile it.
-1. Mod your own compiler just like what I did, than just compile the source code without modification.
+1. Mod your own compiler just like what I did, then just compile the source code without modification.
 
 There won't be any binary release targeting 1.18 because the risk of CoT (compiler of things) is extraordinary thus I am quite sluggard to alter the form of linknames.
 

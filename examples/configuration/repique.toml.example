@@ -1,0 +1,408 @@
+
+##############################################
+#                                            #
+#        Repique's Configuration             #
+#                                            #
+##############################################
+
+## This is an example configuration file.
+## You should adjust it to your needs, and save it always as "repique.toml"
+##
+## Online documentation is not available. This program evolved far from the original dnscrypt proxy (go version)
+## Anybody with a background in computer science and normal IQ can start this program without any 'online documents'
+
+## Remove the leading comment character # of a line to enable an option; lines starting with # are ignored.
+
+##################################
+#͎͎͎͎͎͎͎͎͎͎͎͎͎Notice͎͎͎͎͎͎͎͎͎͎͎͎͎#
+##################################
+## 1. This program only uses TLS1.3 so that tls_cipher_suite was deprecated
+## DNS over HTTPS, and DNS over TLS: Use fixed cipher suite instead of the server preference
+## We use TLS_AES_256_GCM_SHA384 and TLS_CHACHA20_POLY1305_SHA256
+## On non-amd64 CPUs such as some antique MIPS and ARM systems
+## except Cavium Octeon MIPS, ARMv8-A and processors support Cryptographic Hardware Accelerator and
+## Hardware-based PRNG e.g. Hardware Crypto Engine in Qualcomm SoCs
+## Even very old amd64 CPUs running 32-bit operating systems can enable TLS1.3 on the fly.
+
+## 2. Fallback resolvers were deprecated
+## Always exclude UNSAFE 'fallback resolvers' and sys dns loops
+
+##################################
+#         Primary settings       #
+##################################
+
+## List of local addresses and ports to listen to. Can be IPv4 and/or IPv6.
+## Example with both IPv4 and IPv6:
+## listen_addresses = ['127.0.0.1:53', '[::1]:53']
+
+listen_addresses = ['127.0.0.1:53']
+
+## Specify an interface for outbound connections 
+## The value can be an interface name or any valid IP address
+## Fill in the name of interface, if its DHCP is enabled
+## If the inferface statically bound to only one IP address, you can use either of the form
+## If using an inferface name, net probe function will wait until it's available
+
+# network_interface = 'Local Area Connection'
+# network_interface = 'wlan'
+# network_interface = '172.16.0.1'
+
+
+##++++++++++++++++++++++++++++++++++++++++++++++++++++
+## Groups is a powerful concept for repique
+##++++++++++++++++++++++++++++++++++++++++++++++++++++
+## Rules:
+## Field 'name' must represent
+## Field 'servers' can be omitted if Field 'groups' exists
+## Field 'servers' must be omitted if Field 'tag' exists
+## Field 'tag' must be omitted if Field 'servers' exists
+## Field 'groups' can be omitted if Field 'servers' exists
+## Field 'priority' can be omitted
+## Field 'match' can be omitted
+##========================================================
+## Definition:
+## Field 'name' is a given identity for reference 
+## Field 'servers' is a collection which value should exist in server_names; special * means all
+## Field 'tag' is an attribute which value should exist for each entity of server_names
+## --tag is valid only if you are using https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
+## --tag is one of values of an instance of tags defined for StampProtoTypeDoTEx, StampProtoTypeDoHEx
+## --or StampProtoTypeDNSCryptEx as extended type of DoT,DoH,DNSCrypt stamps
+## Field 'groups' refers to previous defined field 'name'
+## Field 'priority' is in order of selection base on TCP ACK/ICMP PING result;
+## Field 'priority' will be worked with future version as how choosing a preferred server on throttle of tryouts
+## --for group 'B' 'server11'>'server12'>'server13'
+## --for group 'A&B`' 'server11'>'server12'>'server13'>'server1'>'server2'>'server3'
+## Field 'match' is an instance of regular expression to match any domain name, thus can be multi-part separated by semicolon
+## --which could be used as a selection from all groups
+## --if no group defined, server_names is a default group which priority=false and match='*'
+##========================================================
+## Below is an example of groups
+
+# groups = [
+# { name='A', servers=['server1', 'server2', 'server3'] },
+# { name='B', servers=['server11', 'server12', 'server13'], priority=true },
+# { name='A&B', groups=['A', 'B']},
+# { name='A&B`', groups=['B', 'A'], priority=true },
+# { name='A&B`-regex', groups=['A', 'B'], match='google\.com\.$' },
+# { name='CA', servers=['serverC'], match='\.ca\.$' },
+# { name='DE', tag='de', match='\.de\.$' },
+# { name='Swiss', tag='ch', match='\.swiss\.$;\.ch\.$' },
+# { name='foo', tag='foo', match='porn' },
+# { name='all', servers=['*'] },
+# ]
+
+
+##++++++++++++++++++++++++++++++++++++++++++++++++++++
+## Group and listener association                    +
+##++++++++++++++++++++++++++++++++++++++++++++++++++++
+## Rules:
+## Field 'position' must represent
+## Field 'group' must be omitted if Field 'regex' exists
+## Field 'regex' must be omitted if Field 'group' exists
+##========================================================
+## Definition:
+## Field 'position' is an integer refering to the order of items in listen_addresses
+## --e.g. listen_addresses = ['127.0.0.1:69', '127.0.0.1:70']
+## --position=1 --> 127.0.0.1:69
+## --position=2 --> 127.0.0.1:70
+## Field 'group' refers to the name field of groups
+## Field 'regex' is a boolean refering to match field of groups
+## --e.g. { position=2, regex=true }
+## --listen address 127.0.0.1 port 70
+## --5 matches found name='A&B`-regex' and name='CA' ...
+## --this listener will serve all the domain names successfully matched within servers from that group
+## --if groups does NOT contain any item has match field and listener_association has regex=true
+## --the default group server_names will be used which has a default match '*' (all domain name)
+## { position=3 } is equal to { position=3 , group is server_names }
+##========================================================
+## Below is an example of listener_association
+
+# listener_association = [
+# { position=1, group='A&B' },
+# { position=2, regex=true },
+# { position=3 },
+# ]
+
+
+## Switch to a different system user after listening sockets have been created.
+## Note (1): this feature is currently unsupported on Windows.
+## Note (2): this feature is not compatible with systemd socket activation.
+## Note (3): when using -pidfile, the PID file directory must be writable by the new user
+
+# user_name = 'nobody'
+
+
+## SOCKS5/HTTP/HTTPS proxy
+## NOTICE: proxies from environment are ignored
+## NOTICE: port should not be omitted
+
+# proxy_uri = 'socks5://127.0.0.1:9050'
+# proxy_uri = 'http://127.0.0.1:8888'
+# proxy_uri = 'https://127.0.0.1:443'
+
+## SOCKS5/HTTP/HTTPS IP and port of hostname of proxy
+## leave this section comment off unless you want to use hostname e.g. proxy_uri = 'socks5://hostname:9050'
+## NOTICE: repique never use any insecure DNS and sys DNS loops as bootstrap
+## NOTICE: port should not be omitted
+
+# proxy_ip = '127.0.0.1:443'
+# proxy_ip = '[fe80::1%eth0]:443'
+
+## Log level (0-6, default: 2 - 0 is very verbose, 6 only contains fatal errors)
+
+# log_level = 0
+
+## log file for the application
+
+# log_file = 'repique.log'
+
+## Use the system logger (syslog on Unix)
+
+# use_syslog = true
+
+## Maximum time (in seconds) to wait for network connectivity before
+## initializing the proxy.
+## Useful if the proxy is automatically started at boot, and network
+## connectivity is not guaranteed to be immediately available.
+## Use 0 to not test for connectivity at all (not recommended),
+## and -1 to wait as much as possible.
+
+netprobe_timeout = 60
+
+## Address and port to try initializing a connection to, just to check
+## if the network is up. It can be any address and any port, even if
+## there is nothing answering these on the other side. Just don't use
+## a local address, as the goal is to check for Internet connectivity.
+## On Windows, a datagram with a single, nul byte will be sent, only
+## when the system starts.
+## On other operating systems, the connection will be initialized
+## but nothing will be sent at all.
+
+netprobe_address = '9.9.9.9:53'
+
+
+#######################################################################
+#        Nodes Configuration (upstreams)                              #
+#######################################################################
+
+[dns_nodes]
+
+## The program won't filter on servers because of your own selection
+## The only thing you might want to do is enable/disable some in a large set temporarily
+## READ https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
+
+## Filter to the stamps file a.k.a 'cache_file' below, defined in sources section
+# enabled_server_names = ['google', 'ev-va']
+# disabled_server_names = ['google', 'ev-va']
+
+## Connect to dnscrypt nodes over TCP
+## This can be useful if you need to prepare dnssec queries via dnscrypt protocols.
+## Otherwise, leave this to `false`, as it doesn't improve your privacy and increase latency time
+
+# dnscrypt_use_tcp = true
+
+## Simultaneous outgoing dns query directly by downstreams
+
+max_concurrent_upstreams = 250
+
+## General timed out to DNS lookup, in seconds.
+
+# timeout = 3
+
+## Keep alive period of communication protocol on a TCP connection, in seconds
+
+# keepalive = 15
+
+## To fetch materials or determine connectivity to the upstreams; 0>=no_interval
+
+# interval = 60
+
+## DoH/DoT: Disable TLS session tickets
+
+tls_disable_session_tickets = true
+
+## mark all nodes unavailable on startup then determine connectivity for each
+
+#default_unavailable = true
+
+## Exclusive feature of repique: ***export persistence credential file***
+
+# credentialpath = "materials.txt"
+
+## Exclusive feature of repique: ***load persistence credential file when startup***
+## Skip seeking public key(dnscrypt) if valid till now
+## Skip boosting IP addresses of your dynamic hostname/domain name
+
+# import_credential = true
+
+## Allow bootstrap; no ip address of DoH/DoT nodes
+## By default, the program will panic if no ip address found for DoH/DoT stamps unless this option is switched on
+## At least one DNS-BOOST-GROUP tag must be defined on no-bootstrap nodes
+## A bootstrap node also can be tagged with DNS-BOOST-GROUP (rare case of single node fail-over)
+
+# bootstrap = true
+
+## Keep fetching without interval until one(n=1) or two(n>1) nodes are available
+
+# at_least_one_or_two = true
+
+## Lock free; useful at low hardware conditions
+
+# no_metrics = true
+
+
+#######################################################################
+#        Per-channel(refers to listen_addresses) Configuration        #
+#######################################################################
+
+[channels_sections]
+
+## channels_sections.'main' is a shared configuration for all listen addresses, which will share all the mappings, caches and loggers 
+## channels_sections.'[channel name]' is for individual listen address e.g.  [channels_sections.'127.0.0.1:53']
+## The program will find [channel name] for each configured listen_addresses firstly. If not found, a section named 'main' must exist
+
+ [channels_sections.'main']
+
+## Additional data to attach to outgoing queries.
+## These strings will be added as TXT records to queries.
+## Do not use, except on servers explicitly asking for extra data
+## to be present.
+
+# query_meta = ["key1:value1", "key2:value2", "key3:value3"]
+
+## Response for blocked queries.  Options are `nxdomain`, `refused`(default)
+## nxdomain not work with dnssec, you should mod any downstream stub before use
+
+blocked_query_response = 'nxdomain'
+
+
+## Immediately respond to IPv6-related queries with an empty response
+
+sinkhole_ipv6 = true
+
+
+## Monitor changes of contents of black_cloaking_routine after program start, reload and effect them on the fly; be careful to use this feature, any mistake of changes (including deleting of that file) will panic the running program.
+## This feature won't affect cache of things. It's the most powerful implementation of fields.
+## To keep scalar binary size of the program, this configuration is limited to Windows platform.
+
+# windows_filemon = true
+
+
+## Path to the file of all possible rules against QNAME AND CNAME (For details, Read "example_black_cloaking.txt" carefully)
+
+# black_cloaking_routine = 'routine.txt'
+
+
+## Enable a DNS cache to reduce latency and outgoing traffic if define a value for cache_size
+## Cache size (will be adjusted as power of 2, see debug info; e.g. cache_size = 69 => 64 )
+## NOTICE: Cache will hold objects in memory
+
+cache_size = 128
+
+
+## TTL used when serving ip address entries in black_cloaking_routine (in minutes)
+
+# cloak_ttl = 60
+
+
+## TTL for nxdomain or refused entries in black_cloaking_routine (in minutes)
+
+black_ttl = 120
+
+
+## TTL for cached entries (in minutes)
+
+cache_ttl = 720
+
+
+## TTL for put IPv6 queries into sinkhole when sinkhole_ipv6 is true (in minutes)
+
+nodata_ttl = 720
+
+
+## Log client queries to a file
+
+[channels_sections.'main'.query_log]
+
+  ## Path to the query log file (absolute, or relative to the same directory as the config file)
+  ## On non-Windows systems, can be /dev/stdout to log to the standard output (also set log_files_max_size to 0)
+
+  # file = 'query.log'
+
+
+  ## Query log format (currently supported: tsv and ltsv)
+
+  format = 'tsv'
+
+
+  ## Do not log these query types, to reduce verbosity. Keep empty to log everything.
+
+  # ignored_qtypes = ['DNSKEY', 'NS']
+
+
+########################################
+#        Upstream Servers              #
+########################################
+
+## Local lists of available servers
+## Multiple sources can be used simultaneously, but every source
+## requires a dedicated cache file.
+##
+## Important:
+## You Must KNOW the fact that you can use a single .MD file as source for this program
+## This program won't get sources from 'the sites' periodically. You must do it by yourself 
+## 
+##
+## A prefix can be prepended to server names in order to
+## avoid collisions if different sources share the same for
+## different servers. In that case, names listed in `server_names`
+## must include the prefixes.
+
+[sources]
+
+  ## An example of all in one source cooked by yourself 
+  ## READ https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
+  [sources.'all-in-one']
+  ## It was called 'cache file' once upon a time
+  ## Now it's bearing the inessential without renaming
+  cache_file = 'mylist.md'
+  minisign_key = '========>COPY PUB KEY HERE<========'
+  prefix = ''
+
+## Offline mode - Do not use any upstreams.
+## The proxy will remain fully functional to respond to queries within the scope of black_cloaking_routine
+## How to use "offline mode"???
+## young age can say remove/comments all sources and groups related
+
+
+################################
+#        Anonymized DNS        #
+################################
+
+[anonymized_dns]
+
+## Routes are indirect ways to reach DNSCrypt servers.
+##
+## A route maps a server name ("server_name") to one or more relays that will be
+## used to connect to that server.
+##
+## Carefully choose relays and servers so that they are run by different entities.
+## rapin: Carefully choose relays and servers because all these protocols
+## are drawing partial cleartext to attract Mad Men in middle
+##
+## "server_name" can also be set to "*" to define a default route, but this is not
+## recommended. If you do so, keep "server_names" short and distinct from relays.
+##
+## rapin: "via" can also be set to "*" to define a default route, and this is recommended 
+## if you are using https://github.com/AZ-X/WPF-GO-dnscrypt-proxy-md
+##
+## and Most Important THIS PROGRAM won't offer you a hope to a mathematicasis candidate every startup
+## instead IT liberates|exposes you from these unreliable 'via' against a full ring implement
+
+# routes = [
+#    { server_name='example-server-1', via=['anon-example-1', 'anon-example-2'] },
+# ]
+
+ routes = [
+   { server_name='*', via=['*'] },
+]

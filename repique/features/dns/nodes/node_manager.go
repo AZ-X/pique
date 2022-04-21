@@ -7,6 +7,7 @@ import (
 	crypto_tls "crypto/tls"
 	"encoding/base64"
 	"math/big"
+	"os"
 	"runtime/debug"
 	"strings"
 	"sync/atomic"
@@ -519,6 +520,7 @@ func (mgr *NodesMgr) boost(n *node) interface{} {
 		bs_ips.ips = make(map[[16]byte]interface{})
 	}
 	var ttl *uint32
+	const min_ttl_boost uint32 = 60 * 60 // an hour
 	var endpoints []*common.Endpoint
 	for i := len(s.Response.Answer); i > 0; i-- {
 		rr := s.Response.Answer[i-1]
@@ -533,6 +535,9 @@ func (mgr *NodesMgr) boost(n *node) interface{} {
 			}
 			if ttl == nil || *ttl < rr.Header().Ttl {
 				ttl = &rr.Header().Ttl
+			}
+			if *ttl < min_ttl_boost {
+				*ttl = min_ttl_boost
 			}
 			var key [16]byte
 			copy(key[:], ip)
@@ -596,17 +601,19 @@ func (mgr *NodesMgr) fetchmaterials(opts  ...*string) {
 		return
 	}
 	defer mgr.EndExclusive()
-	for idx, node := range updates {
+	var dirty bool
+	for _, node := range updates {
 		if mgr.materials != nil {
 			if mgr.marshalfrom(node) {
-				updates = append(updates[:idx], updates[idx+1:]...)
 				dlog.Debugf("unchanged material of %s", *node.name())
+			} else {
+				dirty = true
 			}
 		}
 		dlog.Debugf("%s has been boosted", *node.name())
 		node.status&^=status_outdated|status_bootstrapping
 	}
-	if len(updates) > 0 {
+	if dirty {
 		if mgr.materials != nil {
 			mgr.savepoint()
 		}
@@ -805,9 +812,25 @@ Go:
 	var err error
 	s.RawIn, err = service.exchange(s.RawOut, cbs...)
 	if err != nil {
-		if neterr, ok := err.(net.Error); ok && neterr.Timeout(){
-			dlog.Debugf("%v [%s]", err, *service.name())
-			goto Timeout
+		switch err := err.(type) {
+		case interface {Timeout() bool}:
+			if err.Timeout() {
+				dlog.Debugf("%v [%s]", err, *service.name())
+				goto Timeout
+			}
+		}
+		switch err := err.(type) {
+		case interface {Unwrap() error}:
+			switch interr := err.Unwrap().(type) {
+				case *os.SyscallError:
+				if interr.Syscall == "bind" || 
+				(interr.Syscall == "connect" && 
+				interr.Err != nil && 
+				interr.Err.Error() == "no route to host") {
+					dlog.Warnf("%v [%s]", err, *service.name())
+					goto IntFault
+				}
+			}
 		}
 		dlog.Errorf("%v [%s]", err, *service.name())
 		goto SvrFault

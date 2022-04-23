@@ -819,9 +819,11 @@ Go:
 				goto Timeout
 			}
 		}
-		switch err := err.(type) {
+		errd := err
+Unwrap2SyscallError:
+		switch errd := errd.(type) {
 		case interface {Unwrap() error}:
-			switch interr := err.Unwrap().(type) {
+			switch interr := errd.Unwrap().(type) {
 				case *os.SyscallError:
 				if interr.Syscall == "bind" || 
 				(interr.Syscall == "connect" && 
@@ -830,6 +832,9 @@ Go:
 					dlog.Warnf("%v [%s]", err, *service.name())
 					goto IntFault
 				}
+				case interface {Unwrap() error}:
+					errd = interr
+					goto Unwrap2SyscallError
 			}
 		}
 		dlog.Errorf("%v [%s]", err, *service.name())

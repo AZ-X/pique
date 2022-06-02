@@ -7,6 +7,8 @@ import (
 	crypto_tls "crypto/tls"
 	"encoding/base64"
 	"math/big"
+	"os"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync/atomic"
@@ -466,8 +468,9 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 				lives, total := mgr.available()
 				if least2 && lives <= 1 && total != lives {
 						delay = time.Duration(total - lives) *  time.Second
+				} else {
+					debug.FreeOSMemory()
 				}
-				debug.FreeOSMemory()
 				mgr.addevent(nil, uint32(delay.Seconds()), f)
 			}
 			f()
@@ -519,6 +522,7 @@ func (mgr *NodesMgr) boost(n *node) interface{} {
 		bs_ips.ips = make(map[[16]byte]interface{})
 	}
 	var ttl *uint32
+	const min_ttl_boost uint32 = 60 * 60 // an hour
 	var endpoints []*common.Endpoint
 	for i := len(s.Response.Answer); i > 0; i-- {
 		rr := s.Response.Answer[i-1]
@@ -533,6 +537,9 @@ func (mgr *NodesMgr) boost(n *node) interface{} {
 			}
 			if ttl == nil || *ttl < rr.Header().Ttl {
 				ttl = &rr.Header().Ttl
+			}
+			if *ttl < min_ttl_boost {
+				*ttl = min_ttl_boost
 			}
 			var key [16]byte
 			copy(key[:], ip)
@@ -596,17 +603,19 @@ func (mgr *NodesMgr) fetchmaterials(opts  ...*string) {
 		return
 	}
 	defer mgr.EndExclusive()
-	for idx, node := range updates {
+	var dirty bool
+	for _, node := range updates {
 		if mgr.materials != nil {
 			if mgr.marshalfrom(node) {
-				updates = append(updates[:idx], updates[idx+1:]...)
 				dlog.Debugf("unchanged material of %s", *node.name())
+			} else {
+				dirty = true
 			}
 		}
 		dlog.Debugf("%s has been boosted", *node.name())
 		node.status&^=status_outdated|status_bootstrapping
 	}
-	if len(updates) > 0 {
+	if dirty {
 		if mgr.materials != nil {
 			mgr.savepoint()
 		}
@@ -779,7 +788,7 @@ Timeout:
 Go:
 	switch mgr.Acquire(false) {
 		case conceptions.ErrSemaBoundary:
-			dlog.Warn("too many remote resolving")
+			dlog.Warnf("too many remote resolving; goroutines:%d", runtime.NumGoroutine())
 			goto IntFault
 		case conceptions.ErrSemaExcEntry:
 			dlog.Warn("mute remote resolvers while refreshing")
@@ -791,7 +800,7 @@ Go:
 		goto IntFault
 	}
 	s.ServerName = service.name()
-	dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms", s.ID, s.Name, *s.ServerName, int(mgr.RTT.Avg(*s.ServerName)))
+	dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms | %d", s.ID, s.Name, *s.ServerName, int(mgr.RTT.Avg(*s.ServerName)), runtime.NumGoroutine())
 
 	timer := time.Now()
 	if service.proto() == DNSCrypt {
@@ -804,9 +813,32 @@ Go:
 	var err error
 	s.RawIn, err = service.exchange(s.RawOut, cbs...)
 	if err != nil {
-		if neterr, ok := err.(net.Error); ok && neterr.Timeout(){
-			dlog.Debugf("%v [%s]", err, *service.name())
-			goto Timeout
+		switch err := err.(type) {
+		case interface {Timeout() bool}:
+			if err.Timeout() {
+				dlog.Debugf("%v [%s]", err, *service.name())
+				goto Timeout
+			}
+		}
+		errd := err
+Unwrap2SyscallError:
+		switch errt := errd.(type) {
+		case interface {Unwrap() error}:
+			switch interr := errt.Unwrap().(type) {
+				case *os.SyscallError:
+				if interr.Syscall == "bind" || 
+				(interr.Syscall == "connect" && 
+				interr.Err != nil && 
+				interr.Err.Error() == "no route to host") {
+					dlog.Warnf("%v [%s]", err, *service.name())
+					goto IntFault
+				}
+				default:
+					if errd != interr {
+						errd = interr
+						goto Unwrap2SyscallError
+					}
+			}
 		}
 		dlog.Errorf("%v [%s]", err, *service.name())
 		goto SvrFault

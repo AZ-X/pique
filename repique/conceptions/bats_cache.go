@@ -15,7 +15,6 @@ type Cache struct {
 	*sync.RWMutex
 	entries map[interface{}]*entry
 	push chan interface{}
-	push2 chan interface{}
 	delete chan interface{}
 	set chan *struct{K interface{}; V *entry}
 	full chan bool
@@ -50,7 +49,6 @@ func NewCache(size int) *Cache {
 	cache.entries = make(map[interface{}]*entry, size)
 	cache.keys.headTail = cache.keys.pack(1<<dequeueBits-1, 1<<dequeueBits-1)
 	cache.push = make(chan interface{}, common.Min(size, bufsize))
-	cache.push2 = make(chan interface{}, common.Min(size, bufsize))
 	cache.delete = make(chan interface{}, common.Min(size, bufsize))
 	cache.set = make(chan *struct{K interface{}; V *entry}, common.Min(size, bufsize))
 	cache.full = make(chan bool, common.Min(size, bufsize))
@@ -61,8 +59,6 @@ func NewCache(size int) *Cache {
 			case key := <-cache.push:
 			full := !cache.keys.pushHead(key)
 			cache.full <- full
-			case key := <-cache.push2:
-			cache.keys.pushHead(key)
 			case key := <-cache.delete:
 			cache.Lock()
 			delete(cache.entries, key)
@@ -115,17 +111,20 @@ func (m *Cache) Add(key, value interface{}) {
 		return
 	}
 	m.RUnlock()
-	m.push <- key
-	if full := <- m.full; full {
+	for {
+		m.push <- key
+		if full := <- m.full; !full {
+			break
+		}
 		if evictee_key, ok := m.keys.popTail(); ok {
-			m.push2 <- key
 			m.RLock()
-			if evictee, ok := m.entries[evictee_key]; ok {
-				m.RUnlock()
-				m.delete <- evictee_key
-				evictee.delete()
-			} else {
-				m.RUnlock()
+			for {
+				if evictee, ok := m.entries[evictee_key]; ok {
+					m.RUnlock()
+					m.delete <- evictee_key
+					evictee.delete()
+					break
+				}
 			}
 		}
 	}

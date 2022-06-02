@@ -109,10 +109,10 @@ func NewZTransport(alive time.Duration, timeout time.Duration) (t *http.Transpor
 	t.DialTLSContext = func(ctx context.Context, netw, addr string) (net.Conn, error) {
 		name, c, err := ctx.Value(nil).(common.TLSContextDial)(ctx, netw, addr)
 		if err != nil {
-				if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
-					dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
-				}
-				return nil, err
+			if neterr, ok := err.(net.Error); !ok || !neterr.Timeout() {
+				dlog.Debugf("DialTLSContext encountered: [%s][%v]", *name, err)
+			}
+			return nil, err
 		}
 		return c, nil // in case dialConn do Handshake there
 	}

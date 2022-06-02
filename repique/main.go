@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/jedisct1/dlog"
-	"github.com/AZ-X/pique/repique/behaviors"
 	"github.com/AZ-X/pique/repique/features/dns"
 	"github.com/AZ-X/pique/repique/common"
 	"github.com/AZ-X/pique/repique/configuration"
@@ -72,18 +71,11 @@ func main() {
 	if err := configuration.ConfigLoad(proxy, flags); err != nil {
 		panic(err)
 	}
-	pid, err := behaviors.NewPidFile()
-	if err != nil {
-		dlog.Error(err)
-	}
 	sig := make(chan os.Signal, 10)
 	done := make(chan bool, 1)
 	signal.Notify(sig, syscall.SIGABRT, syscall.SIGALRM, syscall.SIGHUP, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
 	go func() {
 		<-sig
-		if pid != nil {
-			pid.Remove()
-		}
 		done <- true
 		os.Exit(1)
 	}()

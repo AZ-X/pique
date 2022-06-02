@@ -34,7 +34,7 @@ func (r *Remote) Init(cfg *Config, f FChannelByName) {
 
 func (r *Remote) Handle(s *Session) Channel {
 	r.f(Channel_Stub).Handle(s)
-	if r.cache_enabled && s.LastState != R_OK {
+	if r.cache_enabled && s.LastState != R_OK && s.LastError != Error_Stub_Internal {
 		if s.rep_job == nil {
 			s.rep_job = &sync.Once{}
 		}

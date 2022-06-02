@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"math/big"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync/atomic"
@@ -467,8 +468,9 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 				lives, total := mgr.available()
 				if least2 && lives <= 1 && total != lives {
 						delay = time.Duration(total - lives) *  time.Second
+				} else {
+					debug.FreeOSMemory()
 				}
-				debug.FreeOSMemory()
 				mgr.addevent(nil, uint32(delay.Seconds()), f)
 			}
 			f()
@@ -787,7 +789,7 @@ Timeout:
 Go:
 	switch mgr.Acquire(false) {
 		case conceptions.ErrSemaBoundary:
-			dlog.Warn("too many remote resolving")
+			dlog.Warnf("too many remote resolving; goroutines:%d", runtime.NumGoroutine())
 			goto IntFault
 		case conceptions.ErrSemaExcEntry:
 			dlog.Warn("mute remote resolvers while refreshing")
@@ -799,7 +801,7 @@ Go:
 		goto IntFault
 	}
 	s.ServerName = service.name()
-	dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms", s.ID, s.Name, *s.ServerName, int(mgr.RTT.Avg(*s.ServerName)))
+	dlog.Debugf("ID: %5d I: |%-25s| [%s] %dms | %d", s.ID, s.Name, *s.ServerName, int(mgr.RTT.Avg(*s.ServerName)), runtime.NumGoroutine())
 
 	timer := time.Now()
 	if service.proto() == DNSCrypt {
@@ -833,8 +835,10 @@ Unwrap2SyscallError:
 					goto IntFault
 				}
 				default:
-				errd = interr
-				goto Unwrap2SyscallError
+					if errd != interr {
+						errd = interr
+						goto Unwrap2SyscallError
+					}
 			}
 		}
 		dlog.Errorf("%v [%s]", err, *service.name())

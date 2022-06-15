@@ -1,24 +1,19 @@
-// Copyright 2020 The Go & AZ-X Authors. All rights reserved.
+// Copyright 2022 The Go & AZ-X Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the go LICENSE file.
 
 package conceptions
 
 import (
-	"sync"
+	"sync/atomic"
 	"unsafe"
 	
 	"github.com/AZ-X/pique/repique/common"
 )
 
 type Cache struct {
-	*sync.RWMutex
-	entries map[interface{}]*entry
-	push chan interface{}
-	delete chan interface{}
+	snapshot *atomic.Value //map[interface{}]*entry
 	set chan *struct{K interface{}; V *entry}
-	full chan bool
-	keys *poolDequeue
 }
 
 type CloakCache struct {
@@ -33,43 +28,74 @@ func newEntry(i interface{}) *entry {
 	return &entry{p: unsafe.Pointer(&i)}
 }
 
-type poolDequeue struct {
-	headTail uint64
-	vals []eface
-}
-const dequeueBits = 32
-
-type eface struct {
-	typ, val unsafe.Pointer
-}
-
 const bufsize = 8
 func NewCache(size int) *Cache {
-	cache := &Cache{keys:&poolDequeue{vals: make([]eface, size),},RWMutex:&sync.RWMutex{},}
-	cache.entries = make(map[interface{}]*entry, size)
-	cache.keys.headTail = cache.keys.pack(1<<dequeueBits-1, 1<<dequeueBits-1)
-	cache.push = make(chan interface{}, common.Min(size, bufsize))
-	cache.delete = make(chan interface{}, common.Min(size, bufsize))
+	cache := &Cache{snapshot: &atomic.Value{},}
 	cache.set = make(chan *struct{K interface{}; V *entry}, common.Min(size, bufsize))
-	cache.full = make(chan bool, common.Min(size, bufsize))
+	cache.snapshot.Store(map[interface{}]*entry{})
 
-	go func() {
+	go func(window int) {
+		type (
+			revolver struct {
+				entries []*entry
+				pos int
+				reload func(interface{}) interface{}
+			}
+		)
+		var fresh map[interface{}]*entry
+		var r *revolver
+		r = &revolver{make([]*entry, window), 0,
+			func (val interface{}) (evictee interface{}) {
+				defer func () {r.pos = (r.pos + 1) % window}()
+				if e := r.entries[r.pos]; e != nil {
+					if v, ok := e.load(); ok {
+						defer func() { evictee = v }()
+					}
+					if e.tryStore(&val) {
+						return nil
+					}
+				}
+				r.entries[r.pos] = newEntry(val)
+				return nil
+			},
+		}
+
 		for {
 			select {
-			case key := <-cache.push:
-			full := !cache.keys.pushHead(key)
-			cache.full <- full
-			case key := <-cache.delete:
-			cache.Lock()
-			delete(cache.entries, key)
-			cache.Unlock()
 			case kv := <-cache.set:
-			cache.Lock()
-			cache.entries[kv.K] = kv.V
-			cache.Unlock()
+			func() {
+				value, _ := kv.V.load()
+				if fresh == nil {
+					fresh = make(map[interface{}]*entry)
+					snapshot := cache.snapshot.Load().(map[interface{}]*entry)
+					
+					if e, ok := snapshot[kv.K]; ok && e.tryStore(&value) {
+						return
+					}
+					for k, v := range snapshot {
+						fresh[k] = v
+					}
+				}
+				defer func() {
+					if(len(cache.set) == 0) {
+						cache.snapshot.Store(fresh)
+						fresh = nil
+					}
+				}()
+				if e, ok := fresh[kv.K]; ok && e.tryStore(&value) {
+					return
+				}
+				fresh[kv.K] = kv.V
+				if k := r.reload(kv.K); k != nil {
+					if e, ok := fresh[k]; ok {
+						e.delete()
+						delete(fresh, k)
+					}
+				}
+			}()
 			}
 		}
-	}()
+	}(size)
 	return cache
 }
 
@@ -90,42 +116,20 @@ func (m *CloakCache) Add(key, value interface{}) {
 	m.entries[key] = newEntry(value)
 }
 
-func (m *Cache) Size() int {
-	return len(m.entries)
-}
-
 func (m *Cache) Get(key interface{}) (value interface{}, ok bool) {
-	m.RLock()
-	e, ok := m.entries[key]
-	m.RUnlock()
-	if !ok {
-		return nil, false
+	snapshot := m.snapshot.Load().(map[interface{}]*entry)
+	if snapshot != nil {
+		e, ok := snapshot[key]
+		if ok { return e.load() }
 	}
-	return e.load()
+	return nil, false
 }
 
 func (m *Cache) Add(key, value interface{}) {
-	m.RLock()
-	if e, ok := m.entries[key]; ok && e.tryStore(&value) {
-		m.RUnlock()
-		return
-	}
-	m.RUnlock()
-	for {
-		m.push <- key
-		if full := <- m.full; !full {
-			break
-		}
-		if evictee_key, ok := m.keys.popTail(); ok {
-			m.RLock()
-			for {
-				if evictee, ok := m.entries[evictee_key]; ok {
-					m.RUnlock()
-					m.delete <- evictee_key
-					evictee.delete()
-					break
-				}
-			}
+	snapshot := m.snapshot.Load().(map[interface{}]*entry)
+	if snapshot != nil {
+		if e, ok := snapshot[key]; ok && e.tryStore(&value) {
+			return
 		}
 	}
 	m.set <- &struct{K interface{}; V *entry}{K:key,V:newEntry(value)}
@@ -140,11 +144,11 @@ func (e *entry) tryStore(i *interface{}) bool
 //go:linkname (*entry).delete sync.(*entry).delete
 func (e *entry) delete() (value interface{}, ok bool)
 
-//go:linkname (*poolDequeue).pushHead sync.(*poolDequeue).pushHead
-func (d *poolDequeue) pushHead(val interface{}) bool
-
-//go:linkname (*poolDequeue).popTail sync.(*poolDequeue).popTail
-func (d *poolDequeue) popTail() (interface{}, bool)
-
-//go:linkname (*poolDequeue).pack sync.(*poolDequeue).pack
-func (d *poolDequeue) pack(head, tail uint32) uint64
+////go:linkname (*poolDequeue).pushHead sync.(*poolDequeue).pushHead
+//func (d *poolDequeue) pushHead(val interface{}) bool
+//
+////go:linkname (*poolDequeue).popTail sync.(*poolDequeue).popTail
+//func (d *poolDequeue) popTail() (interface{}, bool)
+//
+////go:linkname (*poolDequeue).pack sync.(*poolDequeue).pack
+//func (d *poolDequeue) pack(head, tail uint32) uint64

@@ -59,18 +59,20 @@ func NewCache(size int) *Cache {
 				return nil
 			},
 		}
-
 		for {
 			select {
 			case kv := <-cache.set:
 			func() {
 				value, _ := kv.V.load()
 				if fresh == nil {
-					fresh = make(map[interface{}]*entry)
 					snapshot := cache.snapshot.Load().(map[interface{}]*entry)
-					
 					if e, ok := snapshot[kv.K]; ok && e.tryStore(&value) {
 						return
+					}
+					if len(snapshot) == len(r.entries) {
+						fresh = make(map[interface{}]*entry, len(r.entries))
+					} else {
+						fresh = make(map[interface{}]*entry)
 					}
 					for k, v := range snapshot {
 						fresh[k] = v
@@ -82,16 +84,20 @@ func NewCache(size int) *Cache {
 						fresh = nil
 					}
 				}()
-				if e, ok := fresh[kv.K]; ok && e.tryStore(&value) {
+				found := false
+				if e, found := fresh[kv.K]; found && e.tryStore(&value) {
 					return
 				}
-				fresh[kv.K] = kv.V
 				if k := r.reload(kv.K); k != nil {
 					if e, ok := fresh[k]; ok {
 						e.delete()
 						delete(fresh, k)
 					}
 				}
+				if !found && len(fresh) == len(r.entries) {
+					panic("key not found in cache")
+				}
+				fresh[kv.K] = kv.V
 			}()
 			}
 		}

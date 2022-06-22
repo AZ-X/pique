@@ -21,18 +21,34 @@ type dnscryptnode struct {
 	relayaddr               *atomic.Value //*EPRing
 	dailFn                  common.DialFn
 	bs_relays               []*common.Endpoint
+	randomSvrPK             bool
 }
 
+const regulation_cycle = 5 * time.Second
 func (n *dnscryptnode) boost(o *node) interface{} {
-	if o.status&status_outdated == status_outdated || n.GetDefaultExpiration().Before(time.Now()) {
-		relays := n.bs_relays
-		if _, err := dnscrypt.RetrieveServicesInfo(false, n.Resolver, n.dailFn, n.Network, n.ipaddr, &relays); err == nil {
-			n.bs2epring(relays)
-			expired := n.GetDefaultExpiration()
-			return &expired
-		} else {
-			dlog.Debugf("dnscrypt boost failed, %v", err)
+	relays := n.bs_relays
+	if _, err := dnscrypt.RetrieveServicesInfo(false, n.Resolver, n.dailFn, n.Network, n.ipaddr, &relays); err == nil {
+		n.bs2epring(relays)
+		if n.randomSvrPK {
+			if s := n.GetDefaultServices(); len(s) > 1 {
+				expired := time.Unix(int64(s[0].DtFrom), 0).Add(time.Duration(s[1].Regular) * time.Hour).Add(regulation_cycle)
+				return &expired
+			}
 		}
+		expired := n.GetDefaultExpiration()
+		return &expired
+	} else {
+		if n.randomSvrPK && time.Now().Before(n.GetDefaultExpiration()) {
+			if s := n.GetDefaultServices(); len(s) > 1 {
+				expired := time.Unix(int64(s[0].DtFrom), 0).Add(time.Duration(s[1].Regular) * time.Hour)
+				if time.Since(expired) > time.Minute {
+					dlog.Debugf("abort dnscrypt early regulation boost")
+					return n.GetDefaultExpiration()
+				}
+				return time.Now().Add(regulation_cycle)
+			}
+		}
+		dlog.Debugf("dnscrypt boost failed, %v", err)
 	}
 	return nil
 }
@@ -51,33 +67,45 @@ func (n *dnscryptnode) material() marshaling {
 	return n
 }
 
-const dnscryptmarshalfmt = "%d %d %d %d %d %x %x" + eol
+const dnscryptmarshalfmt = "%d %d %d %d %d %d %x %x" + eol
 func (n *dnscryptnode) marshal() *struct{c uint8; v string} { 
-	s := n.GetDefaultService()
+	ss := n.GetDefaultServices()
+	var count uint8 = 0
 	var c strings.Builder
-	fmt.Fprintf(&c, dnscryptmarshalfmt, s.Version, s.Minor, s.Serial, s.DtFrom, s.DtTo, s.MagicQuery, s.ServerPk)
-	return &struct{c uint8; v string} {1,c.String()}
+	for _, s := range ss {
+		if time.Now().After(time.Unix(int64(s.DtTo), 0)) {
+			break
+		}
+		count++
+		fmt.Fprintf(&c, dnscryptmarshalfmt, s.Version, s.Minor, s.Serial, s.DtFrom, s.DtTo, s.Regular, s.MagicQuery, s.ServerPk)
+	}
+	return &struct{c uint8; v string} {count, c.String()}
 }
 
-func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) *time.Time { 
-	s := &dnscrypt.ServiceInfo{Service:&dnscrypt.Service{ServerKey:&dnscrypt.ServerKey{}}}
-	c := strings.NewReader(ss.v)
-	var mq, sk []byte
-	if _, err := fmt.Fscanf(c, dnscryptmarshalfmt,
-	&s.Version, &s.Minor, &s.Serial, &s.DtFrom, &s.DtTo, &mq, &sk); err != nil {
-		panic(err)
-	}
-	copy(s.MagicQuery[:], mq)
-	copy(s.ServerPk[:], sk)
-	s.Name = n.name()
-	if s.Version == dnscrypt.XSalsa20Poly1305 {
-		n.V1_Services = append(n.V1_Services, s)
-	} else {
-		n.V2_Services = append(n.V2_Services, s)
+func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) (to *time.Time) { 
+	for i := ss.c; i > 0; i -- {
+		s := &dnscrypt.ServiceInfo{Service:&dnscrypt.Service{ServerKey:&dnscrypt.ServerKey{}}}
+		c := strings.NewReader(ss.v)
+		var mq, sk []byte
+		if _, err := fmt.Fscanf(c, dnscryptmarshalfmt,
+		&s.Version, &s.Minor, &s.Serial, &s.DtFrom, &s.DtTo, &s.Regular, &mq, &sk); err != nil {
+			panic(err)
+		}
+		copy(s.MagicQuery[:], mq)
+		copy(s.ServerPk[:], sk)
+		s.Name = n.name()
+		if s.Version == dnscrypt.XSalsa20Poly1305 {
+			n.V1_Services = append(n.V1_Services, s)
+		} else {
+			n.V2_Services = append(n.V2_Services, s)
+		}
+		defer func() {
+			t := time.Unix(int64(s.DtTo), 0)
+			to = &t
+		}()
 	}
 	n.bs2epring(n.bs_relays)
-	to := time.Unix(int64(s.DtTo), 0)
-	return &to
+	return
 }
 
 func (_ *dnscryptnode) proto() string {
@@ -94,6 +122,9 @@ func (n *dnscryptnode) exchange(bin *[]byte, _ ...interface{}) (*[]byte, error) 
 		ep := n.relayaddr.Load().(*common.EPRing)
 		relayAddr = ep.Endpoint
 		n.relayaddr.Store(ep.Next())
+	}
+	if n.randomSvrPK {
+			return dnscrypt.Query(n.dailFn, n.Network, n.GetRandomService().Service, bin, n.ipaddr, relayAddr)
 	}
 	return dnscrypt.Query(n.dailFn, n.Network, n.GetDefaultService().Service, bin, n.ipaddr, relayAddr)
 }

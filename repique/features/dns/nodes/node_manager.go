@@ -41,14 +41,15 @@ const (
 
 //Predefined Well-known Tag Name
 const (
-	Well_Known_Tag_NO_PROXY                = "NO-PROXY" // intranet
-	Well_Known_Tag_HTTP_USE_GET            = "HTTP-USE-GET"
-	Well_Known_Tag_DNS_BOOST_GROUP         = "DNS-BOOST-GROUP" // shared across all servers
-	Well_Known_Tag_DNSSEC_PRIME_GROUP      = "DNSSEC-PRIME-GROUP" // shared across all servers
-	Well_Known_Tag_DNSCRPT_OBTAIN_FAST_KEY = "DNSCRPT-OBTAIN-FAST-KEY" // works with cfg:credentialpath when import_credential=false
-	Well_Known_Tag_TIMEOUT1                = "TIMEOUT1" //1s
-	Well_Known_Tag_TIMEOUT2                = "TIMEOUT2" //2s
-	Well_Known_Tag_TIMEOUT3                = "TIMEOUT3" //3s
+	Well_Known_Tag_NO_PROXY                 = "NO-PROXY" // intranet
+	Well_Known_Tag_HTTP_USE_GET             = "HTTP-USE-GET"
+	Well_Known_Tag_DNS_BOOST_GROUP          = "DNS-BOOST-GROUP" // shared across all servers
+	Well_Known_Tag_DNSSEC_PRIME_GROUP       = "DNSSEC-PRIME-GROUP" // shared across all servers
+	Well_Known_Tag_DNSCRPT_OBTAIN_FAST_KEY  = "DNSCRPT-OBTAIN-FAST-KEY" // works with cfg:credentialpath when import_credential=false
+	Well_Known_Tag_DNSCRPT_EARLY_REGULATION = "DNSCRPT-EARLY-REGULATION" // catch up 'key rotation' and use 1o2 random server PK
+	Well_Known_Tag_TIMEOUT1                 = "TIMEOUT1" //1s
+	Well_Known_Tag_TIMEOUT2                 = "TIMEOUT2" //2s
+	Well_Known_Tag_TIMEOUT3                 = "TIMEOUT3" //3s
 )
 
 type connectivity interface {
@@ -387,6 +388,7 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 			Resolver:r,
 			ipaddr:ep,
 			bs_relays:newroutes(name),
+			randomSvrPK:hasTag(Well_Known_Tag_DNSCRPT_EARLY_REGULATION, svr.Name),
 		}
 		node.dailFn = func(network, address string) (net.Conn, error) {
 			if network == "udp" && !node.Proxies.UDPProxies() {

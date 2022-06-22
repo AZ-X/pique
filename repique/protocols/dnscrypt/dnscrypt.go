@@ -85,6 +85,7 @@ type Resolver struct {
 type ServiceInfo struct {
 	*Service
 	Minor              uint16
+	Regular            uint16 //A.K.A period of key rotation in hours if exists
 	Serial             uint32
 	DtFrom             uint32
 	DtTo               uint32
@@ -102,11 +103,34 @@ type ServerKey struct {
 	ServerPk           [PublicKeySize]byte
 }
 
-func (r *Resolver) GetDefaultService() (s *ServiceInfo) {
+func (r *Resolver) GetDefaultServices() []*ServiceInfo {
 	if len(r.V2_Services) != 0 {
-		s = r.V2_Services[0]
+		return r.V2_Services
 	} else if len(r.V1_Services) != 0 {
-		s = r.V1_Services[0]
+		return r.V1_Services
+	}
+	return nil
+}
+
+func (r *Resolver) GetDefaultService() (s *ServiceInfo) {
+	if s := r.GetDefaultServices(); s != nil {
+		return s[0]
+	}
+	return
+}
+
+func (r *Resolver) GetRandomService() (s *ServiceInfo) {
+	if s := r.GetDefaultServices(); s != nil {
+		if len(s) > 1 && time.Now().Before(time.Unix(int64(s[1].DtTo), 0)) {
+			var c chan int
+			defer close(c)
+			select {
+			case c <- 0:
+			case c <- 1:
+			}
+			return s[<-c]
+		}
+		return s[0]
 	}
 	return
 }
@@ -284,33 +308,46 @@ RowLoop:
 	}
 	if len(resolver.V1_Services) != 0 || len(resolver.V2_Services) != 0 || len(resolver.VN_Services) != 0 {
 		deleted := make(map[ServerKey]interface{})
-		visitFn := func(sis []*ServiceInfo, sis0 []*ServiceInfo) {
+		visitFn := func(sis []*ServiceInfo, sis0 *[]*ServiceInfo) {
 			for _, si := range sis {
 				if _, found := keys[*si.ServerKey]; !found {
 					deleted[*si.ServerKey] = nil
-					sis0 = append(sis0, si)
+					*sis0 = append(*sis0, si)
 				} else {
 					delete(keys, *si.ServerKey)
 				}
 			}
 		}
-		visitFn(resolver.V1_Services, v1_Services)
-		visitFn(resolver.V2_Services, v2_Services)
-		visitFn(resolver.VN_Services, vn_Services)
+		visitFn(resolver.V1_Services, &v1_Services)
+		visitFn(resolver.V2_Services, &v2_Services)
+		visitFn(resolver.VN_Services, &vn_Services)
 		dlog.Infof("[%s] public key re-engage: added=%d deleted=%d", *resolver.Name, len(keys), len(deleted))
 	}
 	sortF := func(sis []*ServiceInfo) {
 		sort.Slice(sis, func(i, j int) bool {
-		return sis[i].Serial > sis[j].Serial
+		return sis[i].Serial > sis[j].Serial || (sis[i].Serial == sis[j].Serial && sis[i].DtTo > sis[j].DtTo )
 		})
-		for _, si := range sis {
+		for idx, si := range sis {
 			from := time.Unix(int64(si.DtFrom), 0).UTC()
 			to := time.Unix(int64(si.DtTo), 0).UTC()
-			dlog.Infof("[%s] public key info: ver=%d.%d serial=%d from=UTC%v-%d-%v+%.2v:%.2v to=UTC%v-%d-%v+%.2v:%.2v len_ext=%d", *resolver.Name,
+			d := to.Sub(from)
+			checkdt := func(d time.Duration) {
+				if d <= 0 || d > 15 * 24 * time.Hour {
+				panic("stop using it! malformed datetime represented of " + *resolver.Name)
+				}
+			}
+			checkdt(d)
+			if idx == 0 {
+				checkdt(time.Until(to))
+			}
+			if idx > 0 {
+				si.Regular = uint16((time.Duration(si.DtTo - sis[idx-1].DtFrom) * time.Second).Truncate(time.Hour).Hours())
+			}
+			dlog.Infof("[%s] public key info: ver=%d.%d serial=%d from=UTC%v-%d-%v+%.2v:%.2v to=UTC%v-%d-%v+%.2v:%.2v len_ext=%d R=%dH", *resolver.Name,
 			si.Version, si.Minor, si.Serial,
 			from.Year(), from.Month(), from.Day(), from.Hour(), from.Minute(),
 			to.Year(), to.Month(), to.Day(), to.Hour(), to.Minute(),
-			len(si.Ext))
+			len(si.Ext), si.Regular)
 		}
 	}
 	sortF(v1_Services)

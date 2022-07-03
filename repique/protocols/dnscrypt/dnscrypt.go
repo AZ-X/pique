@@ -119,10 +119,10 @@ func (r *Resolver) GetDefaultService() (s *ServiceInfo) {
 	return
 }
 
-func (r *Resolver) GetRandomService() (s *ServiceInfo) {
+func (r *Resolver) GetRandomService() *ServiceInfo {
 	if s := r.GetDefaultServices(); s != nil {
 		if len(s) > 1 && time.Now().Before(time.Unix(int64(s[1].DtTo), 0)) {
-			var c chan int
+			c := make(chan int, 1)
 			defer close(c)
 			select {
 			case c <- 0:
@@ -132,7 +132,7 @@ func (r *Resolver) GetRandomService() (s *ServiceInfo) {
 		}
 		return s[0]
 	}
-	return
+	return nil
 }
 
 func (r *Resolver) GetDefaultExpiration() time.Time {
@@ -308,20 +308,27 @@ RowLoop:
 	}
 	if len(resolver.V1_Services) != 0 || len(resolver.V2_Services) != 0 || len(resolver.VN_Services) != 0 {
 		deleted := make(map[ServerKey]interface{})
+		l := len(keys)
 		visitFn := func(sis []*ServiceInfo, sis0 *[]*ServiceInfo) {
 			for _, si := range sis {
 				if _, found := keys[*si.ServerKey]; !found {
 					deleted[*si.ServerKey] = nil
-					*sis0 = append(*sis0, si)
 				} else {
 					delete(keys, *si.ServerKey)
+					for p:= len(*sis0); p != 0; p-- {
+						if *si.ServerKey == *(*sis0)[p-1].ServerKey {
+							*sis0 = append((*sis0)[0:p-1], (*sis0)[p:]...)
+							break
+						}
+					}
 				}
+				*sis0 = append(*sis0, si)
 			}
 		}
 		visitFn(resolver.V1_Services, &v1_Services)
 		visitFn(resolver.V2_Services, &v2_Services)
 		visitFn(resolver.VN_Services, &vn_Services)
-		dlog.Infof("[%s] public key re-engage: added=%d deleted=%d", *resolver.Name, len(keys), len(deleted))
+		dlog.Infof("[%s] public key re-engage: added=%d deleted=%d unchanged=%d", *resolver.Name, len(keys), len(deleted), l-len(keys))
 	}
 	sortF := func(sis []*ServiceInfo) {
 		sort.Slice(sis, func(i, j int) bool {
@@ -341,13 +348,22 @@ RowLoop:
 				checkdt(time.Until(to))
 			}
 			if idx > 0 {
-				si.Regular = uint16((time.Duration(si.DtTo - sis[idx-1].DtFrom) * time.Second).Truncate(time.Hour).Hours())
+				from1 := time.Unix(int64(sis[idx-1].DtFrom), 0).UTC()
+				to1 := time.Unix(int64(sis[idx-1].DtTo), 0).UTC()
+				if from == from1 && to == to1 {
+					dlog.Warnf("[%s] sk1: %v-%v sk2: %v-%v", *resolver.Name, si.MagicQuery, si.ServerPk, sis[idx-1].MagicQuery, sis[idx-1].ServerPk)
+				}
+				si.Regular = uint16((time.Duration(sis[idx-1].DtFrom - si.DtFrom) * time.Second).Truncate(time.Hour).Hours())
 			}
 			dlog.Infof("[%s] public key info: ver=%d.%d serial=%d from=UTC%v-%d-%v+%.2v:%.2v to=UTC%v-%d-%v+%.2v:%.2v len_ext=%d R=%dH", *resolver.Name,
 			si.Version, si.Minor, si.Serial,
 			from.Year(), from.Month(), from.Day(), from.Hour(), from.Minute(),
 			to.Year(), to.Month(), to.Day(), to.Hour(), to.Minute(),
 			len(si.Ext), si.Regular)
+			if idx > 0 {
+				sis[idx-1].Regular = si.Regular // shift after print info
+				si.Regular = 0
+			}
 		}
 	}
 	sortF(v1_Services)

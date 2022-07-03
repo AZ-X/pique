@@ -31,16 +31,18 @@ func (n *dnscryptnode) boost(o *node) interface{} {
 		n.bs2epring(relays)
 		if n.randomSvrPK {
 			if s := n.GetDefaultServices(); len(s) > 1 {
-				expired := time.Unix(int64(s[0].DtFrom), 0).Add(time.Duration(s[1].Regular) * time.Hour).Add(regulation_cycle)
-				return &expired
+				expired := time.Unix(int64(s[0].DtFrom), 0).Add(time.Duration(s[0].Regular) * time.Hour).Add(regulation_cycle)
+				if time.Now().Before(expired) {
+					return &expired
+				}
 			}
 		}
 		expired := n.GetDefaultExpiration()
 		return &expired
 	} else {
 		if n.randomSvrPK && time.Now().Before(n.GetDefaultExpiration()) {
-			if s := n.GetDefaultServices(); len(s) > 1 {
-				expired := time.Unix(int64(s[0].DtFrom), 0).Add(time.Duration(s[1].Regular) * time.Hour)
+			if s := n.GetDefaultService(); s != nil {
+				expired := time.Unix(int64(s.DtFrom), 0).Add(time.Duration(s.Regular) * time.Hour)
 				if time.Since(expired) > time.Minute {
 					dlog.Debugf("abort dnscrypt early regulation boost")
 					return n.GetDefaultExpiration()
@@ -101,6 +103,13 @@ func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) (to *time.Time) 
 		}
 		defer func() {
 			t := time.Unix(int64(s.DtTo), 0)
+			if n.randomSvrPK {
+				r := time.Unix(int64(s.DtFrom), 0).Add(time.Duration(s.Regular) * time.Hour)
+				if time.Now().Before(r) {
+					to = &r
+					return
+				}
+			}
 			to = &t
 		}()
 	}

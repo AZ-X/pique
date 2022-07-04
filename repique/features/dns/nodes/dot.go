@@ -6,7 +6,6 @@ import (
 	"net"
 	"sort"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/AZ-X/pique/repique/common"
@@ -88,10 +87,9 @@ func (bs *tls_bs_ips) unmarshal(s *struct{c uint8; v string}) *time.Time {
 	}
 	if s.c > 1 {
 		epring := common.LinkEPRing(endpoints...)
-		bs.n.IPs = &atomic.Value{}
-		bs.n.IPs.(*atomic.Value).Store(epring)
+		bs.n.IPs.Store(epring)
 	} else {
-		bs.n.IPs = endpoints[0].String()
+		bs.n.IPs.Store(endpoints[0].String())
 	}
 	return nil
 }

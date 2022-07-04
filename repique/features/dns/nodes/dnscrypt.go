@@ -97,9 +97,9 @@ func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) (to *time.Time) 
 		copy(s.ServerPk[:], sk)
 		s.Name = n.name()
 		if s.Version == dnscrypt.XSalsa20Poly1305 {
-			n.V1_Services = append(n.V1_Services, s)
+			n.V1_Services.Store(append(n.V1_Services.Load().([]*dnscrypt.ServiceInfo), s))
 		} else {
-			n.V2_Services = append(n.V2_Services, s)
+			n.V2_Services.Store(append(n.V2_Services.Load().([]*dnscrypt.ServiceInfo), s))
 		}
 		defer func() {
 			t := time.Unix(int64(s.DtTo), 0)

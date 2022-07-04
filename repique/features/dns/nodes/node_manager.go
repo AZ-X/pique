@@ -378,7 +378,13 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 			Name:&name,
 			Identifiers:strings.Split(svr.Stamp.ProviderName, common.Delimiter),
 			PublicKey: pk,
+			V1_Services: &atomic.Value{},
+			V2_Services: &atomic.Value{},
+			VN_Services: &atomic.Value{},
 		}
+		r.V1_Services.Store(make([]*dnscrypt.ServiceInfo, 0))
+		r.V2_Services.Store(make([]*dnscrypt.ServiceInfo, 0))
+		r.VN_Services.Store(make([]*dnscrypt.ServiceInfo, 0))
 		ep, err := common.ResolveEndpoint(svr.Stamp.ServerAddrStr)
 		if err != nil {
 			panic(err.Error() + ", unsupported ip address for " + name)
@@ -551,11 +557,10 @@ func (mgr *NodesMgr) boost(n *node) interface{} {
 		}
 	}
 	if len(bs_ips.ips) == 1 {
-		node.IPs = endpoints[0].String()
+		node.IPs.Store(endpoints[0].String())
 	} else if len(bs_ips.ips) > 1 {
 		epring := common.LinkEPRing(endpoints...)
-		node.IPs = &atomic.Value{}
-		node.IPs.(*atomic.Value).Store(epring)
+		node.IPs.Store(epring)
 	}
 	return ttl
 }

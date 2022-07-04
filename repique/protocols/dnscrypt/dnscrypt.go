@@ -10,6 +10,7 @@ import (
 	"net"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/jedisct1/dlog"
@@ -77,9 +78,9 @@ type Resolver struct {
 	Name               *string
 	Identifiers        []string
 	PublicKey          ed25519.PublicKey
-	V1_Services        []*ServiceInfo
-	V2_Services        []*ServiceInfo
-	VN_Services        []*ServiceInfo
+	V1_Services        *atomic.Value //[]*ServiceInfo
+	V2_Services        *atomic.Value //[]*ServiceInfo
+	VN_Services        *atomic.Value //[]*ServiceInfo
 }
 
 type ServiceInfo struct {
@@ -104,10 +105,10 @@ type ServerKey struct {
 }
 
 func (r *Resolver) GetDefaultServices() []*ServiceInfo {
-	if len(r.V2_Services) != 0 {
-		return r.V2_Services
-	} else if len(r.V1_Services) != 0 {
-		return r.V1_Services
+	if s := r.V2_Services.Load().([]*ServiceInfo); len(s) != 0 {
+		return s
+	} else if s := r.V1_Services.Load().([]*ServiceInfo); len(s) != 0 {
+		return s
 	}
 	return nil
 }
@@ -306,7 +307,9 @@ RowLoop:
 	if err != nil {
 		return 0, err
 	}
-	if len(resolver.V1_Services) != 0 || len(resolver.V2_Services) != 0 || len(resolver.VN_Services) != 0 {
+	if len(resolver.V1_Services.Load().([]*ServiceInfo)) != 0 ||
+		len(resolver.V2_Services.Load().([]*ServiceInfo)) != 0 ||
+		len(resolver.VN_Services.Load().([]*ServiceInfo)) != 0 {
 		deleted := make(map[ServerKey]interface{})
 		l := len(keys)
 		visitFn := func(sis []*ServiceInfo, sis0 *[]*ServiceInfo) {
@@ -325,9 +328,9 @@ RowLoop:
 				*sis0 = append(*sis0, si)
 			}
 		}
-		visitFn(resolver.V1_Services, &v1_Services)
-		visitFn(resolver.V2_Services, &v2_Services)
-		visitFn(resolver.VN_Services, &vn_Services)
+		visitFn(resolver.V1_Services.Load().([]*ServiceInfo), &v1_Services)
+		visitFn(resolver.V2_Services.Load().([]*ServiceInfo), &v2_Services)
+		visitFn(resolver.VN_Services.Load().([]*ServiceInfo), &vn_Services)
 		dlog.Infof("[%s] public key re-engage: added=%d deleted=%d unchanged=%d", *resolver.Name, len(keys), len(deleted), l-len(keys))
 	}
 	sortF := func(sis []*ServiceInfo) {
@@ -369,9 +372,9 @@ RowLoop:
 	sortF(v1_Services)
 	sortF(v2_Services)
 	sortF(vn_Services)
-	resolver.V1_Services = v1_Services
-	resolver.V2_Services = v2_Services
-	resolver.VN_Services = vn_Services
+	resolver.V1_Services.Store(v1_Services)
+	resolver.V2_Services.Store(v2_Services)
+	resolver.VN_Services.Store(vn_Services)
 	return rtt, err
 }
 

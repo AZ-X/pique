@@ -66,7 +66,7 @@ func (e *PinningError) Error() string {
 type TLSMeta struct {
 	*protocols.NetworkBase
 	*tls.Config
-	IPs                             interface{} //*EPRing
+	IPs                             *atomic.Value //*EPRing or string of single endpoint
 	Name                            *string //redundant key: name of stamp for now
 	DomainName                      string
 	SNIShadow                       string
@@ -153,6 +153,7 @@ func newTLSMeta(server *common.RegisteredServer, network *protocols.NetworkBase,
 		SNIShadow:   stamp.SNIShadow,
 		SNIBlotUp:   stamp.SNIBlotUp,
 	}
+	sm.IPs = &atomic.Value{}
 	var ip string
 	if len(stamp.ServerAddrStr) > 0 {
 		var endpoints []*common.Endpoint
@@ -170,10 +171,9 @@ func newTLSMeta(server *common.RegisteredServer, network *protocols.NetworkBase,
 		if len(endpoints) > 1 {
 			epring := common.LinkEPRing(endpoints...)
 			ip = epring.IP.String()
-			sm.IPs = &atomic.Value{}
-			sm.IPs.(*atomic.Value).Store(epring)
+			sm.IPs.Store(epring)
 		} else {
-			sm.IPs = endpoints[0].String()
+			sm.IPs.Store(endpoints[0].String())
 			ip = endpoints[0].IP.String()
 		}
 	} else if sm.SNIBlotUp == stamps.SNIBlotUpTypeIPAddr {
@@ -282,12 +282,13 @@ func (sm *TLSMeta) adaptContext(https bool) error {
 		if !strings.HasPrefix(addr, sm.DomainName) {
 			panic(dlog.Errorf("mismatch addr for TLSMeta(%s): [%s]", sm.Name, addr))
 		}
-		if str, ok := sm.IPs.(string); ok {
+		ips := sm.IPs.Load()
+		if str, ok := ips.(string); ok {
 			addr = str
 		} else {
-			epring := sm.IPs.(*atomic.Value).Load().(*common.EPRing)
+			epring := ips.(*common.EPRing)
 			addr = epring.String()
-			sm.IPs.(*atomic.Value).Store(epring.Next())
+			sm.IPs.Store(epring.Next())
 		}
 
 		if dialer, err := common.GetDialer("tcp", sm.IFI, 800*time.Millisecond, sm.Alive); err != nil {

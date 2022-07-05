@@ -47,7 +47,8 @@ func (n *dnscryptnode) boost(o *node) interface{} {
 					dlog.Debugf("abort dnscrypt early regulation boost")
 					return n.GetDefaultExpiration()
 				}
-				return time.Now().Add(regulation_cycle)
+				expired = time.Now().Add(regulation_cycle)
+				return &expired
 			}
 		}
 		dlog.Debugf("dnscrypt boost failed, %v", err)

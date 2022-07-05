@@ -84,10 +84,10 @@ func (n *dnscryptnode) marshal() *struct{c uint8; v string} {
 	return &struct{c uint8; v string} {count, c.String()}
 }
 
-func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) (to *time.Time) { 
+func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) (to *time.Time) {
+	c := strings.NewReader(ss.v)
 	for i := ss.c; i > 0; i -- {
 		s := &dnscrypt.ServiceInfo{Service:&dnscrypt.Service{ServerKey:&dnscrypt.ServerKey{}}}
-		c := strings.NewReader(ss.v)
 		var mq, sk []byte
 		if _, err := fmt.Fscanf(c, dnscryptmarshalfmt,
 		&s.Version, &s.Minor, &s.Serial, &s.DtFrom, &s.DtTo, &s.Regular, &mq, &sk); err != nil {

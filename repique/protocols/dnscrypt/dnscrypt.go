@@ -316,16 +316,10 @@ RowLoop:
 			for _, si := range sis {
 				if _, found := keys[*si.ServerKey]; !found {
 					deleted[*si.ServerKey] = nil
+					*sis0 = append(*sis0, si)
 				} else {
 					delete(keys, *si.ServerKey)
-					for p:= len(*sis0); p != 0; p-- {
-						if *si.ServerKey == *(*sis0)[p-1].ServerKey {
-							*sis0 = append((*sis0)[0:p-1], (*sis0)[p:]...)
-							break
-						}
-					}
 				}
-				*sis0 = append(*sis0, si)
 			}
 		}
 		visitFn(resolver.V1_Services.Load().([]*ServiceInfo), &v1_Services)

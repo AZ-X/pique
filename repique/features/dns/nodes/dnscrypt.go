@@ -27,33 +27,37 @@ type dnscryptnode struct {
 const regulation_cycle = 5 * time.Second
 func (n *dnscryptnode) boost(o *node) interface{} {
 	relays := n.bs_relays
+	expired := new(time.Time)
 	if _, err := dnscrypt.RetrieveServicesInfo(false, n.Resolver, n.dailFn, n.Network, n.ipaddr, &relays); err == nil {
 		n.bs2epring(relays)
 		if n.randomSvrPK {
 			if s := n.GetDefaultServices(); len(s) > 1 {
-				expired := time.Unix(int64(s[0].DtFrom), 0).Add(time.Duration(s[0].Regular) * time.Hour).Add(regulation_cycle)
-				if time.Now().Before(expired) {
-					return &expired
+				*expired = time.Unix(int64(s[0].DtFrom), 0).Add(time.Duration(s[0].Regular) * time.Hour).Add(regulation_cycle)
+				if time.Now().Before(*expired) {
+					goto Ret
 				}
 			}
 		}
-		expired := n.GetDefaultExpiration()
-		return &expired
+		*expired = n.GetDefaultExpiration()
+		goto Ret
 	} else {
 		if n.randomSvrPK && time.Now().Before(n.GetDefaultExpiration()) {
 			if s := n.GetDefaultService(); s != nil {
-				expired := time.Unix(int64(s.DtFrom), 0).Add(time.Duration(s.Regular) * time.Hour)
-				if time.Since(expired) > time.Minute {
+				*expired = time.Unix(int64(s.DtFrom), 0).Add(time.Duration(s.Regular) * time.Hour)
+				if time.Since(*expired) > time.Minute {
 					dlog.Debugf("abort dnscrypt early regulation boost")
-					return n.GetDefaultExpiration()
+					*expired = n.GetDefaultExpiration()
+					goto Ret
 				}
-				expired = time.Now().Add(regulation_cycle)
-				return &expired
+				*expired = time.Now().Add(regulation_cycle)
+				goto Ret
 			}
 		}
 		dlog.Debugf("dnscrypt boost failed, %v", err)
 	}
-	return nil
+	expired = nil
+Ret:
+	return expired
 }
 
 func (n *dnscryptnode) bs2epring(eps []*common.Endpoint) {

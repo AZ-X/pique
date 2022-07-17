@@ -249,9 +249,9 @@ Check out [Releases Page](https://github.com/AZ-X/pique/releases)
 
 ### Installation
 
-[Download the latest release with golang 1.15 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.2.14)
+[Download the latest release with golang 1.15 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.2.16)
 
-[Download the latest release with golang 1.16 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.2.15)
+[Download the latest release with golang 1.16 for AMD64 on Windows or Linux](https://github.com/AZ-X/pique/releases/tag/v1.2.17)
 
 > Notice:  
 > Releases for OpenWRT won't be included in this repository @github.  

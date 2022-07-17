@@ -57,6 +57,9 @@ func (n *dnscryptnode) boost(o *node) interface{} {
 	}
 	expired = nil
 Ret:
+	if expired == nil {
+		return nil
+	}
 	return expired
 }
 

@@ -1,0 +1,4 @@
+[submodule "doc/protocol/dboys-draft"]
+	path = doc/protocol/dboys-draft
+	url = https://github.com/AZ-X/dboys-protocol.git
+	branch = master

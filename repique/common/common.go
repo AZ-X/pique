@@ -37,7 +37,7 @@ const (
 	MinDNSPacketSize        = 12 + 5
 	MaxDNSPacketSize        = dns.MaxMsgSize
 	MaxDNSUDPPacketSize     = dns.DefaultMsgSize
-	MaxDNSUDPSafePacketSize = 1252
+	MaxDNSUDPSafePacketSize = 1232
 	STAR                    = "*"
 	Delimiter               = ";"
 )
@@ -136,9 +136,6 @@ func ResolveEndpoint(hostport string) (*Endpoint, error) {
 		return nil, errors.New("ResolveEndpoint: illegal IP format")
 	}
 	ipaddr := &net.IPAddr{IP:ip, Zone:zone}
-	if err != nil {
-		return nil, err
-	}
 	return &Endpoint{IPAddr:ipaddr, Port:port}, nil
 }
 
@@ -370,7 +367,6 @@ func WriteDP(conn net.Conn, p []byte, clients ...*net.Addr) error {
     Others adopted from original dnscrypt-proxy (below) ww
 
 /*--------------------------------------------------------------------------------------*/
-
 func Min(a, b int) int {
 	if a < b {
 		return a

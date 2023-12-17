@@ -39,15 +39,14 @@ const (
 )
 
 var (
-//go:linkname varDefaultCipherSuitesTLS13 crypto/tls.varDefaultCipherSuitesTLS13
-varDefaultCipherSuitesTLS13 []uint16
-//go:linkname supportedSignatureAlgorithms crypto/tls.supportedSignatureAlgorithms
+//go:linkname defaultCipherSuitesTLS13 crypto/tls.defaultCipherSuitesTLS13
+defaultCipherSuitesTLS13 []uint16
+//go:linkname defaultCipherSuitesTLS13NoAES crypto/tls.defaultCipherSuitesTLS13NoAES
+defaultCipherSuitesTLS13NoAES []uint16
+
+//go:linkname supportedSignatureAlgorithms crypto/tls.defaultSupportedSignatureAlgorithms
 supportedSignatureAlgorithms []tls.SignatureScheme
 )
-
-//go:linkname defaultCipherSuitesTLS13 crypto/tls.defaultCipherSuitesTLS13
-func defaultCipherSuitesTLS13() []uint16
-
 
 type PinningError struct {
 	name string
@@ -75,10 +74,12 @@ type TLSMeta struct {
 }
 
 func InitTLS13() {
-	defaultCipherSuitesTLS13()
-	dlog.Debugf("default CipherSuites=%v", varDefaultCipherSuitesTLS13)
-	varDefaultCipherSuitesTLS13 = []uint16{TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256}
-	dlog.Debugf("init CipherSuites=%v", varDefaultCipherSuitesTLS13)
+	dlog.Debugf("default CipherSuites=%v", defaultCipherSuitesTLS13)
+	dlog.Debugf("default CipherSuites NoAES=%v", defaultCipherSuitesTLS13NoAES)
+	defaultCipherSuitesTLS13 = []uint16{TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256}
+	defaultCipherSuitesTLS13NoAES = []uint16{TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256}
+	dlog.Debugf("init CipherSuites=%v", defaultCipherSuitesTLS13)
+	dlog.Debugf("init CipherSuites NoAES=%v", defaultCipherSuitesTLS13NoAES)
 	dlog.Debugf("default SignatureAlgorithms=%v", supportedSignatureAlgorithms)
 	supportedSignatureAlgorithms = []tls.SignatureScheme{
 	tls.Ed25519,
@@ -191,9 +192,9 @@ func (sm *TLSMeta) configTLS(disableTLSSession bool, ip string) (cfg *tls.Config
 		goose = "google"
 	)
 	cid := tls.X25519
-	if strings.Contains(sm.DomainName, goose) {
-		cid = CurveCECPQ2 // fixed one; we do NOT make choice or expose the capability
-	}
+	//if strings.Contains(sm.DomainName, goose) {
+	//	cid = CurveCECPQ2 // fixed one; we do NOT make choice or expose the capability
+	//}
 	cfg = &tls.Config{
 		SessionTicketsDisabled: disableTLSSession,
 		MinVersion: tls.VersionTLS13,
@@ -206,7 +207,7 @@ func (sm *TLSMeta) configTLS(disableTLSSession bool, ip string) (cfg *tls.Config
 		cfg.ClientSessionCache = tls.NewLRUClientSessionCache(10)
 	}
 	cfg.PreferServerCipherSuites = false
-	cfg.CipherSuites = varDefaultCipherSuitesTLS13
+	cfg.CipherSuites = defaultCipherSuitesTLS13
 	cfg.ServerName = sm.DomainName
 	verifyPin := func(cs *tls.ConnectionState) error {
 		pc := make([]*x509.Certificate, len(cs.PeerCertificates))

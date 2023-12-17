@@ -1,6 +1,6 @@
 module github.com/AZ-X/pique
 
-go 1.16
+go 1.21
 
 require (
 	github.com/AZ-X/dns v1.1.39

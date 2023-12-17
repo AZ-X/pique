@@ -1,4 +1,4 @@
-// Copyright 2022 The Go & AZ-X Authors. All rights reserved.
+// Copyright 2023 The Go & AZ-X Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the go LICENSE file.
 
@@ -6,8 +6,8 @@ package conceptions
 
 import (
 	"sync/atomic"
-	"unsafe"
-	
+	_ "unsafe"
+
 	"github.com/AZ-X/pique/repique/common"
 )
 
@@ -18,14 +18,6 @@ type Cache struct {
 
 type CloakCache struct {
 	entries map[interface{}]*entry
-}
-
-type entry struct {
-	p unsafe.Pointer
-}
-
-func newEntry(i interface{}) *entry {
-	return &entry{p: unsafe.Pointer(&i)}
 }
 
 const bufsize = 8
@@ -141,20 +133,22 @@ func (m *Cache) Add(key, value interface{}) {
 	m.set <- &struct{K interface{}; V *entry}{K:key,V:newEntry(value)}
 }
 
-//go:linkname (*entry).load sync.(*entry).load
-func (e *entry) load() (value interface{}, ok bool)
+func (e *entry) tryStore(i *any) (r bool) {
+	_, r = e.trySwap(i)
+	return
+}
 
-//go:linkname (*entry).tryStore sync.(*entry).tryStore
-func (e *entry) tryStore(i *interface{}) bool
+//go:linkname entry sync.entry
+type entry struct {}
+
+//go:linkname newEntry sync.newEntry
+func newEntry(i any) *entry
+
+//go:linkname (*entry).load sync.(*entry).load
+func (e *entry) load() (value any, ok bool)
+
+//go:linkname (*entry).trySwap sync.(*entry).trySwap
+func (e *entry) trySwap(i *any) (*any, bool)
 
 //go:linkname (*entry).delete sync.(*entry).delete
-func (e *entry) delete() (value interface{}, ok bool)
-
-////go:linkname (*poolDequeue).pushHead sync.(*poolDequeue).pushHead
-//func (d *poolDequeue) pushHead(val interface{}) bool
-//
-////go:linkname (*poolDequeue).popTail sync.(*poolDequeue).popTail
-//func (d *poolDequeue) popTail() (interface{}, bool)
-//
-////go:linkname (*poolDequeue).pack sync.(*poolDequeue).pack
-//func (d *poolDequeue) pack(head, tail uint32) uint64
+func (e *entry) delete() (value any, ok bool)

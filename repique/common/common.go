@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -123,18 +124,16 @@ func (e *Endpoint) String() string {
 	return net.JoinHostPort(e.IPAddr.String(), strconv.Itoa(e.Port))
 }
 
-//go:linkname ParseIPZone net.parseIPZone
-func ParseIPZone(s string) (net.IP, string)
-
 func ResolveEndpoint(hostport string) (*Endpoint, error) {
 	host, port, err := ExtractHostAndPort(hostport, 0)
 	if err != nil {
 		return nil, err
 	}
-	ip, zone := ParseIPZone(host)
-	if ip == nil {
+	addr, _ := netip.ParseAddr(host)
+	if !addr.IsValid() {
 		return nil, errors.New("ResolveEndpoint: illegal IP format")
 	}
+	ip, zone := addr.AsSlice(), addr.Zone()
 	ipaddr := &net.IPAddr{IP:ip, Zone:zone}
 	return &Endpoint{IPAddr:ipaddr, Port:port}, nil
 }

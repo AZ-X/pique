@@ -82,6 +82,7 @@ func (cp *CP) Init(cfg *Config, f FChannelByName) {
 	cp.f = f
 	cp._init(false)
 	if cp.BlackCloaking != nil && cp.BlackCloakingMon != nil && *cp.BlackCloakingMon {
+		dlog.Infof("reg black_cloaking_routine={%s}", *cp.BlackCloaking)
 		behaviors.RegisterFswatcher(*cp.BlackCloaking, func(){
 			dlog.Infof("reloading black_cloaking_routine={%s}", *cp.BlackCloaking)
 			cp._init(true)
@@ -484,7 +485,7 @@ CP1:{
 		cachedAny, ok := cp.clock_cache.Get(s.hash_key)
 		if ok {
 			ce := cachedAny.(clockEntry)
-			if ce.pll != nil && cp.cache != nil {
+			if s.Listener != 0 && ce.pll != nil && cp.cache != nil {
 				if s.pl_job == nil {
 					s.pl_job = &sync.Once{}
 				}

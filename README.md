@@ -34,6 +34,8 @@
 
 ## Repique is an advanced DNS stub which can run on different OS such as Windows, Linux, OpenWRT.
 
+### ![golang 1.21.5](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/go_1.21.5_on_Windows%207.PNG?raw=true)
+
 ### ![golang 1.18.2](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/repique1.18.2.png?raw=true)
 
 ### ![openwrt](https://github.com/AZ-X/MEDIA/blob/master/PNG/repique_presentation/fin.PNG?raw=true)

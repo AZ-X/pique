@@ -25,7 +25,7 @@ func NetProbe(address string, ifi *string, timeout int) error {
 	if timeout < 0 {
 		timeout = MaxTimeout
 	} else {
-		timeout = common.Min(MaxTimeout, timeout)
+		timeout = min(MaxTimeout, timeout)
 	}
 	var localAddr net.Addr
 	if ifi != nil {

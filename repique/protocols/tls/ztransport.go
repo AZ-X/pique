@@ -479,7 +479,7 @@ Go:
 	var size int64
 	size = MaxHTTPBodyLength
 	if resp.ContentLength > 0 {
-		size = common.Min64(resp.ContentLength, size)
+		size = min(resp.ContentLength, size)
 	}
 	bin, err := io.ReadAll(io.LimitReader(resp.Body, size))
 	if err != nil {

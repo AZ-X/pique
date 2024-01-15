@@ -500,7 +500,7 @@ func calcDynamicEncryptedPaddingSize(length int, proto string) (eLength int, err
 	initS := ((minQuestionSize+64) & ^63)
 	common.Program_dbg_full_log("init size: %d", initS)
 	if proto == "udp" {
-		firstclass = common.Max(47, initS/64) //avoid TC="Truncated"
+		firstclass = max(47, initS/64) //avoid TC="Truncated"
 	} else {
 		firstclass = initS/64
 	}
@@ -508,7 +508,7 @@ func calcDynamicEncryptedPaddingSize(length int, proto string) (eLength int, err
 	m := new(big.Int).SetInt64(int64(rangefc))
 	b1, _ := rand.Int(rand.Reader, m)
 	random_size := (firstclass + int(b1.Int64())) * 64
-	paddedLength :=  common.Min(common.MaxDNSUDPPacketSize, random_size)
+	paddedLength :=  min(common.MaxDNSUDPPacketSize, random_size)
 	common.Program_dbg_full_log("padding size: %d", paddedLength)
 	eLength = QueryOverhead + paddedLength
 	common.Program_dbg_full_log("encrypted size: %d", eLength)

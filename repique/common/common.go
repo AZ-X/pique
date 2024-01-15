@@ -1,7 +1,6 @@
 package common
 
 import (
-	"container/ring"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -85,43 +84,75 @@ func (c *HTTPSContext) WithContext(inner context.Context) context.Context {
 	return &ctx
 }
 
+type Ring[T any] struct {
+	T
+	next, prev *Ring[T]
+}
+
+func (r *Ring[T]) Next() *Ring[T] {
+	if (r.next != nil) {
+		return r.next
+	}
+	return r
+}
+
+func (r *Ring[T]) Previous() *Ring[T] {
+	if (r.prev != nil) {
+		return r.prev
+	}
+	return r
+}
+
+func (r *Ring[T]) Link(n *Ring[T]) {
+	if n != nil {
+		rn := r.Next()
+		np := n.Previous()
+		r.next = n
+		n.prev = r
+		rn.prev = np
+		np.next = rn
+	}
+}
+
+func (r *Ring[T]) Do(f func(*Ring[T])) {
+	if r != nil {
+		f(r)
+		for n := r.Next(); n != r; n = n.next {
+			f(n)
+		}
+	}
+}
+
 type Endpoint struct {
 	*net.IPAddr
 	Port                      int
 }
 
-type EPRing struct {
-	*ring.Ring
+func (e *Endpoint) String() string {
+	return net.JoinHostPort(e.IPAddr.String(), strconv.Itoa(e.Port))
+}
+
+type epringBaseObj struct {
 	*Endpoint
 	order                     int `aka name`
 }
 
-func (e *EPRing) Order() string {
+func (e *epringBaseObj) Order() string {
 	return strconv.Itoa(e.order)
 }
 
-func (e *EPRing) Next() *EPRing {
-	return e.Ring.Next().Value.(*EPRing)
-}
+type EPRing = Ring[*epringBaseObj]
 
 func LinkEPRing(endpoints ...*Endpoint) *EPRing {
 	var cur *EPRing
 	for i , endpoint := range endpoints {
-		tmp := &EPRing{}
-		tmp.Ring = ring.New(1)
-		tmp.Value = tmp
-		tmp.order = i + 1
-		tmp.Endpoint = endpoint
+		tmp := &EPRing{T:&epringBaseObj{Endpoint:endpoint, order: i + 1}}
 		if cur != nil {
-			cur.Link(tmp.Ring)
+			cur.Link(tmp)
 		}
 		cur = tmp
 	}
 	return cur
-}
-
-func (e *Endpoint) String() string {
-	return net.JoinHostPort(e.IPAddr.String(), strconv.Itoa(e.Port))
 }
 
 func ResolveEndpoint(hostport string) (*Endpoint, error) {
@@ -366,26 +397,6 @@ func WriteDP(conn net.Conn, p []byte, clients ...*net.Addr) error {
     Others adopted from original dnscrypt-proxy (below) ww
 
 /*--------------------------------------------------------------------------------------*/
-func Min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func Min64(x, y int64) int64 {
- if x < y {
-   return x
- }
- return y
-}
-
-func Max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
 
 func StringQuote(str *string) string {
 	str1 := strconv.QuoteToGraphic(*str)

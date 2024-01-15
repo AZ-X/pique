@@ -65,8 +65,8 @@ Ret:
 
 func (n *dnscryptnode) bs2epring(eps []*common.Endpoint) {
 	if epring := common.LinkEPRing(eps...); epring != nil {
-		epring.Do(func(v interface{}){
-			dlog.Infof("relay [%s*%s]=%s", *n.Name, v.(*common.EPRing).Order(), v.(*common.EPRing).String())
+		epring.Do(func(epr *common.EPRing){
+			dlog.Infof("relay [%s*%s]=%s", *n.Name, epr.Order(), epr.String())
 		})
 		n.relayaddr = &atomic.Value{}
 		n.relayaddr.Store(epring)

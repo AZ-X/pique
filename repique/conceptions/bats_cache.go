@@ -7,8 +7,6 @@ package conceptions
 import (
 	"sync/atomic"
 	_ "unsafe"
-
-	"github.com/AZ-X/pique/repique/common"
 )
 
 type Cache struct {
@@ -23,7 +21,7 @@ type CloakCache struct {
 const bufsize = 8
 func NewCache(size int) *Cache {
 	cache := &Cache{snapshot: &atomic.Value{},}
-	cache.set = make(chan *struct{K interface{}; V *entry}, common.Min(size, bufsize))
+	cache.set = make(chan *struct{K interface{}; V *entry}, min(size, bufsize))
 	cache.snapshot.Store(map[interface{}]*entry{})
 
 	go func(window int) {

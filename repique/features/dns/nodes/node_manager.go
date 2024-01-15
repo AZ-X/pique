@@ -483,7 +483,7 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 			}
 			f()
 			mgr.pilot()
-		}(time.Duration(common.Max(60, cfg.FetchInterval)) * time.Minute, cfg.FetchAtLeastTwo)
+		}(time.Duration(max(60, cfg.FetchInterval)) * time.Minute, cfg.FetchAtLeastTwo)
 	}
 }
 
@@ -555,6 +555,9 @@ func (mgr *NodesMgr) boost(n *node) interface{} {
 			ep := &common.Endpoint{IPAddr:&net.IPAddr{IP:ip}, Port:bs_ips.port}
 			endpoints = append(endpoints, ep)
 		}
+	}
+	if len(endpoints) == 0 {
+		return nil
 	}
 	if len(bs_ips.ips) == 1 {
 		node.IPs.Store(endpoints[0].String())

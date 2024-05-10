@@ -113,7 +113,9 @@ func (proxy *Proxy) StartProxy() {
 		}
 		proxy.Registers(shares, &stub{handler: proxy.Query})
 		proxy.SP = proxy.Handle
-		proxy.Ready <- nil
+		if proxy.Ready != nil {
+			proxy.Ready <- nil
+		}
 	}
 
 	for idx, listenAddrStr := range proxy.ListenAddresses {

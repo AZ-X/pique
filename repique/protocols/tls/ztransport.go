@@ -24,8 +24,11 @@ import (
 	"github.com/jedisct1/dlog"
 )
 
-type HttpMethod uint8
+type (HttpMethod uint8; PQArg uint8)
 const (
+	PQ                           = PQArg(1)
+	FPQ                          = PQArg(2)
+	NPQ                          = PQArg(3)
 	GET                          = HttpMethod(0)
 	POST                         = HttpMethod(1)
 	HTTPGET                      = "GET"
@@ -119,15 +122,15 @@ func NewZTransport(alive time.Duration, timeout time.Duration) (t *http.Transpor
 	return
 }
 
-func NewTLSMeta(server *common.RegisteredServer, network *protocols.NetworkBase, disableTLSSession bool) *TLSMeta {
-	if m, err := newTLSMeta(server, network, disableTLSSession); err == nil {
+func NewTLSMeta(server *common.RegisteredServer, network *protocols.NetworkBase, disableTLSSession bool, pq PQArg) *TLSMeta {
+	if m, err := newTLSMeta(server, network, disableTLSSession, pq); err == nil {
 		return m
 	} else {
 		panic(err)
 	}
 }
 
-func newTLSMeta(server *common.RegisteredServer, network *protocols.NetworkBase, disableTLSSession bool) (*TLSMeta, error) {
+func newTLSMeta(server *common.RegisteredServer, network *protocols.NetworkBase, disableTLSSession bool, pq PQArg) (*TLSMeta, error) {
 	dlog.Debugf("building TLS Meta for [%s]", server.Name)
 	stamp := server.Stamp
 	https := stamp.Proto.String() == "DoH"
@@ -179,26 +182,38 @@ func newTLSMeta(server *common.RegisteredServer, network *protocols.NetworkBase,
 	} else if sm.SNIBlotUp == stamps.SNIBlotUpTypeIPAddr {
 		panic("unsupported IP SNI BlotUp when bootstrapping")
 	}
-	sm.Config = sm.configTLS(disableTLSSession, ip)
+	sm.Config = sm.configTLS(pq, disableTLSSession, ip)
 	if err := sm.adaptContext(https); err != nil {
 		return nil, err
 	}
 	return sm, nil
 }
 
-func (sm *TLSMeta) configTLS(disableTLSSession bool, ip string) (cfg *tls.Config) {
+const (
+	CurveX25519Kyber768 tls.CurveID = 0x6399 // mark it public
+)
+
+func (sm *TLSMeta) configTLS(pq PQArg, disableTLSSession bool, ip string) (cfg *tls.Config) {
 	const (
 		CurveCECPQ2 tls.CurveID = 16696
 		goose = "google"
 	)
-	cid := tls.X25519
+	var cids []tls.CurveID
+	switch pq {
+		case PQ:
+			cids = []tls.CurveID{tls.X25519, CurveX25519Kyber768}
+		case FPQ:
+			cids = []tls.CurveID{CurveX25519Kyber768}
+		default:
+			cids = []tls.CurveID{tls.X25519}
+	}
 	//if strings.Contains(sm.DomainName, goose) {
 	//	cid = CurveCECPQ2 // fixed one; we do NOT make choice or expose the capability
 	//}
 	cfg = &tls.Config{
 		SessionTicketsDisabled: disableTLSSession,
 		MinVersion: tls.VersionTLS13,
-		CurvePreferences: []tls.CurveID{cid},
+		CurvePreferences: cids,
 		DynamicRecordSizingDisabled: true,
 		InsecureSkipVerify: sm.SNIBlotUp != stamps.SNIBlotUpTypeDefault,
 		NextProtos: []string{"h2"},

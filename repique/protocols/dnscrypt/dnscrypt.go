@@ -104,33 +104,45 @@ type ServerKey struct {
 	ServerPk           [PublicKeySize]byte
 }
 
-func (r *Resolver) GetDefaultServices() []*ServiceInfo {
-	if s := r.V2_Services.Load().([]*ServiceInfo); len(s) != 0 {
-		return s
-	} else if s := r.V1_Services.Load().([]*ServiceInfo); len(s) != 0 {
-		return s
+func (r *Resolver) GetServices() (sis []*ServiceInfo, operable uint8, minRegular uint16) {
+	for _, si := range func () []*ServiceInfo {
+		if sis = r.V2_Services.Load().([]*ServiceInfo); len(sis) != 0 {
+		return sis
+		} else if sis = r.V1_Services.Load().([]*ServiceInfo); len(sis) != 0 {
+		return sis
+		}
+		return nil}() {
+		if time.Now().Before(time.Unix(int64(si.DtTo), 0)) {
+			operable++
+		}
+		if si.Regular != 0 && (minRegular == 0 || minRegular > si.Regular) {
+			minRegular = si.Regular
+		}
 	}
-	return nil
+	return
 }
 
 func (r *Resolver) GetDefaultService() (s *ServiceInfo) {
-	if s := r.GetDefaultServices(); s != nil {
+	if s, _, _ := r.GetServices(); s != nil {
 		return s[0]
 	}
 	return
 }
 
 func (r *Resolver) GetRandomService() *ServiceInfo {
-	if s := r.GetDefaultServices(); s != nil {
-		if len(s) > 1 && time.Now().Before(time.Unix(int64(s[1].DtTo), 0)) {
-			c := make(chan int, 1)
-			defer close(c)
-			select {
-			case c <- 0:
-			case c <- 1:
-			}
-			return s[<-c]
+	if s, op, _ := r.GetServices(); op > 1 {
+		c := make(chan uint8, 1)
+		defer close(c)
+		select {
+		case c <- 1:
+		case c <- 2:
+		case c <- 3:
+		case c <- 4:
+		case c <- 5:
+		case c <- 6:
 		}
+		return s[<-c%op]
+	} else if op == 1 {
 		return s[0]
 	}
 	return nil
@@ -142,6 +154,28 @@ func (r *Resolver) GetDefaultExpiration() time.Time {
 	}
 	return time.Now()
 }
+
+func (r *Resolver) GetExpirationAdvanced() time.Time {
+	if s, op, minR := r.GetServices(); op > 1 {
+		f := time.Unix(int64(s[0].DtFrom), 0)
+		d := time.Since(f).Truncate(time.Duration(minR) * time.Hour)
+		var m uint16
+		if d <= 0 {
+			m =1 
+		} else {
+			m = uint16(d / (time.Duration(minR) * time.Hour))
+			if time.Now().After(f.Add(time.Duration(m * minR) * time.Hour + time.Minute)) {
+				m++
+			}
+		}
+		//go sucks
+		return func(x, y time.Time) time.Time {if x.Compare(y) != -1 {return y }; return x } (time.Unix(int64(s[0].DtTo), 0), f.Add(time.Duration(minR * m) * time.Hour)).Local()
+	} else if s!= nil {
+		return time.Unix(int64(s[0].DtTo), 0).Local()
+	}
+	return time.Now()
+}
+
 
 func RetrieveServicesInfo(useSk bool, resolver *Resolver, dialFn common.DialFn, proto string, upstreamAddr *common.Endpoint, relays *[]*common.Endpoint) (time.Duration, error) {
 	if len(resolver.PublicKey) != ed25519.PublicKeySize {
@@ -352,10 +386,10 @@ RowLoop:
 				}
 				si.Regular = uint16((time.Duration(sis[idx-1].DtFrom - si.DtFrom) * time.Second).Truncate(time.Hour).Hours())
 			}
-			dlog.Infof("[%s] public key info: ver=%d.%d serial=%d from=UTC%v-%d-%v+%.2v:%.2v to=UTC%v-%d-%v+%.2v:%.2v len_ext=%d R=%dH", *resolver.Name,
+			dlog.Infof("[%s] public key info: ver=%d.%d serial=%d from=%d/%v/%v+%.2v:%.2vUTC to=%d/%v/%v+%.2v:%.2vUTC len_ext=%d R=%dH", *resolver.Name,
 			si.Version, si.Minor, si.Serial,
-			from.Year(), from.Month(), from.Day(), from.Hour(), from.Minute(),
-			to.Year(), to.Month(), to.Day(), to.Hour(), to.Minute(),
+			from.Month(), from.Day(), from.Year(), from.Hour(), from.Minute(),
+			to.Month(), to.Day(), to.Year(), to.Hour(), to.Minute(),
 			len(si.Ext), si.Regular)
 			if idx > 0 {
 				sis[idx-1].Regular = si.Regular // shift after print info
@@ -366,6 +400,10 @@ RowLoop:
 	sortF(v1_Services)
 	sortF(v2_Services)
 	sortF(vn_Services)
+	if len(v1_Services) > 255 || len(v2_Services) > 255 || len(vn_Services) > 255 {
+		err = dlog.Errorf("got malformed dns answer for [%s]", *resolver.Name)
+		return 0, err
+	}
 	resolver.V1_Services.Store(v1_Services)
 	resolver.V2_Services.Store(v2_Services)
 	resolver.VN_Services.Store(vn_Services)

@@ -50,6 +50,8 @@ const (
 	Well_Known_Tag_TIMEOUT1                 = "TIMEOUT1" //1s
 	Well_Known_Tag_TIMEOUT2                 = "TIMEOUT2" //2s
 	Well_Known_Tag_TIMEOUT3                 = "TIMEOUT3" //3s
+	Well_Known_Tag_PQENABLED                = "PQ" //tls+kyber768
+	Well_Known_Tag_PQFORCED                 = "FPQ" //tls kyber768 only
 )
 
 type connectivity interface {
@@ -143,7 +145,7 @@ func (n *node) evaluate() {
 		if len(protocol) > 0 {
 			protocol = " h protocol: " + protocol + " -"
 		}
-		dlog.Infof("[%s] tls%x -%s cipher suite: %v", *n.name(), state.Version, protocol, state.CipherSuite)
+		dlog.Infof("[%s] tls%x -%s %v cipher suite: %v", *n.name(), state.Version, protocol, state.Curve, state.CipherSuite)
 		for _, cert := range state.PeerCertificates {
 			h1 := sha256.Sum256(cert.Raw)
 			h2 := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
@@ -152,16 +154,21 @@ func (n *node) evaluate() {
 		return nil
 	}
 	if outs, err := n.exchange(&bin, nil, matchCert); err == nil {
-		msg = &dns.Msg{}
-		if err = msg.Unpack(*outs); err == nil && msg.Id == id {
-			if dnssec && !msg.AuthenticatedData {
+		v := &channels.Validation{} // stray one
+		s := &channels.Session{}
+		v.Init(nil, func(_ string) channels.Channel {return nil})
+		s.RawIn = outs
+		s.LastState = channels.R_OK
+		v.Handle(s)
+		if s.LastState == channels.V3_OK && s.Response.Id == id {
+			if dnssec && !s.Response.AuthenticatedData {
 				dlog.Debugf("evaluate %s: dnssec assumption is wrong", *n.name())
 				return
 			}
 			dlog.Debugf("evaluate %s: connection is ok", *n.name())
 			n.status&^=status_unusable
 		} else {
-			dlog.Debugf("evaluate %s:failed to unpack msg %v", *n.name(), err)
+			dlog.Debugf("evaluate %s:failed to unpack msg %v", *n.name(), s.LastError)
 		}
 	} else {
 		dlog.Debugf("evaluate %s: failed to exchange; err=%v", *n.name(), err)
@@ -279,7 +286,13 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 		}
 	}
 	newTLSNode := func(svr *common.RegisteredServer) (node *tlsnode) {
-		return &tlsnode{TLSMeta:tls.NewTLSMeta(svr, newNetworkBase(svr, nbDotDohShared), cfg.TLSDisableSessionTickets)}
+		pq := tls.NPQ
+		if hasTag(Well_Known_Tag_PQENABLED, svr.Name) {
+			pq = tls.PQ
+		} else if hasTag(Well_Known_Tag_PQFORCED, svr.Name) {
+			pq = tls.FPQ
+		}
+		return &tlsnode{TLSMeta:tls.NewTLSMeta(svr, newNetworkBase(svr, nbDotDohShared), cfg.TLSDisableSessionTickets, pq)}
 	}
 	var trans *http.Transport
 	newDoHNode := func(svr *common.RegisteredServer) (node *dohnode) {
@@ -464,8 +477,8 @@ func (mgr *NodesMgr) Init(cfg *Config, routes *AnonymizedDNSConfig, sum []byte, 
 			}
 		}
 	}
-	mgr.Ready = make(chan interface{})
 	if len(mgr.nodes) > 0 && cfg.FetchInterval > 0 {
+		mgr.Ready = make(chan interface{})
 		go func(interval time.Duration, least2 bool) {
 			<-mgr.Ready
 			close(mgr.Ready)

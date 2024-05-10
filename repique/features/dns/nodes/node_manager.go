@@ -145,7 +145,8 @@ func (n *node) evaluate() {
 		if len(protocol) > 0 {
 			protocol = " h protocol: " + protocol + " -"
 		}
-		dlog.Infof("[%s] tls%x -%s %v cipher suite: %v", *n.name(), state.Version, protocol, state.Curve, state.CipherSuite)
+		//dlog.Infof("[%s] tls%x -%s %v cipher suite: %v", *n.name(), state.Version, protocol, state.Curve, state.CipherSuite)
+		dlog.Infof("[%s] tls%x -%s cipher suite: %v", *n.name(), state.Version, protocol, state.CipherSuite)
 		for _, cert := range state.PeerCertificates {
 			h1 := sha256.Sum256(cert.Raw)
 			h2 := sha256.Sum256(cert.RawSubjectPublicKeyInfo)

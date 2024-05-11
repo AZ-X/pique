@@ -24,30 +24,33 @@ type dnscryptnode struct {
 	randomSvrPK             bool
 }
 
-const regulation_delay = 5 * time.Second
+const regulation_delay = 30 * time.Second
+
 func (n *dnscryptnode) boost(o *node) interface{} {
 	relays := n.bs_relays
 	if _, err := dnscrypt.RetrieveServicesInfo(false, n.Resolver, n.dailFn, n.Network, n.ipaddr, &relays); err == nil {
 		n.bs2epring(relays)
 		if n.randomSvrPK {
-			expired := n.GetExpirationAdvanced()
-			return &expired
+			goto randomSvrPK
 		}
 		expired := n.GetDefaultExpiration()
 		return &expired
 	} else {
 		if n.randomSvrPK {
-			expired := n.GetExpirationAdvanced()
-			if time.Since(expired) > time.Minute {
-				dlog.Debugf("abort dnscrypt early regulation boost")
-				return &expired
-			}
-			expired = expired.Add(regulation_delay)
-			return &expired
+			goto randomSvrPK
 		}
 		dlog.Debugf("dnscrypt boost failed, %v", err)
+		return nil
 	}
-	return nil
+
+randomSvrPK:
+	expired := n.GetExpirationAdvanced()
+	if expired.After(time.Now()) {
+		dlog.Debugf("abort dnscrypt early regulation boost")
+		return &expired
+	}
+	expired = time.Now().Add(regulation_delay)
+	return &expired
 }
 
 func (n *dnscryptnode) bs2epring(eps []*common.Endpoint) {

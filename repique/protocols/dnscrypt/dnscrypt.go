@@ -164,7 +164,7 @@ func (r *Resolver) GetExpirationAdvanced() time.Time {
 			m =1 
 		} else {
 			m = uint16(d / (time.Duration(minR) * time.Hour))
-			if time.Now().After(f.Add(time.Duration(m * minR) * time.Hour + time.Minute)) {
+			if time.Now().After(f.Add(time.Duration(m * minR) * time.Hour + 5 * time.Minute)) {
 				m++
 			}
 		}

@@ -105,13 +105,16 @@ type ServerKey struct {
 }
 
 func (r *Resolver) GetServices() (sis []*ServiceInfo, operable uint8, minRegular uint16) {
-	for _, si := range func () []*ServiceInfo {
-		if sis = r.V2_Services.Load().([]*ServiceInfo); len(sis) != 0 {
-		return sis
-		} else if sis = r.V1_Services.Load().([]*ServiceInfo); len(sis) != 0 {
-		return sis
-		}
-		return nil}() {
+	if sis = r.V2_Services.Load().([]*ServiceInfo); len(sis) != 0 {
+		goto loop
+	}
+	if sis = r.V1_Services.Load().([]*ServiceInfo); len(sis) != 0 {
+		goto loop
+	}
+	sis = nil
+	return
+loop:
+	for _, si := range sis {
 		if time.Now().Before(time.Unix(int64(si.DtTo), 0)) {
 			operable++
 		}
@@ -122,11 +125,11 @@ func (r *Resolver) GetServices() (sis []*ServiceInfo, operable uint8, minRegular
 	return
 }
 
-func (r *Resolver) GetDefaultService() (s *ServiceInfo) {
+func (r *Resolver) GetDefaultService() *ServiceInfo {
 	if s, _, _ := r.GetServices(); s != nil {
 		return s[0]
 	}
-	return
+	return nil
 }
 
 func (r *Resolver) GetRandomService() *ServiceInfo {
@@ -155,7 +158,7 @@ func (r *Resolver) GetDefaultExpiration() time.Time {
 	return time.Now()
 }
 
-func (r *Resolver) GetExpirationAdvanced() time.Time {
+func (r *Resolver) GetExpirationAdvanced(updated bool) *time.Time {
 	if s, op, minR := r.GetServices(); op > 1 {
 		f := time.Unix(int64(s[0].DtFrom), 0)
 		d := time.Since(f).Truncate(time.Duration(minR) * time.Hour)
@@ -164,16 +167,19 @@ func (r *Resolver) GetExpirationAdvanced() time.Time {
 			m =1 
 		} else {
 			m = uint16(d / (time.Duration(minR) * time.Hour))
-			if time.Now().After(f.Add(time.Duration(m * minR) * time.Hour + 5 * time.Minute)) {
+			factor := 0
+			if !updated {
+				factor = 60
+			}
+			if time.Now().After(f.Add(time.Duration(m * minR) * time.Hour + time.Duration(factor) * time.Minute)) {
 				m++
 			}
 		}
 		//go sucks
-		return func(x, y time.Time) time.Time {if x.Compare(y) != -1 {return y }; return x } (time.Unix(int64(s[0].DtTo), 0), f.Add(time.Duration(minR * m) * time.Hour)).Local()
-	} else if s!= nil {
-		return time.Unix(int64(s[0].DtTo), 0).Local()
+		return func(x, y time.Time) *time.Time {if x.Compare(y) != -1 {return &y }; return &x } (time.Unix(int64(s[0].DtTo), 0).Local(), f.Add(time.Duration(minR * m) * time.Hour).Local())
 	}
-	return time.Now()
+	return nil
+
 }
 
 

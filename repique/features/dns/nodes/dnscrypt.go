@@ -24,10 +24,11 @@ type dnscryptnode struct {
 	randomSvrPK             bool
 }
 
-const regulation_delay = 30 * time.Second
+const regulation_delay = 15 * time.Minute
 
 func (n *dnscryptnode) boost(o *node) interface{} {
 	relays := n.bs_relays
+	s1 := n.GetDefaultService()
 	if _, err := dnscrypt.RetrieveServicesInfo(false, n.Resolver, n.dailFn, n.Network, n.ipaddr, &relays); err == nil {
 		n.bs2epring(relays)
 		if n.randomSvrPK {
@@ -36,20 +37,26 @@ func (n *dnscryptnode) boost(o *node) interface{} {
 		expired := n.GetDefaultExpiration()
 		return &expired
 	} else {
+		dlog.Debugf("dnscrypt boost failed, %v", err)
 		if n.randomSvrPK {
 			goto randomSvrPK
 		}
-		dlog.Debugf("dnscrypt boost failed, %v", err)
 		return nil
 	}
 
 randomSvrPK:
-	expired := n.GetExpirationAdvanced()
-	if expired.After(time.Now()) {
-		dlog.Debugf("abort dnscrypt early regulation boost")
-		return &expired
+	s2 := n.GetDefaultService()
+	updated := s2 != nil && (s1 == nil || s2.ServerKey != s1.ServerKey)
+	if expired := n.GetExpirationAdvanced(updated); expired == nil || expired.After(time.Now()) {
+		if expired != nil {
+			if !updated {
+				dlog.Debugf("abort dnscrypt early regulation boost")
+			}
+			return expired;
+		}
+		return nil
 	}
-	expired = time.Now().Add(regulation_delay)
+	expired := time.Now().Add(regulation_delay)
 	return &expired
 }
 
@@ -101,13 +108,15 @@ func (n *dnscryptnode) unmarshal(ss *struct{c uint8; v string}) *time.Time {
 		}
 	}
 	n.bs2epring(n.bs_relays)
-	var expired time.Time
 	if n.randomSvrPK {
-		expired = n.GetExpirationAdvanced()
+		if expired := n.GetExpirationAdvanced(true); expired != nil {
+			return expired
+		}
+		return &time.Time{}
 	} else {
-		expired = n.GetDefaultExpiration()
+		expired := n.GetDefaultExpiration()
+		return &expired
 	}
-	return &expired
 }
 
 func (_ *dnscryptnode) proto() string {

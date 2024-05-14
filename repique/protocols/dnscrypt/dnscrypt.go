@@ -159,12 +159,15 @@ func (r *Resolver) GetDefaultExpiration() time.Time {
 }
 
 func (r *Resolver) GetExpirationAdvanced(updated bool) *time.Time {
-	if s, op, minR := r.GetServices(); op > 1 {
+	if s, op, minR := r.GetServices(); op > 0 {
+		if minR == 0 {
+			minR = 1
+		}
 		f := time.Unix(int64(s[0].DtFrom), 0)
 		d := time.Since(f).Truncate(time.Duration(minR) * time.Hour)
 		var m uint16
 		if d <= 0 {
-			m =1 
+			m =1
 		} else {
 			m = uint16(d / (time.Duration(minR) * time.Hour))
 			factor := 0

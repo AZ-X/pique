@@ -46,18 +46,13 @@ func (n *dnscryptnode) boost(o *node) interface{} {
 
 randomSvrPK:
 	s2 := n.GetDefaultService()
-	updated := s2 != nil && (s1 == nil || s2.ServerKey != s1.ServerKey)
-	if expired := n.GetExpirationAdvanced(updated); expired == nil || expired.After(time.Now()) {
-		if expired != nil {
-			if !updated {
-				dlog.Debugf("abort dnscrypt early regulation boost")
-			}
-			return expired;
-		}
-		return nil
+	updated := s2 != nil && (s1 == nil || *s2.ServerKey != *s1.ServerKey)
+	switch expired := n.GetExpirationAdvanced(updated); {
+		case expired == nil: return nil
+		case expired.Before(time.Now()): expired := time.Now().Add(regulation_delay); return &expired
+		case !updated: dlog.Debugf("abort dnscrypt early regulation boost"); fallthrough
+		default: return expired
 	}
-	expired := time.Now().Add(regulation_delay)
-	return &expired
 }
 
 func (n *dnscryptnode) bs2epring(eps []*common.Endpoint) {
